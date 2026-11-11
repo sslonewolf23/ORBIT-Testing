@@ -492,6 +492,18 @@ jobs:
             "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" \
             "$F/valid-subkey.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/fault-injection.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/fault-injection.out"
+      - name: Compile and run repository Release metadata policy tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITReleaseMetadata.c \
+            research/rnp-ios-spike/harness/orbit-release-metadata-tests.c \
+            -o "$RUNNER_TEMP/orbit-release-metadata-tests"
+          "$RUNNER_TEMP/orbit-release-metadata-tests" | tee "$RUNNER_TEMP/release-metadata-policy.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/release-metadata-policy.out"
+
       - name: Upload host verification evidence
         if: always()
         uses: actions/upload-artifact@v4

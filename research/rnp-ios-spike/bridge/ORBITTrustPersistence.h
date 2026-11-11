@@ -57,9 +57,10 @@ orbit_trust_store_code orbit_repository_trust_store_load(
     const char *repository_id,
     const orbit_trust_store_backend *backend);
 
-/* Advance the monotonic anchor before atomic record replacement. A crash
- * between those operations intentionally makes the record unavailable rather
- * than accepting an older trust snapshot. Repeating the same save is safe. */
+/* Atomically stage the authenticated next-revision record, then advance the
+ * monotonic anchor. Load can finish a valid record exactly one revision ahead
+ * after a crash. Older records are always rejected. Repeating the same save
+ * is safe. */
 orbit_trust_store_code orbit_repository_trust_store_save(
     const orbit_repository_trust_state *state,
     const char *repository_id,

@@ -140,9 +140,11 @@ orbit_trust_store_code orbit_repository_trust_store_load(
     memset(computed_mac,0,sizeof(computed_mac));
     if(!mac_ok)return ORBIT_TRUST_STORE_AUTHENTICATION_FAILED;
     if(!decoded_ok)return ORBIT_TRUST_STORE_FORMAT_REJECTED;
-    if(decoded.revision<counter || counter==UINT64_MAX ||
-       decoded.revision>counter+1U)return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
-    if(decoded.revision==counter+1U) {
+    if(decoded.revision<counter ||
+       (counter==UINT64_MAX && decoded.revision!=counter) ||
+       (counter!=UINT64_MAX && decoded.revision>counter+1U))
+        return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+    if(counter!=UINT64_MAX && decoded.revision==counter+1U) {
         if(!backend->advance_counter(backend->context,repository_id,counter,decoded.revision)) {
             uint64_t observed=0U;
             if(!backend->read_counter(backend->context,repository_id,&observed))

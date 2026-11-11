@@ -140,7 +140,16 @@ orbit_trust_store_code orbit_repository_trust_store_load(
     memset(computed_mac,0,sizeof(computed_mac));
     if(!mac_ok)return ORBIT_TRUST_STORE_AUTHENTICATION_FAILED;
     if(!decoded_ok)return ORBIT_TRUST_STORE_FORMAT_REJECTED;
-    if(decoded.revision!=counter)return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+    if(decoded.revision<counter || counter==UINT64_MAX ||
+       decoded.revision>counter+1U)return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+    if(decoded.revision==counter+1U) {
+        if(!backend->advance_counter(backend->context,repository_id,counter,decoded.revision)) {
+            uint64_t observed=0U;
+            if(!backend->read_counter(backend->context,repository_id,&observed))
+                return ORBIT_TRUST_STORE_IO_ERROR;
+            if(observed!=decoded.revision)return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+        }
+    }
     *state=decoded;return ORBIT_TRUST_STORE_OK;
 }
 
@@ -173,10 +182,16 @@ orbit_trust_store_code orbit_repository_trust_store_save(
         memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));
         return identical?ORBIT_TRUST_STORE_OK:ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
     }
-    if(!backend->advance_counter(backend->context,repository_id,counter,state->revision)) {
-        memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
-    }
     bool written=backend->write_record_atomic(backend->context,repository_id,record,length,mac);
+    if(!written) {
+        memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));
+        return ORBIT_TRUST_STORE_IO_ERROR;
+    }
+    bool advanced=backend->advance_counter(backend->context,repository_id,counter,state->revision);
     memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));
-    return written?ORBIT_TRUST_STORE_OK:ORBIT_TRUST_STORE_IO_ERROR;
+    if(advanced)return ORBIT_TRUST_STORE_OK;
+    uint64_t observed=0U;
+    if(!backend->read_counter(backend->context,repository_id,&observed))
+        return ORBIT_TRUST_STORE_IO_ERROR;
+    return observed==state->revision?ORBIT_TRUST_STORE_OK:ORBIT_TRUST_STORE_IO_ERROR;
 }

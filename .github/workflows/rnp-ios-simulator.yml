@@ -209,6 +209,9 @@ jobs:
             <key>CFBundleVersion</key><string>1</string>
             <key>LSRequiresIPhoneOS</key><true/>
             <key>MinimumOSVersion</key><string>15.0</string>
+            <key>CFBundleSupportedPlatforms</key><array><string>iPhoneSimulator</string></array>
+            <key>DTPlatformName</key><string>iphonesimulator</string>
+            <key>DTSDKName</key><string>iphonesimulator</string>
             <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
           </dict>
           </plist>
@@ -227,6 +230,8 @@ jobs:
             research/rnp-ios-spike/harness/ORBITRNPsimulatorApp.swift \
             -o "$APP/ORBITRNPsimulator"
           plutil -lint "$APP/Info.plist"
+          codesign --force --sign - --timestamp=none "$APP"
+          codesign --verify --deep --strict "$APP"
           file "$APP/ORBITRNPsimulator"
           xcrun --sdk iphonesimulator lipo -info "$APP/ORBITRNPsimulator"
           echo "ORBIT_SIMULATOR_APP=$APP" >> "$GITHUB_ENV"

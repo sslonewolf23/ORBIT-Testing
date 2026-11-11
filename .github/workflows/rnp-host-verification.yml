@@ -391,7 +391,114 @@ jobs:
           "$RUNNER_TEMP/rnp-bridge-robustness-sanitized" \
             "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" \
             "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/sanitizer-robustness.out"
-          grep -q '^decision=PASS$' "$RUNNER_TEMP/sanitizer-robustness.out"
+          grep -q '^decision=PASS      - name: Fuzz OpenPGP key and InRelease parsers
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          ORBIT_FUZZ_TRUSTED_KEY: ${{ runner.temp }}/fixtures/trusted-keyring.gpg
+          ORBIT_FUZZ_VALID_DOCUMENT: ${{ runner.temp }}/fixtures/valid-trusted.InRelease
+          ORBIT_FUZZ_FINGERPRINT: ${{ runner.temp }}/fixtures/trusted-primary.fingerprint
+        run: |
+          set -euo pipefail
+          CORPUS="$RUNNER_TEMP/rnp-fuzz-corpus"
+          ARTIFACTS="$RUNNER_TEMP/rnp-fuzz-artifacts"
+          mkdir -p "$CORPUS" "$ARTIFACTS"
+          cp "$RUNNER_TEMP/fixtures/trusted-keyring.gpg" "$CORPUS/seed-trusted-keyring"
+          cp "$RUNNER_TEMP/fixtures/valid-trusted.InRelease" "$CORPUS/seed-valid-inrelease"
+          cp "$RUNNER_TEMP/fixtures/malformed-keyring.gpg" "$CORPUS/seed-malformed-keyring"
+          cp "$RUNNER_TEMP/fixtures/truncated-keyring.gpg" "$CORPUS/seed-truncated-keyring"
+          cp "$RUNNER_TEMP/fixtures/bad-packet-header.gpg" "$CORPUS/seed-bad-packet-header"
+          cp "$RUNNER_TEMP/fixtures/truncated-packet-header.gpg" "$CORPUS/seed-truncated-packet-header"
+          cp "$RUNNER_TEMP/fixtures/invalid-packet-length.gpg" "$CORPUS/seed-invalid-packet-length"
+          cp "$RUNNER_TEMP/fixtures/unsupported-key-algorithm.gpg" "$CORPUS/seed-unsupported-key-algorithm"
+          cp "$RUNNER_TEMP/fixtures/valid-subkey.InRelease" "$CORPUS/seed-subkey-inrelease"
+          "$RUNNER_TEMP/rnp-bridge-fuzz" "$CORPUS" \
+            -runs=1500 -max_len=262144 -timeout=5 -rss_limit_mb=2048 \
+            -artifact_prefix="$ARTIFACTS/" 2>&1 | tee "$RUNNER_TEMP/rnp-fuzz.out"
+          grep -q 'Done 1500 runs' "$RUNNER_TEMP/rnp-fuzz.out"
+
+      - name: Upload host verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rnp-host-inrelease-verification
+          path: |
+            ${{ runner.temp }}/build-rnp-host/
+            ${{ runner.temp }}/rnp-install/
+            ${{ runner.temp }}/fixtures/
+            ${{ runner.temp }}/*.out
+          if-no-files-found: warn
+ "$RUNNER_TEMP/sanitizer-robustness.out"
+
+      - name: Build linker-wrapped fault-injection harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -Iresearch/rnp-ios-spike/harness \
+            -c research/rnp-ios-spike/harness/rnp-bridge-fault-injection.c \
+            -o "$RUNNER_TEMP/rnp-bridge-fault-injection.o"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/harness \
+            -c research/rnp-ios-spike/harness/rnp-fault-wrappers.c \
+            -o "$RUNNER_TEMP/rnp-fault-wrappers.o"
+          clang++ $SAN "$RUNNER_TEMP/rnp-bridge-fault-injection.o" \
+            "$RUNNER_TEMP/rnp-fault-wrappers.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-sanitized.o" \
+            -Wl,--wrap=rnp_ffi_create \
+            -Wl,--wrap=rnp_input_from_memory \
+            -Wl,--wrap=rnp_load_keys \
+            -Wl,--wrap=rnp_get_public_key_count \
+            -Wl,--wrap=rnp_output_to_null \
+            -Wl,--wrap=rnp_op_verify_create \
+            -Wl,--wrap=rnp_op_verify_set_flags \
+            -Wl,--wrap=rnp_op_verify_execute \
+            -Wl,--wrap=rnp_op_verify_get_signature_count \
+            -Wl,--wrap=rnp_op_verify_get_signature_at \
+            -Wl,--wrap=rnp_op_verify_signature_get_status \
+            -Wl,--wrap=rnp_op_verify_signature_get_handle \
+            -Wl,--wrap=rnp_signature_is_valid \
+            -Wl,--wrap=rnp_op_verify_signature_get_hash \
+            -Wl,--wrap=rnp_op_verify_signature_get_times \
+            -Wl,--wrap=rnp_op_verify_signature_get_key \
+            -Wl,--wrap=rnp_key_get_fprint \
+            -Wl,--wrap=rnp_key_get_alg \
+            -Wl,--wrap=rnp_key_get_curve \
+            -Wl,--wrap=rnp_key_is_sub \
+            -Wl,--wrap=rnp_key_get_primary_fprint \
+            -Wl,--wrap=rnp_locate_key \
+            -Wl,--wrap=rnp_key_is_valid \
+            -Wl,--wrap=rnp_key_is_revoked \
+            -Wl,--wrap=rnp_key_get_creation \
+            -Wl,--wrap=rnp_key_valid_till64 \
+            -Wl,--wrap=rnp_key_allows_usage \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-fault-injection"
+
+      - name: Run controlled RNP fault-injection cleanup tests
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          set -euo pipefail
+          F="$RUNNER_TEMP/fixtures"
+          TRUSTED="$(cat "$F/trusted-primary.fingerprint")"
+          "$RUNNER_TEMP/rnp-bridge-fault-injection" \
+            "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" \
+            "$F/valid-subkey.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/fault-injection.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/fault-injection.out"
 
       - name: Fuzz OpenPGP key and InRelease parsers
         shell: bash

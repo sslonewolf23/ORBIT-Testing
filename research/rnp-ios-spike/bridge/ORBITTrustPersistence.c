@@ -120,6 +120,7 @@ orbit_trust_store_code orbit_repository_trust_store_load(
     const orbit_trust_store_backend *backend) {
     if(!state||!valid_repo(repository_id)||!backend_valid(backend))
         return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+    memset(state,0,sizeof(*state));
     uint64_t counter=0;if(!backend->read_counter(backend->context,repository_id,&counter))
         return ORBIT_TRUST_STORE_IO_ERROR;
     uint8_t record[ORBIT_TRUST_STORE_RECORD_MAX],stored_mac[ORBIT_TRUST_STORE_MAC_BYTES];

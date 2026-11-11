@@ -198,6 +198,8 @@ orbit_rnp_verify_code orbit_rnp_verify_inrelease(
         goto cleanup;
     }
 
+    /* RNP 0.18.1 implementation allocates a fresh key-handle wrapper here;
+     * release it with rnp_key_handle_destroy during the common cleanup path. */
     if (rnp_op_verify_signature_get_key(verified_signature, &signing_key) != RNP_SUCCESS ||
         !signing_key ||
         rnp_key_get_fprint(signing_key, &signing_fingerprint) != RNP_SUCCESS ||

@@ -70,7 +70,7 @@ int main(void) {
     expect("restored-revision-matches",loaded.revision==state.revision,true);
 
     orbit_repository_trust_state changed=loaded;
-    changed.generation=1U;changed.revision++;
+    changed.revision++;
     expect("next-revision-saved",orbit_repository_trust_store_save(
         &changed,repo,&backend)==ORBIT_TRUST_STORE_OK,true);
     uint8_t newer_record[ORBIT_TRUST_STORE_RECORD_MAX],newer_mac[ORBIT_TRUST_STORE_MAC_BYTES];

@@ -209,6 +209,40 @@ bool orbit_release_metadata_timestamps(const orbit_release_metadata *metadata,
 }
 
 
+
+static bool contains_token(const char *list, const char *wanted) {
+    if (!list || !wanted || !*wanted) return false;
+    size_t wanted_length = strlen(wanted);
+    const char *p = list;
+    while (*p) {
+        while (*p == ' ' || *p == '\t') ++p;
+        const char *start = p;
+        while (*p && *p != ' ' && *p != '\t') ++p;
+        size_t length = (size_t)(p - start);
+        if (length == wanted_length && memcmp(start, wanted, length) == 0)
+            return true;
+    }
+    return false;
+}
+bool orbit_release_metadata_matches_policy(const orbit_release_metadata *metadata,
+                                            const char *expected_suite,
+                                            const char *expected_codename,
+                                            const char *required_architecture,
+                                            const char *required_component) {
+    if (!metadata || !expected_suite || !*expected_suite ||
+        !expected_codename || !*expected_codename ||
+        !required_architecture || !*required_architecture ||
+        !required_component || !*required_component) return false;
+    if (!memchr(metadata->suite, '\0', sizeof(metadata->suite)) ||
+        !memchr(metadata->codename, '\0', sizeof(metadata->codename)) ||
+        !memchr(metadata->architectures, '\0', sizeof(metadata->architectures)) ||
+        !memchr(metadata->components, '\0', sizeof(metadata->components))) return false;
+    return strcmp(metadata->suite, expected_suite) == 0 &&
+           strcmp(metadata->codename, expected_codename) == 0 &&
+           contains_token(metadata->architectures, required_architecture) &&
+           contains_token(metadata->components, required_component);
+}
+
 bool orbit_release_verify_index(const orbit_release_metadata *metadata,
                                 orbit_rnp_verify_code release_verification_code,
                                 const char *relative_path,

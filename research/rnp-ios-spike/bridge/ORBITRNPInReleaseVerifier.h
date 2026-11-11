@@ -67,6 +67,23 @@ orbit_rnp_verify_code orbit_rnp_verify_inrelease(
     orbit_rnp_verify_result *result
 );
 
+/* Same strict verification policy, with an optional bounded copy of the
+ * authenticated cleartext payload. If payload is NULL, payload_length must
+ * also be NULL. If payload is non-NULL, payload_capacity is required and
+ * payload_length receives the exact authenticated payload length on success.
+ * Payload is copied only after every signature, signer, key, and time check. */
+orbit_rnp_verify_code orbit_rnp_verify_inrelease_with_payload(
+    const uint8_t *inrelease_data,
+    size_t inrelease_length,
+    const uint8_t *public_key_data,
+    size_t public_key_length,
+    const char *expected_primary_fingerprint,
+    orbit_rnp_verify_result *result,
+    uint8_t *payload,
+    size_t payload_capacity,
+    size_t *payload_length
+);
+
 #ifdef __cplusplus
 }
 #endif

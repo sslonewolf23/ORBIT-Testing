@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
     mutated_key = (uint8_t *) malloc(key_len);
     mutated_message = (uint8_t *) malloc(message_len);
     if (!mutated_key || !mutated_message) {
-        fprintf(stderr, "could not allocate mutation buffers\\n");
+        fprintf(stderr, "could not allocate mutation buffers\n");
         free(key); free(message); free(malformed_key);
         free(mutated_key); free(mutated_message);
         return 64;
@@ -68,14 +68,14 @@ int main(int argc, char **argv) {
     memset(&result, 0xA5, sizeof(result));
     code = orbit_rnp_verify_inrelease(message, message_len, mutated_key, key_len, argv[3], &result);
     if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
-        fprintf(stderr, "corrupted OpenPGP packet header did not fail closed\\n");
+        fprintf(stderr, "corrupted OpenPGP packet header did not fail closed\n");
         ++failures;
     }
     mutated_message[0] ^= 0x01U;
     memset(&result, 0xA5, sizeof(result));
     code = orbit_rnp_verify_inrelease(mutated_message, message_len, key, key_len, argv[3], &result);
     if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
-        fprintf(stderr, "corrupted clear-signed framing did not fail closed\\n");
+        fprintf(stderr, "corrupted clear-signed framing did not fail closed\n");
         ++failures;
     }
 
@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
             memset(&result, 0xA5, sizeof(result));
             code = orbit_rnp_verify_inrelease(message, message_len, key, n, argv[3], &result);
             if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
-                fprintf(stderr, "key truncation boundary %zu did not fail closed\\n", n);
+                fprintf(stderr, "key truncation boundary %zu did not fail closed\n", n);
                 ++failures; break;
             }
         }
@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
             memset(&result, 0xA5, sizeof(result));
             code = orbit_rnp_verify_inrelease(message, n, key, key_len, argv[3], &result);
             if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
-                fprintf(stderr, "document truncation boundary %zu did not fail closed\\n", n);
+                fprintf(stderr, "document truncation boundary %zu did not fail closed\n", n);
                 ++failures; break;
             }
         }

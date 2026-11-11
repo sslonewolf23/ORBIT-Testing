@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "ORBITRNPInReleaseVerifier.h"
 
 #define ORBIT_RELEASE_MAX_BYTES (4U * 1024U * 1024U)
 #define ORBIT_RELEASE_MAX_CHECKSUMS 256U
@@ -40,6 +41,15 @@ bool orbit_release_parse_timestamp(const char *value, uint64_t *unix_seconds);
 bool orbit_release_metadata_timestamps(const orbit_release_metadata *metadata,
                                         uint64_t *date_seconds,
                                         uint64_t *valid_until_seconds);
+
+/* Verify actual Packages-index bytes against the exact SHA256 entry in an
+ * already-authenticated Release document. Requires trusted InRelease result,
+ * exact relative path match, exact declared size, and SHA-256 equality. */
+bool orbit_release_verify_index(const orbit_release_metadata *metadata,
+                                orbit_rnp_verify_code release_verification_code,
+                                const char *relative_path,
+                                const uint8_t *index_data,
+                                size_t index_length);
 
 bool orbit_release_freshness_valid(uint64_t date_seconds,
                                    uint64_t valid_until_seconds,

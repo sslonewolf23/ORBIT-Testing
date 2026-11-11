@@ -36,6 +36,7 @@ static int read_file(const char *path, uint8_t **data, size_t *length) {
 
 int main(int argc, char **argv) {
     uint8_t *key = NULL, *message = NULL, *malformed_key = NULL;
+    uint8_t *mutated_key = NULL, *mutated_message = NULL;
     size_t key_len = 0, message_len = 0, malformed_key_len = 0;
     orbit_rnp_verify_result result;
     orbit_rnp_verify_code code;
@@ -51,6 +52,57 @@ int main(int argc, char **argv) {
         fprintf(stderr, "could not read robustness fixtures\n");
         free(key); free(message); free(malformed_key);
         return 64;
+    }
+
+    mutated_key = (uint8_t *) malloc(key_len);
+    mutated_message = (uint8_t *) malloc(message_len);
+    if (!mutated_key || !mutated_message) {
+        fprintf(stderr, "could not allocate mutation buffers\n");
+        free(key); free(message); free(malformed_key);
+        free(mutated_key); free(mutated_message);
+        return 64;
+    }
+    memcpy(mutated_key, key, key_len);
+    memcpy(mutated_message, message, message_len);
+    mutated_key[0] ^= 0x20U;
+    memset(&result, 0xA5, sizeof(result));
+    code = orbit_rnp_verify_inrelease(message, message_len, mutated_key, key_len, argv[3], &result);
+    if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
+        fprintf(stderr, "corrupted OpenPGP packet header did not fail closed\n");
+        ++failures;
+    }
+    mutated_message[0] ^= 0x01U;
+    memset(&result, 0xA5, sizeof(result));
+    code = orbit_rnp_verify_inrelease(mutated_message, message_len, key, key_len, argv[3], &result);
+    if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
+        fprintf(stderr, "corrupted clear-signed framing did not fail closed\n");
+        ++failures;
+    }
+
+    /* Distinct truncation boundaries must never produce a trusted result. */
+    {
+        size_t key_lengths[] = {1U, key_len / 4U, key_len / 2U, key_len - 1U};
+        size_t message_lengths[] = {1U, message_len / 4U, message_len / 2U, message_len - 1U};
+        for (size_t i = 0; i < sizeof(key_lengths) / sizeof(key_lengths[0]); ++i) {
+            size_t n = key_lengths[i];
+            if (n == 0 || n >= key_len || (i > 0 && n == key_lengths[i - 1])) continue;
+            memset(&result, 0xA5, sizeof(result));
+            code = orbit_rnp_verify_inrelease(message, message_len, key, n, argv[3], &result);
+            if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
+                fprintf(stderr, "key truncation boundary %zu did not fail closed\n", n);
+                ++failures; break;
+            }
+        }
+        for (size_t i = 0; i < sizeof(message_lengths) / sizeof(message_lengths[0]); ++i) {
+            size_t n = message_lengths[i];
+            if (n == 0 || n >= message_len || (i > 0 && n == message_lengths[i - 1])) continue;
+            memset(&result, 0xA5, sizeof(result));
+            code = orbit_rnp_verify_inrelease(message, n, key, key_len, argv[3], &result);
+            if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
+                fprintf(stderr, "document truncation boundary %zu did not fail closed\n", n);
+                ++failures; break;
+            }
+        }
     }
 
     /* Repeated valid calls must remain stable and release all per-call RNP state. */
@@ -97,6 +149,8 @@ int main(int argc, char **argv) {
     free(key);
     free(message);
     free(malformed_key);
+    free(mutated_key);
+    free(mutated_message);
     if (failures) {
         printf("decision=FAIL\nfailures=%d\n", failures);
         return 1;

@@ -1,4 +1,5 @@
 #include "ORBITRNPInReleaseVerifier.h"
+#include "ORBITRNPTimePolicy.h"
 
 #include <rnp/rnp.h>
 #include <rnp/rnp_err.h>
@@ -189,10 +190,9 @@ orbit_rnp_verify_code orbit_rnp_verify_inrelease(
 
     time_t now = time(NULL);
     if (now < 0 ||
-        signature_created == 0 ||
-        (uint64_t) signature_created > (uint64_t) now + 300U ||
-        (signature_expires != 0 &&
-         (uint64_t) signature_created + (uint64_t) signature_expires <= (uint64_t) now)) {
+        !orbit_rnp_signature_time_policy_valid(signature_created,
+                                               signature_expires,
+                                               (uint64_t) now)) {
         outcome = ORBIT_RNP_VERIFY_SIGNATURE_TIME_INVALID;
         set_error(result, outcome, "Signature is future-dated or expired.");
         goto cleanup;
@@ -285,9 +285,10 @@ orbit_rnp_verify_code orbit_rnp_verify_inrelease(
 
     if (rnp_key_get_creation(signing_key, &key_created) != RNP_SUCCESS ||
         rnp_key_valid_till64(signing_key, &key_valid_until) != RNP_SUCCESS ||
-        key_valid_until == 0 ||
-        signature_created < key_created ||
-        (key_valid_until != UINT64_MAX && (uint64_t) now >= key_valid_until)) {
+        !orbit_rnp_key_time_policy_valid(signature_created,
+                                          key_created,
+                                          key_valid_until,
+                                          (uint64_t) now)) {
         outcome = ORBIT_RNP_VERIFY_SIGNATURE_TIME_INVALID;
         set_error(result, outcome, "Signing key was never valid, expired, or created after the signature.");
         goto cleanup;

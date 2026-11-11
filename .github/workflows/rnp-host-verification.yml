@@ -2,6 +2,8 @@ name: RNP Host Signature Verification
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
     paths:
@@ -137,8 +139,19 @@ jobs:
             -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
             -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-time-policy.c \
+            -o "$RUNNER_TEMP/rnp-time-policy.o"
+          clang "$RUNNER_TEMP/rnp-time-policy.o" "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
+            -o "$RUNNER_TEMP/rnp-time-policy-tests"
           clang++ "$RUNNER_TEMP/rnp-inrelease-verify.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
@@ -157,6 +170,7 @@ jobs:
             -o "$RUNNER_TEMP/rnp-bridge-robustness.o"
           clang++ "$RUNNER_TEMP/rnp-bridge-smoke.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
@@ -166,12 +180,20 @@ jobs:
 
           clang++ "$RUNNER_TEMP/rnp-bridge-robustness.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
             $(pkg-config --static --libs json-c) \
             -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
             -o "$RUNNER_TEMP/rnp-bridge-robustness"
+
+      - name: Run deterministic signature and key expiration boundary tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/rnp-time-policy-tests" | tee "$RUNNER_TEMP/time-policy.out"
+          grep -q '^decision=PASS$' "$RUNNER_TEMP/time-policy.out"
 
       - name: Generate disposable Debian InRelease fixtures
         shell: bash
@@ -311,10 +333,15 @@ jobs:
             -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o"
           clang $SAN -std=c11 -Wall -Wextra -Werror \
             -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy-sanitized.o"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/harness/rnp-bridge-robustness.c \
             -o "$RUNNER_TEMP/rnp-bridge-robustness-sanitized.o"
           clang++ $SAN "$RUNNER_TEMP/rnp-bridge-robustness-sanitized.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-sanitized.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \

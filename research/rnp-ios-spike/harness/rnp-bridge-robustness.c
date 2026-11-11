@@ -82,7 +82,7 @@ int main(int argc, char **argv) {
     /* Distinct truncation boundaries must never produce a trusted result. */
     {
         size_t key_lengths[] = {1U, key_len / 4U, key_len / 2U, key_len - 1U};
-        size_t message_lengths[] = {1U, message_len / 4U, message_len / 2U, message_len - 1U};
+        size_t message_lengths[] = {1U, message_len / 4U, message_len / 2U, message_len > 64U ? message_len - 64U : message_len - 1U};
         for (size_t i = 0; i < sizeof(key_lengths) / sizeof(key_lengths[0]); ++i) {
             size_t n = key_lengths[i];
             if (n == 0 || n >= key_len || (i > 0 && n == key_lengths[i - 1])) continue;

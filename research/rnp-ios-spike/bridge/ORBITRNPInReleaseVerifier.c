@@ -48,13 +48,16 @@ static bool fingerprints_equal(const char *left, const char *right) {
            strcmp(normalized_left, normalized_right) == 0;
 }
 
-orbit_rnp_verify_code orbit_rnp_verify_inrelease(
+orbit_rnp_verify_code orbit_rnp_verify_inrelease_with_payload(
     const uint8_t *inrelease_data,
     size_t inrelease_length,
     const uint8_t *public_key_data,
     size_t public_key_length,
     const char *expected_primary_fingerprint,
-    orbit_rnp_verify_result *result
+    orbit_rnp_verify_result *result,
+    uint8_t *payload,
+    size_t payload_capacity,
+    size_t *payload_length
 ) {
     rnp_ffi_t ffi = NULL;
     rnp_input_t key_input = NULL;
@@ -85,6 +88,12 @@ orbit_rnp_verify_code orbit_rnp_verify_inrelease(
     orbit_rnp_verify_code outcome = ORBIT_RNP_VERIFY_ENGINE_ERROR;
 
     if (result) memset(result, 0, sizeof(*result));
+    if (payload_length) *payload_length = 0;
+    if ((!payload && (payload_capacity != 0 || payload_length != NULL)) ||
+        (payload && (!payload_length || payload_capacity == 0))) {
+        set_error(result, ORBIT_RNP_VERIFY_INVALID_ARGUMENT, "Payload output arguments are inconsistent.");
+        return ORBIT_RNP_VERIFY_INVALID_ARGUMENT;
+    }
     if (!result || !inrelease_data || inrelease_length == 0 ||
         !public_key_data || public_key_length == 0 ||
         inrelease_length > ORBIT_MAX_INRELEASE_BYTES ||
@@ -125,7 +134,8 @@ orbit_rnp_verify_code orbit_rnp_verify_inrelease(
 
 
     if (rnp_input_from_memory(&signed_input, inrelease_data, inrelease_length, true) != RNP_SUCCESS ||
-        rnp_output_to_null(&discarded_output) != RNP_SUCCESS ||
+        (payload ? rnp_output_to_memory(&discarded_output, payload_capacity) :
+                   rnp_output_to_null(&discarded_output)) != RNP_SUCCESS ||
         rnp_op_verify_create(&verify, ffi, signed_input, discarded_output) != RNP_SUCCESS) {
         outcome = ORBIT_RNP_VERIFY_DOCUMENT_REJECTED;
         set_error(result, outcome, "InRelease document could not be parsed for verification.");
@@ -302,6 +312,23 @@ orbit_rnp_verify_code orbit_rnp_verify_inrelease(
         goto cleanup;
     }
 
+    if (payload) {
+        uint8_t *authenticated = NULL;
+        size_t authenticated_length = 0;
+        if (rnp_output_memory_get_buf(discarded_output, &authenticated,
+                                      &authenticated_length, true) != RNP_SUCCESS ||
+            !authenticated || authenticated_length == 0 ||
+            authenticated_length > payload_capacity) {
+            if (authenticated) rnp_buffer_destroy(authenticated);
+            outcome = ORBIT_RNP_VERIFY_DOCUMENT_REJECTED;
+            set_error(result, outcome, "Authenticated cleartext payload could not be safely extracted.");
+            goto cleanup;
+        }
+        memcpy(payload, authenticated, authenticated_length);
+        *payload_length = authenticated_length;
+        rnp_buffer_destroy(authenticated);
+    }
+
     outcome = ORBIT_RNP_VERIFY_VALID;
     set_error(result, outcome, "Cryptographic signature and pinned primary-key identity verified.");
 
@@ -323,4 +350,17 @@ cleanup:
     if (key_input) rnp_input_destroy(key_input);
     if (ffi) rnp_ffi_destroy(ffi);
     return outcome;
+}
+
+orbit_rnp_verify_code orbit_rnp_verify_inrelease(
+    const uint8_t *inrelease_data,
+    size_t inrelease_length,
+    const uint8_t *public_key_data,
+    size_t public_key_length,
+    const char *expected_primary_fingerprint,
+    orbit_rnp_verify_result *result
+) {
+    return orbit_rnp_verify_inrelease_with_payload(
+        inrelease_data, inrelease_length, public_key_data, public_key_length,
+        expected_primary_fingerprint, result, NULL, 0, NULL);
 }

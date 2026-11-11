@@ -104,11 +104,13 @@ int main(int argc, char **argv) {
     expect("candidate-not-authorized-before-rotation", orbit_repository_trust_fingerprint_allowed(
         &state, candidate_fpr, now), false);
 
-    expect("legitimate-rotation-scheduled", orbit_repository_trust_schedule_rotation(
-        &state, "orbit-official", &proof, &verification, candidate, candidate_len, now)
+    expect("legitimate-rotation-scheduled", orbit_repository_trust_authorize_rotation(
+        &state, "orbit-official", rotation, rotation_len, trusted, trusted_len,
+        candidate, candidate_len, now)
         == ORBIT_TRUST_ACCEPTED, true);
-    expect("second-pending-rotation-blocked", orbit_repository_trust_schedule_rotation(
-        &state, "orbit-official", &proof, &verification, candidate, candidate_len, now)
+    expect("second-pending-rotation-blocked", orbit_repository_trust_authorize_rotation(
+        &state, "orbit-official", rotation, rotation_len, trusted, trusted_len,
+        candidate, candidate_len, now)
         == ORBIT_TRUST_ROTATION_ALREADY_PENDING, true);
     expect("candidate-not-active-before-time", orbit_repository_trust_fingerprint_allowed(
         &state, candidate_fpr, proof.activate_at - 1U), false);
@@ -126,18 +128,18 @@ int main(int argc, char **argv) {
 
     orbit_repository_trust_state wrong_state;
     expect("wrong-candidate-state-init", orbit_repository_trust_init(&wrong_state, trusted_fpr), true);
-    expect("mismatched-candidate-key-rejected", orbit_repository_trust_schedule_rotation(
-        &wrong_state, "orbit-official", &proof, &verification, wrong_candidate, wrong_len, now)
+    expect("mismatched-candidate-key-rejected", orbit_repository_trust_authorize_rotation(
+        &wrong_state, "orbit-official", rotation, rotation_len, trusted, trusted_len,
+        wrong_candidate, wrong_len, now)
         == ORBIT_TRUST_CANDIDATE_KEY_REJECTED, true);
-    expect("wrong-repository-rejected", orbit_repository_trust_schedule_rotation(
-        &wrong_state, "different-repository", &proof, &verification, candidate, candidate_len, now)
+    expect("wrong-repository-rejected", orbit_repository_trust_authorize_rotation(
+        &wrong_state, "different-repository", rotation, rotation_len, trusted, trusted_len,
+        candidate, candidate_len, now)
         == ORBIT_TRUST_REPOSITORY_MISMATCH, true);
 
-    orbit_rnp_verify_result forged = verification;
-    snprintf(forged.primary_fingerprint, sizeof(forged.primary_fingerprint), "%s", candidate_fpr);
-    expect("wrong-old-signer-rejected", orbit_repository_trust_schedule_rotation(
-        &wrong_state, "orbit-official", &proof, &forged, candidate, candidate_len, now)
-        == ORBIT_TRUST_SIGNER_MISMATCH, true);
+    expect("new-key-cannot-sign-own-rotation", orbit_repository_trust_authorize_rotation(
+        &wrong_state, "orbit-official", unauthorized, unauthorized_len, combined, combined_len,
+        candidate, candidate_len, now) == ORBIT_TRUST_ROTATION_SIGNATURE_REJECTED, true);
 
     orbit_trust_rotation_proof malformed;
     const uint8_t bad_proof[] = "ORBIT-Key-Rotation: 1\nRepository: orbit-official\nUnknown: value\n";

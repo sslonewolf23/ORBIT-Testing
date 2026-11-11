@@ -39,12 +39,13 @@ static char *read_text(const char *path) {
     memcpy(text, data, length); text[length] = '\0'; free(data); return text;
 }
 int main(int argc, char **argv) {
-    if (argc != 13) {
-        fprintf(stderr, "usage: %s trusted-keyring rotation.InRelease trusted-fpr candidate-keyring candidate-fpr wrong-keyring combined-keyring unauthorized-rotation expired-keyring expired-fpr revoked-keyring revoked-fpr\n", argv[0]);
+    if (argc != 18) {
+        fprintf(stderr, "usage: %s trusted-keyring rotation.InRelease trusted-fpr candidate-keyring candidate-fpr wrong-keyring combined-keyring unauthorized-rotation expired-keyring expired-fpr revoked-keyring revoked-fpr recovery-keyring recovery-fpr emergency-rotation emergency-time non-immediate-recovery\n", argv[0]);
         return 2;
     }
     size_t trusted_len = 0, rotation_len = 0, candidate_len = 0, wrong_len = 0;
     size_t combined_len = 0, unauthorized_len = 0, expired_len = 0, revoked_len = 0;
+    size_t recovery_len = 0, emergency_len = 0, non_immediate_len = 0;
     uint8_t *trusted = read_file(argv[1], &trusted_len);
     uint8_t *rotation = read_file(argv[2], &rotation_len);
     char *trusted_fpr = read_text(argv[3]);
@@ -57,7 +58,12 @@ int main(int argc, char **argv) {
     char *expired_fpr = read_text(argv[10]);
     uint8_t *revoked = read_file(argv[11], &revoked_len);
     char *revoked_fpr = read_text(argv[12]);
-    if (!trusted || !rotation || !trusted_fpr || !candidate || !candidate_fpr || !wrong_candidate || !combined || !unauthorized || !expired || !expired_fpr || !revoked || !revoked_fpr) {
+    uint8_t *recovery = read_file(argv[13], &recovery_len);
+    char *recovery_fpr = read_text(argv[14]);
+    uint8_t *emergency = read_file(argv[15], &emergency_len);
+    char *emergency_time_text = read_text(argv[16]);
+    uint8_t *non_immediate = read_file(argv[17], &non_immediate_len);
+    if (!trusted || !rotation || !trusted_fpr || !candidate || !candidate_fpr || !wrong_candidate || !combined || !unauthorized || !expired || !expired_fpr || !revoked || !revoked_fpr || !recovery || !recovery_fpr || !emergency || !emergency_time_text || !non_immediate) {
         fprintf(stderr, "fixture read failed\n");
         return 2;
     }
@@ -65,6 +71,14 @@ int main(int argc, char **argv) {
     candidate_fpr[strcspn(candidate_fpr, "\r\n")] = '\0';
     expired_fpr[strcspn(expired_fpr, "\r\n")] = '\0';
     revoked_fpr[strcspn(revoked_fpr, "\r\n")] = '\0';
+    recovery_fpr[strcspn(recovery_fpr, "\r\n")] = '\0';
+    emergency_time_text[strcspn(emergency_time_text, "\r\n")] = '\0';
+    char *time_end = NULL;
+    uint64_t emergency_now = (uint64_t)strtoull(emergency_time_text, &time_end, 10);
+    if (!time_end || *time_end != '\0' || emergency_now == 0U) {
+        fprintf(stderr, "invalid emergency fixture timestamp\n");
+        return 2;
+    }
 
     expect("candidate-bundle-exact-primary", orbit_rnp_key_bundle_has_primary_fingerprint(
         candidate, candidate_len, candidate_fpr), true);

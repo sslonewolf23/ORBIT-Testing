@@ -68,6 +68,12 @@ static bool valid_state(const orbit_repository_trust_state *s) {
     }
     if(s->previous_fingerprint[0]=='\0' && s->previous_valid_until!=0U &&
        s->pending_fingerprint[0]=='\0')return false;
+    if(s->previous_fingerprint[0]!='\0' &&
+       strcmp(s->previous_fingerprint,s->current_fingerprint)==0)return false;
+    if(s->pending_fingerprint[0]!='\0' &&
+       s->previous_fingerprint[0]!='\0' &&
+       strcmp(s->pending_fingerprint,s->previous_fingerprint)==0)return false;
+    if((s->generation==0U)!=(s->previous_fingerprint[0]=='\0'))return false;
     return s->revision!=0U;
 }
 static size_t encode_record(const orbit_repository_trust_state *s,const char *repo,

@@ -121,10 +121,14 @@ jobs:
           export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
           pkg-config --modversion librnp
           pkg-config --modversion botan-3
+          pkg-config --modversion json-c
           echo "librnp static link flags:"
           pkg-config --static --libs librnp
           echo "Botan static link flags:"
           pkg-config --static --libs botan-3
+          echo "JSON-C static link flags:"
+          pkg-config --static --libs json-c
+          test -f "$RUNNER_TEMP/rnp-install/lib/libsexpp.a"
           clang -std=c11 -Wall -Wextra -Werror -I"$RUNNER_TEMP/rnp-install/include" \
             -c research/rnp-ios-spike/harness/rnp-inrelease-verify.c \
             -o "$RUNNER_TEMP/rnp-inrelease-verify.o"
@@ -137,6 +141,8 @@ jobs:
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
             -o "$RUNNER_TEMP/rnp-inrelease-verify"
           clang -std=c11 -Wall -Wextra -Werror \
             -I"$RUNNER_TEMP/rnp-install/include" \
@@ -147,6 +153,8 @@ jobs:
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
             -o "$RUNNER_TEMP/rnp-bridge-smoke"
 
       - name: Generate disposable Debian InRelease fixtures

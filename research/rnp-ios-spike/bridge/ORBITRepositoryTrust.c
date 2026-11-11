@@ -142,7 +142,8 @@ static orbit_trust_code schedule_verified_rotation(
     if (!state || !expected_repository || !valid_repository_id(expected_repository) ||
         !proof || !verified_rotation || !candidate_public_key_bundle ||
         candidate_bundle_length == 0) return ORBIT_TRUST_INVALID_ARGUMENT;
-    if (state->generation == UINT32_MAX || state->revision == UINT64_MAX)\n        return ORBIT_TRUST_GENERATION_EXHAUSTED;
+    if (state->generation == UINT32_MAX || state->revision == UINT64_MAX)
+        return ORBIT_TRUST_GENERATION_EXHAUSTED;
     if (state->pending_fingerprint[0] != '\0') return ORBIT_TRUST_ROTATION_ALREADY_PENDING;
     if (verified_rotation->code != ORBIT_RNP_VERIFY_VALID ||
         !normalize_fingerprint(verified_rotation->primary_fingerprint, signer) ||

@@ -124,9 +124,13 @@ orbit_trust_store_code orbit_repository_trust_store_load(
     uint8_t computed_mac[ORBIT_TRUST_STORE_MAC_BYTES];size_t length=0;
     memset(record,0,sizeof(record));memset(stored_mac,0,sizeof(stored_mac));
     memset(computed_mac,0,sizeof(computed_mac));
-    if(!backend->read_record(backend->context,repository_id,record,sizeof(record),&length,stored_mac)) {
+    orbit_trust_store_read_result read_result=backend->read_record(
+        backend->context,repository_id,record,sizeof(record),&length,stored_mac);
+    if(read_result!=ORBIT_TRUST_BACKEND_OK) {
         memset(record,0,sizeof(record));memset(stored_mac,0,sizeof(stored_mac));
-        return counter==0U?ORBIT_TRUST_STORE_NOT_FOUND:ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+        if(read_result==ORBIT_TRUST_BACKEND_NOT_FOUND)
+            return counter==0U?ORBIT_TRUST_STORE_NOT_FOUND:ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+        return ORBIT_TRUST_STORE_IO_ERROR;
     }
     if(length>sizeof(record)||length==0U) {
         memset(record,0,sizeof(record));memset(stored_mac,0,sizeof(stored_mac));

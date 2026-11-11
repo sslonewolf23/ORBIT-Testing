@@ -352,6 +352,67 @@ cleanup:
     return outcome;
 }
 
+
+bool orbit_rnp_key_bundle_has_primary_fingerprint(
+    const uint8_t *public_key_data,
+    size_t public_key_length,
+    const char *expected_primary_fingerprint
+) {
+    rnp_ffi_t ffi = NULL;
+    rnp_input_t key_input = NULL;
+    rnp_key_handle_t key = NULL;
+    char *fingerprint = NULL;
+    char *algorithm = NULL;
+    char *curve = NULL;
+    char expected[ORBIT_RNP_FINGERPRINT_CAPACITY] = {0};
+    size_t key_count = 0;
+    uint32_t created = 0;
+    uint64_t valid_until = 0;
+    bool is_subkey = true;
+    bool is_valid = false;
+    bool is_revoked = true;
+    bool can_sign = false;
+    bool accepted = false;
+    time_t now = time(NULL);
+
+    if (!public_key_data || public_key_length == 0 ||
+        public_key_length > ORBIT_MAX_PUBLIC_KEY_BYTES ||
+        !normalize_fingerprint(expected_primary_fingerprint, expected,
+                               sizeof(expected)) || now < 0) goto cleanup;
+    if (rnp_ffi_create(&ffi, "GPG", "GPG") != RNP_SUCCESS ||
+        rnp_input_from_memory(&key_input, public_key_data, public_key_length, true) != RNP_SUCCESS ||
+        rnp_load_keys(ffi, "GPG", key_input, RNP_LOAD_SAVE_PUBLIC_KEYS) != RNP_SUCCESS ||
+        rnp_get_public_key_count(ffi, &key_count) != RNP_SUCCESS ||
+        key_count == 0 || key_count > ORBIT_RNP_MAX_IMPORTED_PUBLIC_KEYS ||
+        rnp_locate_key(ffi, "fingerprint", expected, &key) != RNP_SUCCESS ||
+        !key ||
+        rnp_key_is_sub(key, &is_subkey) != RNP_SUCCESS || is_subkey ||
+        rnp_key_get_fprint(key, &fingerprint) != RNP_SUCCESS || !fingerprint ||
+        !fingerprints_equal(fingerprint, expected) ||
+        rnp_key_get_alg(key, &algorithm) != RNP_SUCCESS || !algorithm ||
+        strcasecmp(algorithm, "EDDSA") != 0 ||
+        rnp_key_get_curve(key, &curve) != RNP_SUCCESS || !curve ||
+        strcasecmp(curve, "ed25519") != 0 ||
+        rnp_key_is_valid(key, &is_valid) != RNP_SUCCESS || !is_valid ||
+        rnp_key_is_revoked(key, &is_revoked) != RNP_SUCCESS || is_revoked ||
+        rnp_key_allows_usage(key, "sign", &can_sign) != RNP_SUCCESS || !can_sign ||
+        rnp_key_get_creation(key, &created) != RNP_SUCCESS ||
+        rnp_key_valid_till64(key, &valid_until) != RNP_SUCCESS ||
+        !orbit_rnp_key_time_policy_valid(created, created, valid_until, (uint64_t)now)) {
+        goto cleanup;
+    }
+    accepted = true;
+
+cleanup:
+    if (fingerprint) rnp_buffer_destroy(fingerprint);
+    if (algorithm) rnp_buffer_destroy(algorithm);
+    if (curve) rnp_buffer_destroy(curve);
+    if (key) rnp_key_handle_destroy(key);
+    if (key_input) rnp_input_destroy(key_input);
+    if (ffi) rnp_ffi_destroy(ffi);
+    return accepted;
+}
+
 orbit_rnp_verify_code orbit_rnp_verify_inrelease(
     const uint8_t *inrelease_data,
     size_t inrelease_length,

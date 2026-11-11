@@ -496,10 +496,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          pkg-config --modversion botan-3
           clang -std=c11 -Wall -Wextra -Werror \
             -Iresearch/rnp-ios-spike/bridge \
+            -I"$VCPKG_INSTALLED_DIR/x64-linux/include" \
             research/rnp-ios-spike/bridge/ORBITReleaseMetadata.c \
             research/rnp-ios-spike/harness/orbit-release-metadata-tests.c \
+            $(pkg-config --static --libs botan-3) \
             -o "$RUNNER_TEMP/orbit-release-metadata-tests"
           "$RUNNER_TEMP/orbit-release-metadata-tests" | tee "$RUNNER_TEMP/release-metadata-policy.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/release-metadata-policy.out"

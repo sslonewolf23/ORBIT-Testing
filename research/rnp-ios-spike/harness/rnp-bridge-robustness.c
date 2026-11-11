@@ -41,13 +41,13 @@ int main(int argc, char **argv) {
     orbit_rnp_verify_code code;
     int failures = 0;
 
-    if (argc != 4) {
-        fprintf(stderr, "usage: %s <trusted-keyring> <valid-InRelease> <fingerprint>\n", argv[0]);
+    if (argc != 5) {
+        fprintf(stderr, "usage: %s <trusted-keyring> <valid-InRelease> <fingerprint> <truncated-keyring>\n", argv[0]);
         return 64;
     }
     if (!read_file(argv[1], &key, &key_len) ||
         !read_file(argv[2], &message, &message_len) ||
-        !read_file(argv[3], &malformed_key, &malformed_key_len)) {
+        !read_file(argv[4], &malformed_key, &malformed_key_len)) {
         fprintf(stderr, "could not read robustness fixtures\n");
         free(key); free(message); free(malformed_key);
         return 64;
@@ -57,7 +57,7 @@ int main(int argc, char **argv) {
     for (unsigned i = 0; i < 128; ++i) {
         memset(&result, 0xA5, sizeof(result));
         code = orbit_rnp_verify_inrelease(message, message_len, key, key_len,
-                                           argv[4 - 1], &result);
+                                           argv[3], &result);
         if (code != ORBIT_RNP_VERIFY_VALID || result.code != ORBIT_RNP_VERIFY_VALID) {
             fprintf(stderr, "valid iteration %u failed: return=%d result=%d error=%s\n",
                     i, (int) code, (int) result.code, result.error);

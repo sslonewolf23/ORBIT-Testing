@@ -15,8 +15,8 @@ typedef struct {
 static unsigned checks=0U,failures=0U;
 static void expect(const char *name,bool actual,bool wanted) {
     ++checks;
-    if(actual!=wanted){fprintf(stderr,"FAIL %s actual=%d expected=%d\\n",name,actual,wanted);++failures;}
-    else printf("PASS %s\\n",name);
+    if(actual!=wanted){fprintf(stderr,"FAIL %s actual=%d expected=%d\n",name,actual,wanted);++failures;}
+    else printf("PASS %s\n",name);
 }
 static bool read_counter(void *ctx,const char *repo,uint64_t *counter) {
     (void)repo;memory_store *m=ctx;*counter=m->counter;return true;
@@ -114,6 +114,6 @@ int main(void) {
     expect("crash-window-fails-closed",orbit_repository_trust_store_load(
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);
 
-    printf("decision=%s checks=%u failures=%u\\n",failures?"FAIL":"PASS",checks,failures);
+    printf("decision=%s checks=%u failures=%u\n",failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;
 }

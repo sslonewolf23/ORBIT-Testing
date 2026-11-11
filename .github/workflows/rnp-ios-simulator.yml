@@ -141,7 +141,9 @@ jobs:
         run: |
           set -euo pipefail
           if ! command -v gpg >/dev/null 2>&1; then brew install gnupg; fi
+          if ! command -v expect >/dev/null 2>&1; then brew install expect; fi
           gpg --version | head -n 2
+          expect -v
           bash research/rnp-ios-spike/scripts/generate-inrelease-fixtures.sh "$RUNNER_TEMP/fixtures"
           (cd "$RUNNER_TEMP/fixtures" && shasum -a 256 -c SHA256SUMS)
 

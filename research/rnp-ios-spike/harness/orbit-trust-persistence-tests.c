@@ -63,15 +63,12 @@ int main(void) {
     memory_store storage;memset(&storage,0,sizeof(storage));
     orbit_trust_store_backend backend=backend_for(&storage);
     orbit_repository_trust_state state,loaded;
-    expect("initialize-pin",orbit_repository_trust_init(&state,pin),true);
     storage.fail_read=true;
-    expect("storage-read-error-is-not-missing-record",orbit_repository_trust_store_load(
-        &loaded,repo,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
+    expect("storage-read-error-is-not-missing-record",orbit_repository_trust_load_or_initialize(
+        &state,repo,pin,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
     storage.fail_read=false;
-    expect("missing-record-distinguished",orbit_repository_trust_store_load(
-        &loaded,repo,&backend)==ORBIT_TRUST_STORE_NOT_FOUND,true);
-    expect("first-state-saved",orbit_repository_trust_store_save(
-        &state,repo,&backend)==ORBIT_TRUST_STORE_OK,true);
+    expect("missing-record-bootstraps-and-persists",orbit_repository_trust_load_or_initialize(
+        &state,repo,pin,&backend)==ORBIT_TRUST_STORE_OK,true);
     expect("counter-advanced-to-initial-revision",storage.counter==state.revision,true);
     expect("state-restored",orbit_repository_trust_store_load(
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_OK,true);

@@ -288,6 +288,7 @@ gpg --batch --homedir "$WORK/revoked" --export "$REVOKED_FPR" > "$OUT/revoked-ke
 gpg --batch --homedir "$WORK/old-signer" --export "$OLD_FPR" > "$OUT/old-signer-keyring.gpg"
 printf '%s\n' "$TRUSTED_FPR" > "$OUT/trusted-primary.fingerprint"
 printf '%s\n' "$OTHER_FPR" > "$OUT/other-primary.fingerprint"
+printf '%s\n' "$RECOVERY_FPR" > "$OUT/recovery-primary.fingerprint"
 printf '%s\n' "$EXPIRED_FPR" > "$OUT/expired-primary.fingerprint"
 printf '%s\n' "$REVOKED_FPR" > "$OUT/revoked-primary.fingerprint"
 printf '%s\n' "$OLD_FPR" > "$OUT/old-signer-primary.fingerprint"

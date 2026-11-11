@@ -65,10 +65,12 @@ platform-provided monotonic counter.
 
 Every state mutation advances the revision, including scheduling a rotation,
 activating it, and pruning an expired previous key. A record cannot be replaced
-with different bytes at the same revision. The counter is advanced before the
-atomic record write; if the write fails or the process crashes in that window,
-loading detects the mismatch and fails closed. Retrying the exact same saved
-state is idempotent.
+with different bytes at the same revision. The authenticated next-revision
+record is atomically staged before the monotonic counter advances. If the
+process crashes after staging but before counter advancement, loading verifies
+the MAC and can safely complete exactly one pending counter increment. Records
+older than the counter are rejected. Retrying the exact same saved state is
+idempotent.
 
 The backend is an explicit security boundary, not a default file-storage
 implementation. A production iOS adapter must provide a device-protected MAC

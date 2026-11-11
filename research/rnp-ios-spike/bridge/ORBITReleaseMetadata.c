@@ -1,4 +1,5 @@
 #include "ORBITReleaseMetadata.h"
+#include <botan/ffi.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -204,6 +205,54 @@ bool orbit_release_metadata_timestamps(const orbit_release_metadata *metadata,
         return false;
     }
     return true;
+}
+
+
+bool orbit_release_verify_index(const orbit_release_metadata *metadata,
+                                orbit_rnp_verify_code release_verification_code,
+                                const char *relative_path,
+                                const uint8_t *index_data,
+                                size_t index_length) {
+    if (!metadata || release_verification_code != ORBIT_RNP_VERIFY_VALID ||
+        !relative_path || !index_data ||
+        metadata->checksum_count == 0 ||
+        metadata->checksum_count > ORBIT_RELEASE_MAX_CHECKSUMS ||
+        !safe_path(relative_path)) return false;
+
+    const orbit_release_checksum *expected = NULL;
+    for (size_t i = 0; i < metadata->checksum_count; ++i) {
+        if (strcmp(metadata->checksums[i].path, relative_path) == 0) {
+            if (expected) return false;
+            expected = &metadata->checksums[i];
+        }
+    }
+    if (!expected || expected->size != (uint64_t)index_length) return false;
+
+    uint8_t expected_digest[32];
+    for (size_t i = 0; i < sizeof(expected_digest); ++i) {
+        int high = hexval(expected->sha256[i * 2U]);
+        int low = hexval(expected->sha256[i * 2U + 1U]);
+        if (high < 0 || low < 0) return false;
+        expected_digest[i] = (uint8_t)((high << 4) | low);
+    }
+    if (expected->sha256[64] != '\0') return false;
+
+    botan_hash_t hash = NULL;
+    if (botan_hash_init(&hash, "SHA-256", 0) != BOTAN_FFI_SUCCESS || !hash)
+        return false;
+
+    uint8_t actual_digest[32];
+    size_t output_length = 0;
+    bool ok = botan_hash_output_length(hash, &output_length) == BOTAN_FFI_SUCCESS &&
+              output_length == sizeof(actual_digest) &&
+              botan_hash_update(hash, index_data, index_length) == BOTAN_FFI_SUCCESS &&
+              botan_hash_final(hash, actual_digest) == BOTAN_FFI_SUCCESS &&
+              botan_constant_time_compare(expected_digest, actual_digest,
+                                          sizeof(actual_digest)) == 0;
+    (void)botan_hash_destroy(hash);
+    (void)botan_scrub_mem(expected_digest, sizeof(expected_digest));
+    (void)botan_scrub_mem(actual_digest, sizeof(actual_digest));
+    return ok;
 }
 
 bool orbit_release_freshness_valid(uint64_t date,uint64_t valid_until,uint64_t now,uint64_t max_age,uint64_t skew) {

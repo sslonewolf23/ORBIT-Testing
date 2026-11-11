@@ -11,6 +11,12 @@
 #define ORBIT_TRUST_STORE_RECORD_MAX 512U
 
 typedef enum {
+    ORBIT_TRUST_BACKEND_OK = 0,
+    ORBIT_TRUST_BACKEND_NOT_FOUND = 1,
+    ORBIT_TRUST_BACKEND_ERROR = 2
+} orbit_trust_store_read_result;
+
+typedef enum {
     ORBIT_TRUST_STORE_OK = 0,
     ORBIT_TRUST_STORE_NOT_FOUND = 1,
     ORBIT_TRUST_STORE_INVALID_ARGUMENT = 2,
@@ -39,7 +45,7 @@ typedef struct {
                          uint64_t *counter);
     bool (*advance_counter)(void *context, const char *repository_id,
                             uint64_t expected, uint64_t next);
-    bool (*read_record)(void *context, const char *repository_id,
+    orbit_trust_store_read_result (*read_record)(void *context, const char *repository_id,
                         uint8_t *record, size_t capacity, size_t *length,
                         uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES]);
     bool (*write_record_atomic)(void *context, const char *repository_id,

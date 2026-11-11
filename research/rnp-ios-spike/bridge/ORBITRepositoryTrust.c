@@ -171,6 +171,7 @@ static orbit_trust_code schedule_verified_rotation(
            sizeof(state->pending_fingerprint));
     state->pending_activation = proof->activate_at;
     state->previous_valid_until = proof->previous_key_valid_until;
+    state->last_observed_time = now_seconds;
     ++state->revision;
     return ORBIT_TRUST_ACCEPTED;
 }
@@ -222,6 +223,7 @@ bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
                                     uint64_t now_seconds) {
     if (!state || state->pending_fingerprint[0] == '\0' ||
         now_seconds < state->pending_activation ||
+        now_seconds < state->last_observed_time ||
         state->generation == UINT32_MAX || state->revision == UINT64_MAX) return false;
     memcpy(state->previous_fingerprint, state->current_fingerprint,
            sizeof(state->previous_fingerprint));
@@ -229,6 +231,7 @@ bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
            sizeof(state->current_fingerprint));
     memset(state->pending_fingerprint, 0, sizeof(state->pending_fingerprint));
     state->pending_activation = 0;
+    state->last_observed_time = now_seconds;
     ++state->generation;
     ++state->revision;
     return true;
@@ -249,10 +252,12 @@ bool orbit_repository_trust_prune_previous(orbit_repository_trust_state *state,
                                            uint64_t now_seconds) {
     if (!state || state->previous_fingerprint[0] == '\0' ||
         state->pending_fingerprint[0] != '\0' ||
+        now_seconds < state->last_observed_time ||
         now_seconds <= state->previous_valid_until ||
         state->revision == UINT64_MAX) return false;
     memset(state->previous_fingerprint, 0, sizeof(state->previous_fingerprint));
     state->previous_valid_until = 0U;
+    state->last_observed_time = now_seconds;
     ++state->revision;
     return true;
 }
@@ -262,7 +267,8 @@ bool orbit_repository_trust_fingerprint_allowed(
     const char *primary_fingerprint,
     uint64_t now_seconds) {
     char normalized[ORBIT_TRUST_FINGERPRINT_CAPACITY];
-    if (!state || now_seconds != state->last_observed_time ||\n        !normalize_fingerprint(primary_fingerprint, normalized)) return false;
+    if (!state || now_seconds != state->last_observed_time ||
+        !normalize_fingerprint(primary_fingerprint, normalized)) return false;
     if (state->pending_fingerprint[0] != '\0' &&
         now_seconds >= state->pending_activation) {
         if (strcmp(normalized, state->pending_fingerprint) == 0) return true;

@@ -141,8 +141,8 @@ int main(void) {
     orbit_trust_store_code lifecycle_store_result=ORBIT_TRUST_STORE_OK;
     expect("lifecycle-bootstrap",orbit_repository_trust_load_or_initialize(
         &lifecycle_state,repo,pin,&lifecycle_backend)==ORBIT_TRUST_STORE_OK,true);
-    expect("clock-floor-persisted",
-        orbit_repository_trust_observe_time_and_store(&lifecycle_state,repo,50U,
+    expect("clock-floor-persisted-before-signer-authorization",
+        orbit_repository_trust_fingerprint_allowed_and_store(&lifecycle_state,repo,pin,50U,
             &lifecycle_backend,&lifecycle_store_result),true);
     expect("clock-floor-survives-reload",
         orbit_repository_trust_store_load(&loaded,repo,&lifecycle_backend)==ORBIT_TRUST_STORE_OK &&

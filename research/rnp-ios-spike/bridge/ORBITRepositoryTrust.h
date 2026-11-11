@@ -38,7 +38,8 @@ typedef enum {
     ORBIT_TRUST_CANDIDATE_KEY_REJECTED = 5,
     ORBIT_TRUST_ROTATION_WINDOW_REJECTED = 6,
     ORBIT_TRUST_ROTATION_ALREADY_PENDING = 7,
-    ORBIT_TRUST_GENERATION_EXHAUSTED = 8
+    ORBIT_TRUST_GENERATION_EXHAUSTED = 8,
+    ORBIT_TRUST_ROTATION_SIGNATURE_REJECTED = 9
 } orbit_trust_code;
 
 /* Parse only the dedicated ORBIT rotation statement from authenticated bytes.
@@ -49,15 +50,16 @@ bool orbit_trust_rotation_proof_parse(const uint8_t *data, size_t length,
 bool orbit_repository_trust_init(orbit_repository_trust_state *state,
                                  const char *pinned_primary_fingerprint);
 
-/* A rotation is accepted only when the old-key signature result is VALID,
- * its primary signer is the current pin, the proof names the expected
- * repository/current key, and the supplied candidate bundle contains the
- * exact valid, unrevoked Ed25519 primary key named by the proof. */
-orbit_trust_code orbit_repository_trust_schedule_rotation(
+/* Verify the signed rotation document with the currently pinned key,
+ * extract only its authenticated cleartext, parse its proof, and validate
+ * the candidate key bundle before scheduling activation. */
+orbit_trust_code orbit_repository_trust_authorize_rotation(
     orbit_repository_trust_state *state,
     const char *expected_repository,
-    const orbit_trust_rotation_proof *proof,
-    const orbit_rnp_verify_result *verified_rotation,
+    const uint8_t *rotation_inrelease,
+    size_t rotation_inrelease_length,
+    const uint8_t *current_public_key_bundle,
+    size_t current_bundle_length,
     const uint8_t *candidate_public_key_bundle,
     size_t candidate_bundle_length,
     uint64_t now_seconds);

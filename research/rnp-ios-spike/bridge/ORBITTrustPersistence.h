@@ -97,8 +97,9 @@ bool orbit_repository_trust_prune_previous_and_store(
     uint64_t now_seconds, const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result);
 
-/* Load only a MAC-authenticated record whose revision exactly matches the
- * platform monotonic counter. A missing record is distinct from corruption. */
+/* Load a MAC-authenticated record whose revision matches the platform
+ * monotonic counter, or is exactly one ahead as a recoverable staged commit.
+ * A missing record is distinct from corruption and storage I/O failure. */
 orbit_trust_store_code orbit_repository_trust_store_load(
     orbit_repository_trust_state *state,
     const char *repository_id,

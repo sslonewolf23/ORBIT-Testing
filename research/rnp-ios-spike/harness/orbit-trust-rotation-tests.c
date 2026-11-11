@@ -40,7 +40,7 @@ static char *read_text(const char *path) {
 }
 int main(int argc, char **argv) {
     if (argc != 13) {
-        fprintf(stderr, "usage: %s trusted-keyring rotation.InRelease trusted-fpr candidate-keyring candidate-fpr wrong-keyring\n", argv[0]);
+        fprintf(stderr, "usage: %s trusted-keyring rotation.InRelease trusted-fpr candidate-keyring candidate-fpr wrong-keyring combined-keyring unauthorized-rotation expired-keyring expired-fpr revoked-keyring revoked-fpr\n", argv[0]);
         return 2;
     }
     size_t trusted_len = 0, rotation_len = 0, candidate_len = 0, wrong_len = 0;

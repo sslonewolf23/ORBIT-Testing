@@ -82,6 +82,14 @@ orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
     const orbit_trust_store_backend *backend,
     orbit_trust_code *trust_result);
 
+/* Production lookup: persist/advance the time floor first, then evaluate
+ * the requested primary fingerprint at that exact committed timestamp. */
+bool orbit_repository_trust_fingerprint_allowed_and_store(
+    orbit_repository_trust_state *state, const char *repository_id,
+    const char *primary_fingerprint, uint64_t now_seconds,
+    const orbit_trust_store_backend *backend,
+    orbit_trust_store_code *store_result);
+
 bool orbit_repository_trust_observe_time_and_store(
     orbit_repository_trust_state *state, const char *repository_id,
     uint64_t now_seconds, const orbit_trust_store_backend *backend,

@@ -96,6 +96,13 @@ writes, interrupted counter advancement and recovery, plus transactional
 rollback of in-memory activation and previous-key pruning when storage commits
 fail.
 
+The trust state also persists a monotonic observed-time floor. Callers must
+commit the current time through `orbit_repository_trust_observe_time_and_store`
+before asking whether a signer is allowed; the read-only fingerprint check
+accepts only that exact persisted timestamp. A backward clock value is rejected
+and cannot make an expired previous key valid again. Rotation scheduling,
+activation, and pruning also refuse time values below the stored floor.
+
 ## Test coverage
 
 The host fixture suite exercises:

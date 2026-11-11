@@ -111,11 +111,11 @@ static bool constant_time_equal(const uint8_t *a,const uint8_t *b,size_t n) {
     uint8_t diff=0;for(size_t i=0;i<n;++i)diff|=(uint8_t)(a[i]^b[i]);return diff==0U;
 }
 static bool backend_valid(const orbit_trust_store_backend *b) {
-    return b&&b->read_counter&&b->advance_counter&&b->read_record&&
+    return b&&b->begin_transaction&&b->end_transaction&&b->read_counter&&b->advance_counter&&b->read_record&&
            b->write_record_atomic&&b->mac_record;
 }
 
-orbit_trust_store_code orbit_repository_trust_store_load(
+static orbit_trust_store_code store_load_locked(
     orbit_repository_trust_state *state,const char *repository_id,
     const orbit_trust_store_backend *backend) {
     if(!state||!valid_repo(repository_id)||!backend_valid(backend))
@@ -162,7 +162,7 @@ orbit_trust_store_code orbit_repository_trust_store_load(
     *state=decoded;return ORBIT_TRUST_STORE_OK;
 }
 
-orbit_trust_store_code orbit_repository_trust_store_save(
+static orbit_trust_store_code store_save_locked(
     const orbit_repository_trust_state *state,const char *repository_id,
     const orbit_trust_store_backend *backend) {
     if(!valid_state(state)||!valid_repo(repository_id)||!backend_valid(backend))
@@ -206,6 +206,30 @@ orbit_trust_store_code orbit_repository_trust_store_save(
     return observed==state->revision?ORBIT_TRUST_STORE_OK:ORBIT_TRUST_STORE_IO_ERROR;
 }
 
+
+orbit_trust_store_code orbit_repository_trust_store_load(
+    orbit_repository_trust_state *state,const char *repository_id,
+    const orbit_trust_store_backend *backend) {
+    if(!state||!valid_repo(repository_id)||!backend_valid(backend))
+        return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+    if(!backend->begin_transaction(backend->context,repository_id))
+        return ORBIT_TRUST_STORE_IO_ERROR;
+    orbit_trust_store_code result=store_load_locked(state,repository_id,backend);
+    backend->end_transaction(backend->context,repository_id);
+    return result;
+}
+
+orbit_trust_store_code orbit_repository_trust_store_save(
+    const orbit_repository_trust_state *state,const char *repository_id,
+    const orbit_trust_store_backend *backend) {
+    if(!state||!valid_repo(repository_id)||!backend_valid(backend))
+        return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+    if(!backend->begin_transaction(backend->context,repository_id))
+        return ORBIT_TRUST_STORE_IO_ERROR;
+    orbit_trust_store_code result=store_save_locked(state,repository_id,backend);
+    backend->end_transaction(backend->context,repository_id);
+    return result;
+}
 
 static void reload_or_invalidate_state(
     orbit_repository_trust_state *state,const char *repository_id,

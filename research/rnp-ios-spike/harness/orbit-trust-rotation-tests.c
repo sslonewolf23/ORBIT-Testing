@@ -39,28 +39,47 @@ static char *read_text(const char *path) {
     memcpy(text, data, length); text[length] = '\0'; free(data); return text;
 }
 int main(int argc, char **argv) {
-    if (argc != 7) {
+    if (argc != 13) {
         fprintf(stderr, "usage: %s trusted-keyring rotation.InRelease trusted-fpr candidate-keyring candidate-fpr wrong-keyring\n", argv[0]);
         return 2;
     }
     size_t trusted_len = 0, rotation_len = 0, candidate_len = 0, wrong_len = 0;
+    size_t combined_len = 0, unauthorized_len = 0, expired_len = 0, revoked_len = 0;
     uint8_t *trusted = read_file(argv[1], &trusted_len);
     uint8_t *rotation = read_file(argv[2], &rotation_len);
     char *trusted_fpr = read_text(argv[3]);
     uint8_t *candidate = read_file(argv[4], &candidate_len);
     char *candidate_fpr = read_text(argv[5]);
     uint8_t *wrong_candidate = read_file(argv[6], &wrong_len);
-    if (!trusted || !rotation || !trusted_fpr || !candidate || !candidate_fpr || !wrong_candidate) {
+    uint8_t *combined = read_file(argv[7], &combined_len);
+    uint8_t *unauthorized = read_file(argv[8], &unauthorized_len);
+    uint8_t *expired = read_file(argv[9], &expired_len);
+    char *expired_fpr = read_text(argv[10]);
+    uint8_t *revoked = read_file(argv[11], &revoked_len);
+    char *revoked_fpr = read_text(argv[12]);
+    if (!trusted || !rotation || !trusted_fpr || !candidate || !candidate_fpr || !wrong_candidate || !combined || !unauthorized || !expired || !expired_fpr || !revoked || !revoked_fpr) {
         fprintf(stderr, "fixture read failed\n");
         return 2;
     }
     trusted_fpr[strcspn(trusted_fpr, "\r\n")] = '\0';
     candidate_fpr[strcspn(candidate_fpr, "\r\n")] = '\0';
+    expired_fpr[strcspn(expired_fpr, "\r\n")] = '\0';
+    revoked_fpr[strcspn(revoked_fpr, "\r\n")] = '\0';
 
     expect("candidate-bundle-exact-primary", orbit_rnp_key_bundle_has_primary_fingerprint(
         candidate, candidate_len, candidate_fpr), true);
     expect("candidate-bundle-rejects-wrong-primary", orbit_rnp_key_bundle_has_primary_fingerprint(
         candidate, candidate_len, trusted_fpr), false);
+    expect("expired-candidate-key-rejected", orbit_rnp_key_bundle_has_primary_fingerprint(
+        expired, expired_len, expired_fpr), false);
+    expect("revoked-candidate-key-rejected", orbit_rnp_key_bundle_has_primary_fingerprint(
+        revoked, revoked_len, revoked_fpr), false);
+    orbit_rnp_verify_result unauthorized_result;
+    orbit_rnp_verify_code unauthorized_code = orbit_rnp_verify_inrelease(
+        unauthorized, unauthorized_len, combined, combined_len, trusted_fpr,
+        &unauthorized_result);
+    expect("unauthorized-new-key-cannot-authorize-rotation",
+        unauthorized_code == ORBIT_RNP_VERIFY_SIGNER_MISMATCH, true);
 
     uint8_t payload[ORBIT_TRUST_ROTATION_MAX_BYTES];
     size_t payload_length = 0;
@@ -127,6 +146,7 @@ int main(int argc, char **argv) {
 
     printf("decision=%s checks=%u failures=%u\n", failures ? "FAIL" : "PASS", checks, failures);
     free(trusted); free(rotation); free(trusted_fpr); free(candidate);
-    free(candidate_fpr); free(wrong_candidate);
+    free(candidate_fpr); free(wrong_candidate); free(combined); free(unauthorized);
+    free(expired); free(expired_fpr); free(revoked); free(revoked_fpr);
     return failures ? 1 : 0;
 }

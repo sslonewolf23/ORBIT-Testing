@@ -509,6 +509,55 @@ jobs:
           "$RUNNER_TEMP/orbit-release-metadata-tests" | tee "$RUNNER_TEMP/release-metadata-policy.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/release-metadata-policy.out"
 
+      - name: Compile and run repository key rotation trust tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -I"$VCPKG_INSTALLED_DIR/x64-linux/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
+            -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-rotation.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy-rotation.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$VCPKG_INSTALLED_DIR/x64-linux/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITReleaseMetadata.c \
+            -o "$RUNNER_TEMP/ORBITReleaseMetadata-rotation.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRepositoryTrust.c \
+            -o "$RUNNER_TEMP/ORBITRepositoryTrust-rotation.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/orbit-trust-rotation-tests.c \
+            -o "$RUNNER_TEMP/orbit-trust-rotation-tests.o"
+          clang++ "$RUNNER_TEMP/orbit-trust-rotation-tests.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-rotation.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-rotation.o" \
+            "$RUNNER_TEMP/ORBITReleaseMetadata-rotation.o" \
+            "$RUNNER_TEMP/ORBITRepositoryTrust-rotation.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz -lstdc++ \
+            -o "$RUNNER_TEMP/orbit-trust-rotation-tests"
+          F="$RUNNER_TEMP/fixtures"
+          "$RUNNER_TEMP/orbit-trust-rotation-tests" \
+            "$F/trusted-keyring.gpg" "$F/valid-rotation.InRelease" \
+            "$F/trusted-primary.fingerprint" "$F/other-keyring.gpg" \
+            "$F/other-primary.fingerprint" "$F/trusted-keyring.gpg" \
+            | tee "$RUNNER_TEMP/trust-rotation.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/trust-rotation.out"
+
       - name: Upload host verification evidence
         if: always()
         uses: actions/upload-artifact@v4

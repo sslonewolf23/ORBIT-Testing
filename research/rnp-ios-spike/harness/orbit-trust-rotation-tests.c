@@ -116,6 +116,12 @@ int main(int argc, char **argv) {
         &state, candidate_fpr, proof.activate_at - 1U), false);
     expect("cannot-advance-before-activation", orbit_repository_trust_advance(
         &state, proof.activate_at - 1U), false);
+    expect("pending-key-authorized-at-activation", orbit_repository_trust_fingerprint_allowed(
+        &state, candidate_fpr, proof.activate_at), true);
+    expect("old-key-grace-applies-before-compaction", orbit_repository_trust_fingerprint_allowed(
+        &state, trusted_fpr, proof.previous_key_valid_until), true);
+    expect("old-key-expires-after-grace-before-compaction", orbit_repository_trust_fingerprint_allowed(
+        &state, trusted_fpr, proof.previous_key_valid_until + 1U), false);
     expect("rotation-activates-at-signed-time", orbit_repository_trust_advance(
         &state, proof.activate_at), true);
     expect("generation-increments", state.generation == 1U, true);

@@ -188,7 +188,8 @@ jobs:
           code=$?
           set -e
           test "$code" -eq 3
-          grep -q '^decision=VALID_BUT_UNTRUSTED$' "$RUNNER_TEMP/untrusted.out"
+          grep -q '^decision=VALID_BUT_UNTRUSTED' "$RUNNER_TEMP/subkey-wrong-primary.out"
+          echo "PASS: signing subkey rejected for wrong primary fingerprint (VALID_BUT_UNTRUSTED)"$' "$RUNNER_TEMP/untrusted.out"
 
           expect_block() {
             name="$1"; keyring="$2"; message="$3"; fingerprint="${4:-$TRUSTED}"

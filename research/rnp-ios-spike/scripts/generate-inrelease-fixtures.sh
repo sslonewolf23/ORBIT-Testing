@@ -240,6 +240,27 @@ mutated[body + 5] = 255
 (out / "unsupported-key-algorithm.gpg").write_bytes(mutated)
 PY
 gpg --batch --homedir "$WORK/other" --export "$OTHER_FPR" > "$OUT/other-keyring.gpg"
+
+# A dedicated old-key-authorized rotation statement. Activation is generated
+# relative to fixture creation so the test remains valid on future CI dates.
+python3 - "$TRUSTED_FPR" "$OTHER_FPR" > "$WORK/Rotation" <<'PY'
+from datetime import datetime, timedelta, timezone
+import sys
+now = datetime.now(timezone.utc)
+activate = now + timedelta(hours=1)
+grace = activate + timedelta(days=7)
+fmt = lambda value: value.strftime("%a, %d %b %Y %H:%M:%S UTC")
+print("ORBIT-Key-Rotation: 1")
+print("Repository: orbit-official")
+print("Current-Fingerprint: " + sys.argv[1])
+print("Next-Fingerprint: " + sys.argv[2])
+print("Activate-At: " + fmt(activate))
+print("Previous-Key-Valid-Until: " + fmt(grace))
+PY
+gpg --batch --homedir "$WORK/trusted" --local-user "$TRUSTED_FPR" --armor --clearsign \
+  --digest-algo SHA256 --output "$OUT/valid-rotation.InRelease" "$WORK/Rotation"
+gpg --batch --homedir "$WORK/other" --local-user "$OTHER_FPR" --armor --clearsign \
+  --digest-algo SHA256 --output "$OUT/unauthorized-rotation.InRelease" "$WORK/Rotation"
 gpg --batch --homedir "$WORK/trusted" --export "$TRUSTED_FPR" "$OTHER_FPR" > "$OUT/combined-keyring.gpg"
 gpg --batch --homedir "$WORK/expired" --export "$EXPIRED_FPR" > "$OUT/expired-keyring.gpg"
 gpg --batch --homedir "$WORK/revoked" --export "$REVOKED_FPR" > "$OUT/revoked-keyring.gpg"

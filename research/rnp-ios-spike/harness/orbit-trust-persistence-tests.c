@@ -79,7 +79,7 @@ int main(void) {
     expect("newer-state-loads",orbit_repository_trust_store_load(
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_OK && loaded.revision==changed.revision,true);
     orbit_repository_trust_state same_revision_forgery=changed;
-    same_revision_forgery.generation=7U;
+    same_revision_forgery.current_fingerprint[0]='F';
     expect("same-revision-state-substitution-rejected",orbit_repository_trust_store_save(
         &same_revision_forgery,repo,&backend)==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);
     expect("identical-save-is-idempotent",orbit_repository_trust_store_save(

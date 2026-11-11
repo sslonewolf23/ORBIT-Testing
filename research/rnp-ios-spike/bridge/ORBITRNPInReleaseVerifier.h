@@ -72,6 +72,14 @@ orbit_rnp_verify_code orbit_rnp_verify_inrelease(
  * also be NULL. If payload is non-NULL, payload_capacity is required and
  * payload_length receives the exact authenticated payload length on success.
  * Payload is copied only after every signature, signer, key, and time check. */
+/* Confirm that a supplied public-key bundle contains the exact, valid,
+ * unrevoked Ed25519 primary signing key named by expected_primary_fingerprint. */
+bool orbit_rnp_key_bundle_has_primary_fingerprint(
+    const uint8_t *public_key_data,
+    size_t public_key_length,
+    const char *expected_primary_fingerprint
+);
+
 orbit_rnp_verify_code orbit_rnp_verify_inrelease_with_payload(
     const uint8_t *inrelease_data,
     size_t inrelease_length,

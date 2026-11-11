@@ -129,6 +129,42 @@ int main(int argc, char **argv) {
         }
     }
 
+    /*
+     * Repeatedly exercise distinct post-initialization failure paths:
+     * malformed signed-document framing and a syntactically valid but
+     * incorrect pinned fingerprint. These are lifecycle stress tests, not
+     * allocator/RNP-internal fault injection.
+     */
+    {
+        char wrong_fingerprint[ORBIT_RNP_FINGERPRINT_CAPACITY];
+        size_t fingerprint_length = strlen(argv[3]);
+        if (fingerprint_length >= sizeof(wrong_fingerprint)) {
+            fprintf(stderr, "fixture fingerprint exceeds harness buffer\n");
+            ++failures;
+        } else {
+            memcpy(wrong_fingerprint, argv[3], fingerprint_length + 1U);
+            wrong_fingerprint[0] = wrong_fingerprint[0] == '0' ? '1' : '0';
+            for (unsigned i = 0; i < 64; ++i) {
+                memset(&result, 0xA5, sizeof(result));
+                code = orbit_rnp_verify_inrelease(mutated_message, message_len,
+                                                   key, key_len, argv[3], &result);
+                if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
+                    fprintf(stderr, "malformed-document stress iteration %u failed closed incorrectly\n", i);
+                    ++failures;
+                    break;
+                }
+                memset(&result, 0xA5, sizeof(result));
+                code = orbit_rnp_verify_inrelease(message, message_len,
+                                                   key, key_len, wrong_fingerprint, &result);
+                if (code == ORBIT_RNP_VERIFY_VALID || result.code != code) {
+                    fprintf(stderr, "wrong-fingerprint stress iteration %u failed closed incorrectly\n", i);
+                    ++failures;
+                    break;
+                }
+            }
+        }
+    }
+
     /* Invalid arguments must reset the output and return a structured failure. */
     memset(&result, 0xA5, sizeof(result));
     code = orbit_rnp_verify_inrelease(NULL, message_len, key, key_len, argv[3], &result);

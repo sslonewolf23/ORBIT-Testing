@@ -196,6 +196,7 @@ orbit_trust_code orbit_repository_trust_authorize_rotation(
         authenticated_payload, ORBIT_TRUST_ROTATION_MAX_BYTES,
         &authenticated_length);
     if (verify_code != ORBIT_RNP_VERIFY_VALID) {
+        memset(authenticated_payload, 0, ORBIT_TRUST_ROTATION_MAX_BYTES);
         free(authenticated_payload);
         return ORBIT_TRUST_ROTATION_SIGNATURE_REJECTED;
     }

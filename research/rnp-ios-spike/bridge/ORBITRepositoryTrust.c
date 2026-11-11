@@ -137,19 +137,25 @@ static orbit_trust_code schedule_verified_rotation(
     const orbit_rnp_verify_result *verified_rotation,
     const uint8_t *candidate_public_key_bundle,
     size_t candidate_bundle_length,
-    uint64_t now_seconds) {
+    uint64_t now_seconds,
+    const char *expected_signer_fingerprint,
+    bool emergency) {
     char signer[ORBIT_TRUST_FINGERPRINT_CAPACITY];
+    char expected_signer[ORBIT_TRUST_FINGERPRINT_CAPACITY];
     if (!state || !expected_repository || !valid_repository_id(expected_repository) ||
         !proof || !verified_rotation || !candidate_public_key_bundle ||
-        candidate_bundle_length == 0) return ORBIT_TRUST_INVALID_ARGUMENT;
+        candidate_bundle_length == 0 || !expected_signer_fingerprint ||
+        !normalize_fingerprint(expected_signer_fingerprint, expected_signer))
+        return ORBIT_TRUST_INVALID_ARGUMENT;
     if (state->generation == UINT32_MAX || state->revision == UINT64_MAX)
         return ORBIT_TRUST_GENERATION_EXHAUSTED;
-    if (state->pending_fingerprint[0] != '\0') return ORBIT_TRUST_ROTATION_ALREADY_PENDING;
-    if (state->previous_fingerprint[0] != '\0')
+    if (!emergency && state->pending_fingerprint[0] != '\0')
+        return ORBIT_TRUST_ROTATION_ALREADY_PENDING;
+    if (!emergency && state->previous_fingerprint[0] != '\0')
         return ORBIT_TRUST_PREVIOUS_KEY_GRACE_ACTIVE;
     if (verified_rotation->code != ORBIT_RNP_VERIFY_VALID ||
         !normalize_fingerprint(verified_rotation->primary_fingerprint, signer) ||
-        strcmp(signer, state->current_fingerprint) != 0 ||
+        strcmp(signer, expected_signer) != 0 ||
         strcmp(proof->current_fingerprint, state->current_fingerprint) != 0)
         return ORBIT_TRUST_SIGNER_MISMATCH;
     if (strcmp(proof->repository, expected_repository) != 0)
@@ -167,10 +173,21 @@ static orbit_trust_code schedule_verified_rotation(
             ORBIT_TRUST_MAX_PREVIOUS_KEY_GRACE_SECONDS)
         return ORBIT_TRUST_ROTATION_WINDOW_REJECTED;
 
-    memcpy(state->pending_fingerprint, proof->next_fingerprint,
-           sizeof(state->pending_fingerprint));
-    state->pending_activation = proof->activate_at;
-    state->previous_valid_until = proof->previous_key_valid_until;
+    if (emergency) {
+        memcpy(state->previous_fingerprint, state->current_fingerprint,
+               sizeof(state->previous_fingerprint));
+        memcpy(state->current_fingerprint, proof->next_fingerprint,
+               sizeof(state->current_fingerprint));
+        memset(state->pending_fingerprint, 0, sizeof(state->pending_fingerprint));
+        state->pending_activation = 0U;
+        state->previous_valid_until = now_seconds;
+        ++state->generation;
+    } else {
+        memcpy(state->pending_fingerprint, proof->next_fingerprint,
+               sizeof(state->pending_fingerprint));
+        state->pending_activation = proof->activate_at;
+        state->previous_valid_until = proof->previous_key_valid_until;
+    }
     state->last_observed_time = now_seconds;
     ++state->revision;
     return ORBIT_TRUST_ACCEPTED;
@@ -216,7 +233,60 @@ orbit_trust_code orbit_repository_trust_authorize_rotation(
     if (!parsed) return ORBIT_TRUST_PROOF_MALFORMED;
     return schedule_verified_rotation(state, expected_repository, &proof,
                                       &verification, candidate_public_key_bundle,
-                                      candidate_bundle_length, now_seconds);
+                                      candidate_bundle_length, now_seconds,
+                                      state->current_fingerprint, false);
+}
+
+orbit_trust_code orbit_repository_trust_authorize_recovery_rotation(
+    orbit_repository_trust_state *state,
+    const char *expected_repository,
+    const uint8_t *recovery_inrelease,
+    size_t recovery_inrelease_length,
+    const uint8_t *recovery_public_key_bundle,
+    size_t recovery_bundle_length,
+    const char *pinned_recovery_primary_fingerprint,
+    const uint8_t *candidate_public_key_bundle,
+    size_t candidate_bundle_length,
+    uint64_t now_seconds) {
+    char recovery_pin[ORBIT_TRUST_FINGERPRINT_CAPACITY];
+    char current_pin[ORBIT_TRUST_FINGERPRINT_CAPACITY];
+    if (!state || !expected_repository || !recovery_inrelease ||
+        recovery_inrelease_length == 0U || !recovery_public_key_bundle ||
+        recovery_bundle_length == 0U || !candidate_public_key_bundle ||
+        candidate_bundle_length == 0U ||
+        !normalize_fingerprint(pinned_recovery_primary_fingerprint,recovery_pin) ||
+        !normalize_fingerprint(state->current_fingerprint,current_pin))
+        return ORBIT_TRUST_INVALID_ARGUMENT;
+    if (strcmp(recovery_pin,current_pin)==0)
+        return ORBIT_TRUST_RECOVERY_POLICY_REJECTED;
+
+    uint8_t *authenticated_payload=(uint8_t *)malloc(ORBIT_TRUST_ROTATION_MAX_BYTES);
+    if(!authenticated_payload)return ORBIT_TRUST_INVALID_ARGUMENT;
+    size_t authenticated_length=0U;
+    orbit_rnp_verify_result verification;
+    orbit_rnp_verify_code verify_code=orbit_rnp_verify_inrelease_with_payload(
+        recovery_inrelease,recovery_inrelease_length,
+        recovery_public_key_bundle,recovery_bundle_length,recovery_pin,
+        &verification,authenticated_payload,ORBIT_TRUST_ROTATION_MAX_BYTES,
+        &authenticated_length);
+    if(verify_code!=ORBIT_RNP_VERIFY_VALID) {
+        memset(authenticated_payload,0,ORBIT_TRUST_ROTATION_MAX_BYTES);
+        free(authenticated_payload);
+        return ORBIT_TRUST_RECOVERY_SIGNATURE_REJECTED;
+    }
+    orbit_trust_rotation_proof proof;
+    bool parsed=orbit_trust_rotation_proof_parse(
+        authenticated_payload,authenticated_length,&proof);
+    memset(authenticated_payload,0,ORBIT_TRUST_ROTATION_MAX_BYTES);
+    free(authenticated_payload);
+    if(!parsed)return ORBIT_TRUST_PROOF_MALFORMED;
+    if(proof.activate_at!=now_seconds ||
+       proof.previous_key_valid_until!=now_seconds ||
+       strcmp(proof.next_fingerprint,recovery_pin)==0)
+        return ORBIT_TRUST_RECOVERY_POLICY_REJECTED;
+    return schedule_verified_rotation(state,expected_repository,&proof,
+        &verification,candidate_public_key_bundle,candidate_bundle_length,
+        now_seconds,recovery_pin,true);
 }
 
 bool orbit_repository_trust_advance(orbit_repository_trust_state *state,

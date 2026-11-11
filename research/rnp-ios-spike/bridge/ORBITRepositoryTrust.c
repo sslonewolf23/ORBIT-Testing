@@ -125,6 +125,7 @@ bool orbit_repository_trust_init(orbit_repository_trust_state *state,
     memset(&initial, 0, sizeof(initial));
     if (!normalize_fingerprint(pinned_primary_fingerprint, initial.current_fingerprint))
         return false;
+    initial.revision = 1U;
     *state = initial;
     return true;
 }
@@ -141,7 +142,7 @@ static orbit_trust_code schedule_verified_rotation(
     if (!state || !expected_repository || !valid_repository_id(expected_repository) ||
         !proof || !verified_rotation || !candidate_public_key_bundle ||
         candidate_bundle_length == 0) return ORBIT_TRUST_INVALID_ARGUMENT;
-    if (state->generation == UINT32_MAX) return ORBIT_TRUST_GENERATION_EXHAUSTED;
+    if (state->generation == UINT32_MAX || state->revision == UINT64_MAX)\n        return ORBIT_TRUST_GENERATION_EXHAUSTED;
     if (state->pending_fingerprint[0] != '\0') return ORBIT_TRUST_ROTATION_ALREADY_PENDING;
     if (verified_rotation->code != ORBIT_RNP_VERIFY_VALID ||
         !normalize_fingerprint(verified_rotation->primary_fingerprint, signer) ||
@@ -166,6 +167,7 @@ static orbit_trust_code schedule_verified_rotation(
            sizeof(state->pending_fingerprint));
     state->pending_activation = proof->activate_at;
     state->previous_valid_until = proof->previous_key_valid_until;
+    ++state->revision;
     return ORBIT_TRUST_ACCEPTED;
 }
 
@@ -216,7 +218,7 @@ bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
                                     uint64_t now_seconds) {
     if (!state || state->pending_fingerprint[0] == '\0' ||
         now_seconds < state->pending_activation ||
-        state->generation == UINT32_MAX) return false;
+        state->generation == UINT32_MAX || state->revision == UINT64_MAX) return false;
     memcpy(state->previous_fingerprint, state->current_fingerprint,
            sizeof(state->previous_fingerprint));
     memcpy(state->current_fingerprint, state->pending_fingerprint,
@@ -224,6 +226,7 @@ bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
     memset(state->pending_fingerprint, 0, sizeof(state->pending_fingerprint));
     state->pending_activation = 0;
     ++state->generation;
+    ++state->revision;
     return true;
 }
 

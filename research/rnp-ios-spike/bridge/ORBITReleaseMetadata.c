@@ -16,7 +16,8 @@ static bool safe_path(const char *p) {
         const char *e=strchr(s,'/'); size_t n=e?(size_t)(e-s):strlen(s);
         if (n==0 || (n==1 && s[0]=='.') || (n==2 && s[0]=='.' && s[1]=='.')) return false;
         for (size_t i=0;i<n;i++) if ((unsigned char)s[i] < 0x21 || (unsigned char)s[i] > 0x7e) return false;
-        if (!e) break; s=e+1;
+        if (!e) break;
+        s=e+1;
     }
     return true;
 }
@@ -80,7 +81,8 @@ bool orbit_release_metadata_parse(const uint8_t *data,size_t length,orbit_releas
                 }
             }
         }
-        if(!end) break; cursor=end+1;
+        if(!end) break;
+        cursor=end+1;
     }
     if(!seen_date || !seen_suite || !seen_code || !seen_arch || !seen_comp || !seen_sha || out->checksum_count==0) ok=false;
     free(buf); if(!ok) memset(out,0,sizeof(*out)); return ok;

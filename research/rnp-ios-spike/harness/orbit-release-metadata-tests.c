@@ -19,8 +19,8 @@ int main(void){
 
  const char truncated_checksum[]="Date: x\\nSuite: stable\\nCodename: orbit\\nArchitectures: arm64\\nComponents: main\\nSHA256:\\n abc\\n";
  expect("truncated-checksum-row",orbit_release_metadata_parse((const uint8_t*)truncated_checksum,strlen(truncated_checksum),&m),false);
- const char digest-without-fields[]="Date: x\\nSuite: stable\\nCodename: orbit\\nArchitectures: arm64\\nComponents: main\\nSHA256:\\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n";
- expect("checksum-missing-size-and-path",orbit_release_metadata_parse((const uint8_t*)digest-without-fields,strlen(digest-without-fields),&m),false);
+ const char digest_without_fields[]="Date: x\\nSuite: stable\\nCodename: orbit\\nArchitectures: arm64\\nComponents: main\\nSHA256:\\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n";
+ expect("checksum-missing-size-and-path",orbit_release_metadata_parse((const uint8_t*)digest_without_fields,strlen(digest_without_fields),&m),false);
 
  const char duplicate_path[]="Date: x\nSuite: stable\nCodename: orbit\nArchitectures: arm64\nComponents: main\nSHA256:\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 main/Packages\n bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 2 main/Packages\n";
  expect("duplicate-checksum-path",orbit_release_metadata_parse((const uint8_t*)duplicate_path,strlen(duplicate_path),&m),false);

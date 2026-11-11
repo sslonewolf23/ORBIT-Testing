@@ -9,6 +9,14 @@ int main(void){
  uint64_t date=0,until=0;
  expect("valid-release",orbit_release_metadata_parse((const uint8_t*)good,strlen(good),&m),true);
  expect("checksum-fields",m.checksum_count==1 && m.checksums[0].size==1234,true);
+
+ expect("repository-policy-match",orbit_release_metadata_matches_policy(&m,"stable","orbit","iphoneos-arm64","main"),true);
+ expect("repository-suite-mismatch",orbit_release_metadata_matches_policy(&m,"testing","orbit","iphoneos-arm64","main"),false);
+ expect("repository-codename-mismatch",orbit_release_metadata_matches_policy(&m,"stable","other","iphoneos-arm64","main"),false);
+ expect("repository-architecture-mismatch",orbit_release_metadata_matches_policy(&m,"stable","orbit","iphoneos","main"),false);
+ expect("repository-component-mismatch",orbit_release_metadata_matches_policy(&m,"stable","orbit","iphoneos-arm64","extras"),false);
+ expect("null-repository-policy",orbit_release_metadata_matches_policy(&m,NULL,"orbit","iphoneos-arm64","main"),false);
+
  expect("strict-date-fields",orbit_release_metadata_timestamps(&m,&date,&until),true);
  expect("date-epoch",date==1794312000ULL,true);
  expect("valid-until-epoch",until==1794916800ULL,true);

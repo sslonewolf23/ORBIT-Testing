@@ -13,6 +13,8 @@ typedef struct {
     bool fail_read;
     bool fail_write;
     bool fail_advance;
+    bool fail_write_on_call;
+    unsigned writes_until_failure;
 } memory_store;
 
 static unsigned checks=0U,failures=0U;
@@ -26,6 +28,19 @@ static bool begin_transaction(void *ctx,const char *repo) {
 }
 static void end_transaction(void *ctx,const char *repo) {
     (void)repo;memory_store *m=ctx;m->locked=false;
+}
+static uint8_t *read_fixture(const char *path,size_t *length) {
+    FILE *f=fopen(path,"rb");if(!f)return NULL;
+    if(fseek(f,0,SEEK_END)!=0){fclose(f);return NULL;}
+    long n=ftell(f);if(n<=0||n>4*1024*1024||fseek(f,0,SEEK_SET)!=0){fclose(f);return NULL;}
+    uint8_t *data=malloc((size_t)n);if(!data){fclose(f);return NULL;}
+    if(fread(data,1,(size_t)n,f)!=(size_t)n){free(data);fclose(f);return NULL;}
+    fclose(f);*length=(size_t)n;return data;
+}
+static char *read_fixture_text(const char *path) {
+    size_t n=0;uint8_t *data=read_fixture(path,&n);if(!data)return NULL;
+    char *out=malloc(n+1U);if(!out){free(data);return NULL;}
+    memcpy(out,data,n);out[n]='\0';free(data);return out;
 }
 static bool read_counter(void *ctx,const char *repo,uint64_t *counter) {
     (void)repo;memory_store *m=ctx;*counter=m->counter;return true;
@@ -46,7 +61,9 @@ static orbit_trust_store_read_result read_record(void *ctx,const char *repo,uint
 }
 static bool write_record(void *ctx,const char *repo,const uint8_t *record,size_t length,
                          const uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES]) {
-    (void)repo;memory_store *m=ctx;if(m->fail_write)return false;
+    (void)repo;memory_store *m=ctx;
+    if(m->fail_write||(m->fail_write_on_call&&m->writes_until_failure==0U))return false;
+    if(m->fail_write_on_call&&m->writes_until_failure>0U)--m->writes_until_failure;
     if(length>sizeof(m->record))return false;
     memcpy(m->record,record,length);m->length=length;memcpy(m->mac,mac,sizeof(m->mac));
     m->has_record=true;return true;

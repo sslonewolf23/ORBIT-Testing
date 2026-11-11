@@ -38,7 +38,7 @@ jobs:
               echo "::error::Required tool '$tool' is not preinstalled on this runner."
               exit 1
             fi
-            printf '%-12s %s\n' "$tool" "$(command -v "$tool")"
+            printf '%-12s %s\\n' "$tool" "$(command -v "$tool")"
           done
           clang --version
           cmake --version
@@ -70,6 +70,13 @@ jobs:
           echo "Applied isolated <cstring> include fix to the temporary RNP checkout."
           echo "Pinned upstream repository and commit remain unchanged."
 
+      - name: Prepare vcpkg binary cache directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          test -d "$VCPKG_DEFAULT_BINARY_CACHE"
+
       - name: Cache pinned vcpkg dependency archives
         uses: actions/cache@v4
         with:
@@ -92,17 +99,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake -S "$RUNNER_TEMP/rnp" -B "$RUNNER_TEMP/build-rnp-host" -G Ninja \
-            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
-            -DVCPKG_TARGET_TRIPLET=x64-linux \
-            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/rnp-install" \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DBUILD_TESTING=OFF \
-            -DDOWNLOAD_GTEST=OFF \
-            -DENABLE_DOC=Off \
-            -DENABLE_FUZZERS=OFF \
+          cmake -S "$RUNNER_TEMP/rnp" -B "$RUNNER_TEMP/build-rnp-host" -G Ninja \\
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \\
+            -DVCPKG_TARGET_TRIPLET=x64-linux \\
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \\
+            -DCMAKE_BUILD_TYPE=Release \\
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/rnp-install" \\
+            -DBUILD_SHARED_LIBS=OFF \\
+            -DBUILD_TESTING=OFF \\
+            -DDOWNLOAD_GTEST=OFF \\
+            -DENABLE_DOC=Off \\
+            -DENABLE_FUZZERS=OFF \\
             -DCRYPTO_BACKEND=botan3
           cmake --build "$RUNNER_TEMP/build-rnp-host" --target librnp --parallel 3
           cmake --install "$RUNNER_TEMP/build-rnp-host" --component development
@@ -118,28 +125,28 @@ jobs:
           pkg-config --static --libs librnp
           echo "Botan static link flags:"
           pkg-config --static --libs botan-3
-          clang -std=c11 -Wall -Wextra -Werror -I"$RUNNER_TEMP/rnp-install/include" \
-            -c research/rnp-ios-spike/harness/rnp-inrelease-verify.c \
+          clang -std=c11 -Wall -Wextra -Werror -I"$RUNNER_TEMP/rnp-install/include" \\
+            -c research/rnp-ios-spike/harness/rnp-inrelease-verify.c \\
             -o "$RUNNER_TEMP/rnp-inrelease-verify.o"
-          clang -std=c11 -Wall -Wextra -Werror \
-            -I"$RUNNER_TEMP/rnp-install/include" \
-            -Iresearch/rnp-ios-spike/bridge \
-            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
+          clang -std=c11 -Wall -Wextra -Werror \\
+            -I"$RUNNER_TEMP/rnp-install/include" \\
+            -Iresearch/rnp-ios-spike/bridge \\
+            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \\
             -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o"
-          clang++ "$RUNNER_TEMP/rnp-inrelease-verify.o" \
-            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
-            $(pkg-config --static --libs librnp) \
-            $(pkg-config --static --libs botan-3) \
+          clang++ "$RUNNER_TEMP/rnp-inrelease-verify.o" \\
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \\
+            $(pkg-config --static --libs librnp) \\
+            $(pkg-config --static --libs botan-3) \\
             -o "$RUNNER_TEMP/rnp-inrelease-verify"
-          clang -std=c11 -Wall -Wextra -Werror \
-            -I"$RUNNER_TEMP/rnp-install/include" \
-            -Iresearch/rnp-ios-spike/bridge \
-            -c research/rnp-ios-spike/harness/rnp-bridge-smoke.c \
+          clang -std=c11 -Wall -Wextra -Werror \\
+            -I"$RUNNER_TEMP/rnp-install/include" \\
+            -Iresearch/rnp-ios-spike/bridge \\
+            -c research/rnp-ios-spike/bridge/rnp-bridge-smoke.c \\
             -o "$RUNNER_TEMP/rnp-bridge-smoke.o"
-          clang++ "$RUNNER_TEMP/rnp-bridge-smoke.o" \
-            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
-            $(pkg-config --static --libs librnp) \
-            $(pkg-config --static --libs botan-3) \
+          clang++ "$RUNNER_TEMP/rnp-bridge-smoke.o" \\
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \\
+            $(pkg-config --static --libs librnp) \\
+            $(pkg-config --static --libs botan-3) \\
             -o "$RUNNER_TEMP/rnp-bridge-smoke"
 
       - name: Generate disposable Debian InRelease fixtures

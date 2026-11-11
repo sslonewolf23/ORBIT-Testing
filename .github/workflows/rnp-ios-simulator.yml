@@ -1,0 +1,184 @@
+name: RNP iOS Simulator Cross-Compile
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/rnp-ios-simulator.yml"
+      - "research/rnp-ios-spike/bridge/**"
+      - "research/rnp-ios-spike/harness/rnp-bridge-smoke.c"
+
+permissions:
+  contents: read
+
+jobs:
+  ios-simulator-arm64:
+    name: ARM64 iOS Simulator static-link validation
+    runs-on: macos-15
+    env:
+      RNP_COMMIT: aad1892e4d8423398a0b973bd0a7e4544c359afc
+      SEXPP_COMMIT: c641a2f36520bab783657a58650d9fda548b9dec
+      VCPKG_COMMIT: e54ef0fcc9a82033a61e51002552a910a5d57282
+      VCPKG_DISABLE_METRICS: "1"
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache-ios
+      IOS_DEPLOYMENT_TARGET: "15.0"
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Inspect Apple toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-path
+          clang --version
+          cmake --version
+          ninja --version
+          python3 --version
+          df -h "$RUNNER_TEMP"
+
+      - name: Fetch pinned RNP source and submodule
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/rnpgp/rnp.git "$RUNNER_TEMP/rnp"
+          git -C "$RUNNER_TEMP/rnp" checkout "$RNP_COMMIT"
+          git -C "$RUNNER_TEMP/rnp" submodule update --init --recursive
+          test "$(git -C "$RUNNER_TEMP/rnp" rev-parse HEAD)" = "$RNP_COMMIT"
+          test "$(git -C "$RUNNER_TEMP/rnp/src/libsexpp" rev-parse HEAD)" = "$SEXPP_COMMIT"
+
+      - name: Apply isolated upstream RNP header compatibility patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file="$RUNNER_TEMP/rnp/src/lib/crypto/mem.cpp"
+          if ! grep -q '^#include <cstring>$' "$source_file"; then
+            sed -i '' '/^#include <cstdio>$/a\
+          #include <cstring>\
+          ' "$source_file"
+          fi
+          grep -q '^#include <cstring>$' "$source_file"
+
+      - name: Bootstrap pinned vcpkg and prepare iOS triplet overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          git -C "$RUNNER_TEMP/vcpkg" checkout "$VCPKG_COMMIT"
+          test "$(git -C "$RUNNER_TEMP/vcpkg" rev-parse HEAD)" = "$VCPKG_COMMIT"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          mkdir -p "$RUNNER_TEMP/ios-triplets"
+          cp "$RUNNER_TEMP/vcpkg/triplets/community/arm64-ios-simulator.cmake" \
+             "$RUNNER_TEMP/ios-triplets/arm64-ios-simulator.cmake"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+
+      - name: Apply temporary Botan iOS target configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          portfile="$RUNNER_TEMP/vcpkg/ports/botan/portfile.cmake"
+          python3 - "$portfile" <<'PY'
+          import pathlib, sys
+          p = pathlib.Path(sys.argv[1])
+          s = p.read_text()
+          needle = '    if(VCPKG_TARGET_IS_ANDROID)\n        vcpkg_list(APPEND configure_arguments --os=android)\n'
+          replacement = '    if(VCPKG_TARGET_IS_IOS)\n        vcpkg_list(APPEND configure_arguments --os=ios)\n    elseif(VCPKG_TARGET_IS_ANDROID)\n        vcpkg_list(APPEND configure_arguments --os=android)\n'
+          if needle not in s:
+              raise SystemExit("Expected pinned Botan port OS branch was not found; refusing an uncertain patch.")
+          s = s.replace(needle, replacement, 1)
+          p.write_text(s)
+          if 'vcpkg_list(APPEND configure_arguments --os=ios)' not in s:
+              raise SystemExit("Botan iOS target option was not applied.")
+          print("Applied a temporary iOS-only --os=ios setting to the pinned Botan port.")
+          PY
+          git -C "$RUNNER_TEMP/vcpkg" diff -- ports/botan/portfile.cmake
+
+      - name: Build pinned iOS dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/vcpkg/vcpkg" install "botan[zlib]" json-c zlib bzip2 \
+            --triplet arm64-ios-simulator \
+            --overlay-triplets="$RUNNER_TEMP/ios-triplets"
+          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg/installed" >> "$GITHUB_ENV"
+
+      - name: Configure and build pinned RNP for iOS Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S "$RUNNER_TEMP/rnp" -B "$RUNNER_TEMP/build-rnp-ios-simulator" -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=arm64-ios-simulator \
+            -DVCPKG_OVERLAY_TRIPLETS="$RUNNER_TEMP/ios-triplets" \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_SYSROOT=iphonesimulator \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \
+            -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/rnp-ios-install" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TESTING=OFF \
+            -DDOWNLOAD_GTEST=OFF \
+            -DENABLE_DOC=Off \
+            -DENABLE_FUZZERS=OFF \
+            -DCRYPTO_BACKEND=botan3
+          cmake --build "$RUNNER_TEMP/build-rnp-ios-simulator" --target librnp --parallel 3
+          cmake --install "$RUNNER_TEMP/build-rnp-ios-simulator" --component development
+
+      - name: Compile and statically link the verifier for iOS Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          TARGET="arm64-apple-ios${IOS_DEPLOYMENT_TARGET}-simulator"
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-ios-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/arm64-ios-simulator/lib/pkgconfig"
+          pkg-config --modversion librnp
+          pkg-config --modversion botan-3
+          pkg-config --modversion json-c
+          clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-ios-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
+            -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-ios.o"
+          clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o"
+          clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-ios-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-bridge-smoke.c \
+            -o "$RUNNER_TEMP/rnp-bridge-smoke-ios.o"
+          clang++ -target "$TARGET" -isysroot "$SDK" \
+            "$RUNNER_TEMP/rnp-bridge-smoke-ios.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-ios.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator"
+          file "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator"
+          xcrun --sdk iphonesimulator lipo -info "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator"
+          xcrun --sdk iphonesimulator nm -gU "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator" | grep '_orbit_rnp_verify_inrelease'
+          xcrun --sdk iphonesimulator otool -l "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator" | grep -A5 'LC_BUILD_VERSION'
+
+      - name: Upload iOS Simulator build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rnp-ios-simulator-arm64-build
+          path: |
+            ${{ runner.temp }}/build-rnp-ios-simulator/
+            ${{ runner.temp }}/rnp-ios-install/
+            ${{ runner.temp }}/rnp-bridge-smoke-ios-simulator
+          if-no-files-found: warn

@@ -549,6 +549,9 @@ jobs:
             "$F/combined-keyring.gpg" "$F/unauthorized-rotation.InRelease" \
             "$F/expired-keyring.gpg" "$F/expired-primary.fingerprint" \
             "$F/revoked-keyring.gpg" "$F/revoked-primary.fingerprint" \
+            "$F/recovery-keyring.gpg" "$F/recovery-primary.fingerprint" \
+            "$F/valid-emergency-rotation.InRelease" "$F/emergency-activation.timestamp" \
+            "$F/non-immediate-recovery.InRelease" \ \
             | tee "$RUNNER_TEMP/trust-rotation.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/trust-rotation.out"
 

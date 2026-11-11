@@ -14,7 +14,7 @@
 #define CHECK(call, label) do { \
   rnp_result_t result_ = (call); \
   if (result_ != RNP_SUCCESS) { \
-    fprintf(stderr, "%s failed: 0x%x\\n", (label), (unsigned)result_); \
+    fprintf(stderr, "%s failed: 0x%x\n", (label), (unsigned)result_); \
     goto cleanup; \
   } \
 } while (0)
@@ -54,7 +54,7 @@ static bool allowed_hash(const char *hash) {
 
 int main(int argc, char **argv) {
   if (argc != 4) {
-    fprintf(stderr, "usage: %s <public-keyring.gpg> <InRelease> <trusted-primary-fingerprint>\\n", argv[0]);
+    fprintf(stderr, "usage: %s <public-keyring.gpg> <InRelease> <trusted-primary-fingerprint>\n", argv[0]);
     return 64;
   }
 
@@ -64,7 +64,7 @@ int main(int argc, char **argv) {
   if (!bounded_regular_file(key_path, 4u * 1024u * 1024u, true) ||
       !bounded_regular_file(message_path, 16u * 1024u * 1024u, false) ||
       !valid_fingerprint(trusted_fingerprint)) {
-    fprintf(stderr, "input rejected: keyring <=4 MiB, InRelease 1..16 MiB, valid fingerprint required\\n");
+    fprintf(stderr, "input rejected: keyring <=4 MiB, InRelease 1..16 MiB, valid fingerprint required\n");
     return 64;
   }
 
@@ -95,9 +95,9 @@ int main(int argc, char **argv) {
   CHECK(rnp_input_from_path(&key_input, key_path), "key_input");
   CHECK(rnp_load_keys(ffi, "GPG", key_input, RNP_LOAD_SAVE_PUBLIC_KEYS), "load_public_keys");
   CHECK(rnp_get_public_key_count(ffi, &imported_public_key_count), "public_key_count");
-  printf("public_key_count=%zu\\n", imported_public_key_count);
+  printf("public_key_count=%zu\n", imported_public_key_count);
   if (imported_public_key_count == 0 || imported_public_key_count > MAX_IMPORTED_PUBLIC_KEYS) {
-    fprintf(stderr, "input rejected: public-key bundle exceeds %u keys\\n", MAX_IMPORTED_PUBLIC_KEYS);
+    fprintf(stderr, "input rejected: public-key bundle exceeds %u keys\n", MAX_IMPORTED_PUBLIC_KEYS);
     goto cleanup;
   }
   CHECK(rnp_input_from_path(&message_input, message_path), "message_input");
@@ -107,13 +107,13 @@ int main(int argc, char **argv) {
 
   execute_result = rnp_op_verify_execute(operation);
   if (rnp_op_verify_get_signature_count(operation, &signature_count) != RNP_SUCCESS) {
-    fprintf(stderr, "signature count unavailable; fail closed\\n");
+    fprintf(stderr, "signature count unavailable; fail closed\n");
     goto cleanup;
   }
-  printf("execute_result=0x%x\\nsignature_count=%zu\\n",
+  printf("execute_result=0x%x\nsignature_count=%zu\n",
          (unsigned)execute_result, signature_count);
   if (signature_count != 1) {
-    printf("decision=BLOCK\\nreason=signature_count_not_exactly_one\\n");
+    printf("decision=BLOCK\nreason=signature_count_not_exactly_one\n");
     exit_code = 1;
     goto cleanup;
   }
@@ -121,9 +121,9 @@ int main(int argc, char **argv) {
   rnp_op_verify_signature_t signature = NULL;
   CHECK(rnp_op_verify_get_signature_at(operation, 0, &signature), "get_signature");
   rnp_result_t signature_status = rnp_op_verify_signature_get_status(signature);
-  printf("signature_status=0x%x\\n", (unsigned)signature_status);
+  printf("signature_status=0x%x\n", (unsigned)signature_status);
   if (execute_result != RNP_SUCCESS || signature_status != RNP_SUCCESS) {
-    printf("decision=BLOCK\\nreason=signature_not_valid\\n");
+    printf("decision=BLOCK\nreason=signature_not_valid\n");
     exit_code = 1;
     goto cleanup;
   }
@@ -135,7 +135,7 @@ int main(int argc, char **argv) {
     CHECK(rnp_key_get_primary_fprint(signing_key, &primary_fingerprint), "primary_fingerprint");
     CHECK(rnp_locate_key(ffi, "fingerprint", primary_fingerprint, &primary_key), "locate_primary_key");
     if (!primary_key) {
-      fprintf(stderr, "primary key missing from supplied local keyring; fail closed\\n");
+      fprintf(stderr, "primary key missing from supplied local keyring; fail closed\n");
       goto cleanup;
     }
     CHECK(rnp_key_is_valid(primary_key, &primary_valid), "primary_key_validity");
@@ -161,17 +161,17 @@ int main(int argc, char **argv) {
         "signature_times");
   time_t now = time(NULL);
   if (now < 0) {
-    fprintf(stderr, "system clock unavailable; fail closed\\n");
+    fprintf(stderr, "system clock unavailable; fail closed\n");
     goto cleanup;
   }
 
-  printf("signer_fingerprint=%s\\nprimary_fingerprint=%s\\nsubkey=%s\\n",
+  printf("signer_fingerprint=%s\nprimary_fingerprint=%s\nsubkey=%s\n",
          signing_fingerprint, is_subkey ? primary_fingerprint : signing_fingerprint,
          is_subkey ? "true" : "false");
-  printf("key_valid=%s\\nkey_valid_until=%llu\\nkey_revoked=%s\\nsigning_allowed=%s\\n",
+  printf("key_valid=%s\nkey_valid_until=%llu\nkey_revoked=%s\nsigning_allowed=%s\n",
          key_valid ? "true" : "false", (unsigned long long)key_valid_until,
          key_revoked ? "true" : "false", signing_allowed ? "true" : "false");
-  printf("key_created=%u\\nsignature_created=%u\\nsignature_expires=%u\\nhash=%s\\nalgorithm=%s\\ncurve=%s\\n",
+  printf("key_created=%u\nsignature_created=%u\nsignature_expires=%u\nhash=%s\nalgorithm=%s\ncurve=%s\n",
          key_created, signature_created, signature_expires, hash, algorithm, curve);
 
   if (!key_valid || key_revoked || !signing_allowed || !primary_valid || primary_revoked ||
@@ -180,28 +180,28 @@ int main(int argc, char **argv) {
       (uint64_t)signature_created > (uint64_t)now + 300u ||
       (signature_expires != 0 &&
        (uint64_t)signature_created + (uint64_t)signature_expires <= (uint64_t)now)) {
-    printf("decision=BLOCK\\nreason=signing_key_or_signature_lifetime_policy_failed\\n");
+    printf("decision=BLOCK\nreason=signing_key_or_signature_lifetime_policy_failed\n");
     exit_code = 1;
     goto cleanup;
   }
   if (!allowed_hash(hash)) {
-    printf("decision=BLOCK\\nreason=hash_not_allowlisted\\n");
+    printf("decision=BLOCK\nreason=hash_not_allowlisted\n");
     exit_code = 1;
     goto cleanup;
   }
   /* V1 intentionally accepts EdDSA only until other algorithms have dedicated tests. */
   if (strcasecmp(algorithm, "EDDSA") != 0 || strcasecmp(curve, "ed25519") != 0) {
-    printf("decision=BLOCK\\nreason=public_key_algorithm_or_curve_not_allowlisted\\n");
+    printf("decision=BLOCK\nreason=public_key_algorithm_or_curve_not_allowlisted\n");
     exit_code = 1;
     goto cleanup;
   }
 
   if (strcasecmp(is_subkey ? primary_fingerprint : signing_fingerprint,
                  trusted_fingerprint) == 0) {
-    printf("decision=TRUSTED\\n");
+    printf("decision=TRUSTED\n");
     exit_code = 0;
   } else {
-    printf("decision=VALID_BUT_UNTRUSTED\\n");
+    printf("decision=VALID_BUT_UNTRUSTED\n");
     exit_code = 3;
   }
 

@@ -142,6 +142,9 @@ int main(void) {
     expect("clock-floor-persisted",
         orbit_repository_trust_observe_time_and_store(&lifecycle_state,repo,50U,
             &lifecycle_backend,&lifecycle_store_result),true);
+    expect("clock-floor-survives-reload",
+        orbit_repository_trust_store_load(&loaded,repo,&lifecycle_backend)==ORBIT_TRUST_STORE_OK &&
+        loaded.last_observed_time==50U,true);
     expect("clock-rollback-rejected",
         !orbit_repository_trust_observe_time_and_store(&lifecycle_state,repo,49U,
             &lifecycle_backend,&lifecycle_store_result) &&

@@ -154,8 +154,21 @@ orbit_trust_store_code orbit_repository_trust_store_save(
     if(!backend->mac_record(backend->context,repository_id,record,length,mac)) {
         memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));return ORBIT_TRUST_STORE_IO_ERROR;
     }
-    if(state->revision==counter+1U &&
-       !backend->advance_counter(backend->context,repository_id,counter,state->revision)) {
+    if(state->revision==counter) {
+        uint8_t existing[ORBIT_TRUST_STORE_RECORD_MAX];
+        uint8_t existing_mac[ORBIT_TRUST_STORE_MAC_BYTES];
+        size_t existing_length=0U;
+        memset(existing,0,sizeof(existing));memset(existing_mac,0,sizeof(existing_mac));
+        bool read_ok=backend->read_record(backend->context,repository_id,existing,
+                                          sizeof(existing),&existing_length,existing_mac);
+        bool identical=read_ok && existing_length==length &&
+                       constant_time_equal(existing,record,length) &&
+                       constant_time_equal(existing_mac,mac,sizeof(mac));
+        memset(existing,0,sizeof(existing));memset(existing_mac,0,sizeof(existing_mac));
+        memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));
+        return identical?ORBIT_TRUST_STORE_OK:ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+    }
+    if(!backend->advance_counter(backend->context,repository_id,counter,state->revision)) {
         memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
     }
     bool written=backend->write_record_atomic(backend->context,repository_id,record,length,mac);

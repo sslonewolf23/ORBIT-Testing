@@ -555,6 +555,9 @@ jobs:
             "$F/trusted-keyring.gpg" "$F/valid-rotation.InRelease" \
             "$F/trusted-primary.fingerprint" "$F/other-keyring.gpg" \
             "$F/other-primary.fingerprint" "$F/trusted-keyring.gpg" \
+            "$F/combined-keyring.gpg" "$F/unauthorized-rotation.InRelease" \
+            "$F/expired-keyring.gpg" "$F/expired-primary.fingerprint" \
+            "$F/revoked-keyring.gpg" "$F/revoked-primary.fingerprint" \
             | tee "$RUNNER_TEMP/trust-rotation.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/trust-rotation.out"
 

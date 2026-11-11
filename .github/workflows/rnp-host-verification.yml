@@ -334,16 +334,7 @@ jobs:
           "$RUNNER_TEMP/rnp-bridge-robustness-sanitized" \
             "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" \
             "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/sanitizer-robustness.out"
-          grep -q '^decision=PASS        uses: actions/upload-artifact@v4
-        with:
-          name: rnp-host-inrelease-verification
-          path: |
-            ${{ runner.temp }}/build-rnp-host/
-            ${{ runner.temp }}/rnp-install/
-            ${{ runner.temp }}/fixtures/
-            ${{ runner.temp }}/*.out
-          if-no-files-found: warn
- "$RUNNER_TEMP/sanitizer-robustness.out"
+          grep -q '^decision=PASS$' "$RUNNER_TEMP/sanitizer-robustness.out"
 
       - name: Upload host verification evidence
         if: always()

@@ -42,6 +42,15 @@ bool orbit_release_metadata_timestamps(const orbit_release_metadata *metadata,
                                         uint64_t *date_seconds,
                                         uint64_t *valid_until_seconds);
 
+/* Enforce caller-pinned repository identity and target compatibility.
+ * Suite and codename must match exactly; architecture and component must
+ * appear as complete whitespace-delimited tokens. */
+bool orbit_release_metadata_matches_policy(const orbit_release_metadata *metadata,
+                                            const char *expected_suite,
+                                            const char *expected_codename,
+                                            const char *required_architecture,
+                                            const char *required_component);
+
 /* Verify actual Packages-index bytes against the exact SHA256 entry in an
  * already-authenticated Release document. Requires trusted InRelease result,
  * exact relative path match, exact declared size, and SHA-256 equality. */

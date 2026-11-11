@@ -137,8 +137,19 @@ jobs:
             -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
             -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-time-policy.c \
+            -o "$RUNNER_TEMP/rnp-time-policy.o"
+          clang "$RUNNER_TEMP/rnp-time-policy.o" "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
+            -o "$RUNNER_TEMP/rnp-time-policy-tests"
           clang++ "$RUNNER_TEMP/rnp-inrelease-verify.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
@@ -157,6 +168,7 @@ jobs:
             -o "$RUNNER_TEMP/rnp-bridge-robustness.o"
           clang++ "$RUNNER_TEMP/rnp-bridge-smoke.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
@@ -166,12 +178,198 @@ jobs:
 
           clang++ "$RUNNER_TEMP/rnp-bridge-robustness.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
             $(pkg-config --static --libs json-c) \
             -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
             -o "$RUNNER_TEMP/rnp-bridge-robustness"
+
+      - name: Run deterministic signature and key expiration boundary tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/rnp-time-policy-tests" | tee "$RUNNER_TEMP/time-policy.out"
+          grep -q '^decision=PASS        shell: bash
+        run: |
+          set -euo pipefail
+          bash research/rnp-ios-spike/scripts/generate-inrelease-fixtures.sh "$RUNNER_TEMP/fixtures"
+          test -s "$RUNNER_TEMP/fixtures/trusted-primary.fingerprint"
+          test -s "$RUNNER_TEMP/fixtures/other-primary.fingerprint"
+          (cd "$RUNNER_TEMP/fixtures" && sha256sum -c SHA256SUMS)
+
+      - name: Verify trusted, untrusted, and fail-closed cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="$RUNNER_TEMP/rnp-inrelease-verify"
+          F="$RUNNER_TEMP/fixtures"
+          TRUSTED="$(cat "$F/trusted-primary.fingerprint")"
+          OTHER="$(cat "$F/other-primary.fingerprint")"
+
+          "$BIN" "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/trusted.out"
+          grep -q '^decision=TRUSTED$' "$RUNNER_TEMP/trusted.out"
+
+          "$BIN" "$F/trusted-keyring.gpg" "$F/valid-subkey.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/trusted-subkey.out"
+          grep -q '^decision=TRUSTED$' "$RUNNER_TEMP/trusted-subkey.out"
+
+          set +e
+          "$BIN" "$F/other-keyring.gpg" "$F/valid-other.InRelease" "$TRUSTED" > "$RUNNER_TEMP/untrusted.out" 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 3
+          grep -q '^decision=VALID_BUT_UNTRUSTED$' "$RUNNER_TEMP/untrusted.out"
+
+          expect_block() {
+            name="$1"; keyring="$2"; message="$3"; fingerprint="${4:-$TRUSTED}"
+            set +e
+            "$BIN" "$F/$keyring" "$F/$message" "$fingerprint" > "$RUNNER_TEMP/$name.out" 2>&1
+            result=$?
+            set -e
+            if [ "$result" -eq 0 ] || [ "$result" -eq 3 ]; then
+              echo "FAIL: $name was not blocked (exit $result)"
+              cat "$RUNNER_TEMP/$name.out"
+              exit 1
+            fi
+            echo "PASS: $name blocked (exit $result)"
+          }
+
+          expect_block missing-key empty-keyring.gpg valid-trusted.InRelease
+          expect_block malformed-keyring malformed-keyring.gpg valid-trusted.InRelease
+          expect_block empty-keyring empty-keyring.gpg valid-trusted.InRelease
+          expect_block truncated-keyring truncated-keyring.gpg valid-trusted.InRelease
+          set +e
+          "$BIN" "$F/trusted-keyring.gpg" "$F/valid-subkey.InRelease" "$OTHER" > "$RUNNER_TEMP/subkey-wrong-primary.out" 2>&1
+          subkey_result=$?
+          set -e
+          test "$subkey_result" -eq 3
+          grep -q VALID_BUT_UNTRUSTED "$RUNNER_TEMP/subkey-wrong-primary.out"
+          echo "PASS: subkey rejected for wrong primary fingerprint"
+          expect_block tampered-payload trusted-keyring.gpg tampered-payload.InRelease
+          expect_block tampered-signature trusted-keyring.gpg tampered-signature.InRelease
+          expect_block truncated-armor trusted-keyring.gpg truncated.InRelease
+          expect_block malformed-framing trusted-keyring.gpg malformed-framing.InRelease
+          expect_block unsigned trusted-keyring.gpg unsigned.Release
+          expect_block weak-hash trusted-keyring.gpg weak-hash.InRelease
+          expect_block future-signature trusted-keyring.gpg future-signature.InRelease
+          expect_block expired-signature old-signer-keyring.gpg expired-signature.InRelease "$(cat "$F/old-signer-primary.fingerprint")"
+          expect_block multiple-signatures combined-keyring.gpg multiple-signatures.InRelease
+          expect_block expired-key expired-keyring.gpg expired-key.InRelease "$(cat "$F/expired-primary.fingerprint")"
+          expect_block revoked-key revoked-keyring.gpg revoked-key.InRelease "$(cat "$F/revoked-primary.fingerprint")"
+
+          BRIDGE_BIN="$RUNNER_TEMP/rnp-bridge-smoke"
+          "$BRIDGE_BIN" "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/bridge-trusted.out"
+          grep -q '^decision=ACCEPT$' "$RUNNER_TEMP/bridge-trusted.out"
+          "$BRIDGE_BIN" "$F/trusted-keyring.gpg" "$F/valid-subkey.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/bridge-trusted-subkey.out"
+          grep -q '^decision=ACCEPT$' "$RUNNER_TEMP/bridge-trusted-subkey.out"
+
+          NORMALIZED_TRUSTED="$(printf '%s' "$TRUSTED" | sed 's/../&:/g; s/:$//' | tr 'A-F' 'a-f')"
+          "$BRIDGE_BIN" "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$NORMALIZED_TRUSTED" | tee "$RUNNER_TEMP/bridge-normalized-fingerprint.out"
+          grep -q '^decision=ACCEPT$' "$RUNNER_TEMP/bridge-normalized-fingerprint.out"
+
+          expect_bridge_block() {
+            name="$1"; keyring="$2"; message="$3"; expected_fingerprint="${4:-$TRUSTED}"
+            set +e
+            "$BRIDGE_BIN" "$F/$keyring" "$F/$message" "$expected_fingerprint" > "$RUNNER_TEMP/bridge-$name.out" 2>&1
+            result=$?
+            set -e
+            if [ "$result" -eq 0 ]; then
+              echo "FAIL: native bridge accepted $name"
+              cat "$RUNNER_TEMP/bridge-$name.out"
+              exit 1
+            fi
+            grep -q '^decision=BLOCK$' "$RUNNER_TEMP/bridge-$name.out"
+            echo "PASS: native bridge blocked $name"
+          }
+
+          expect_bridge_block missing-signer other-keyring.gpg valid-trusted.InRelease
+          expect_bridge_block subkey-wrong-primary trusted-keyring.gpg valid-subkey.InRelease "$OTHER"
+          expect_bridge_block malformed-keyring malformed-keyring.gpg valid-trusted.InRelease
+          expect_bridge_block empty-keyring empty-keyring.gpg valid-trusted.InRelease
+          expect_bridge_block wrong-primary other-keyring.gpg valid-other.InRelease
+          expect_bridge_block tampered-payload trusted-keyring.gpg tampered-payload.InRelease
+          expect_bridge_block tampered-signature trusted-keyring.gpg tampered-signature.InRelease
+          expect_bridge_block malformed-framing trusted-keyring.gpg malformed-framing.InRelease
+          expect_bridge_block truncated trusted-keyring.gpg truncated.InRelease
+          expect_bridge_block unsigned trusted-keyring.gpg unsigned.Release
+          expect_bridge_block malformed-fingerprint trusted-keyring.gpg valid-trusted.InRelease "NOT-A-FINGERPRINT"
+          expect_bridge_block wrong-primary-fingerprint trusted-keyring.gpg valid-trusted.InRelease "$OTHER"
+          expect_bridge_block fingerprint-39 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED:0:39}"
+          expect_bridge_block fingerprint-41 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}A"
+          expect_bridge_block fingerprint-63 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}${TRUSTED:0:23}"
+          expect_bridge_block fingerprint-65 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}${TRUSTED:0:25}"
+          expect_bridge_block weak-hash trusted-keyring.gpg weak-hash.InRelease
+          expect_bridge_block future-signature trusted-keyring.gpg future-signature.InRelease
+          expect_bridge_block expired-signature old-signer-keyring.gpg expired-signature.InRelease "$(cat "$F/old-signer-primary.fingerprint")"
+          expect_bridge_block multiple-signatures combined-keyring.gpg multiple-signatures.InRelease
+          expect_bridge_block expired-key expired-keyring.gpg expired-key.InRelease "$(cat "$F/expired-primary.fingerprint")"
+          expect_bridge_block revoked-key revoked-keyring.gpg revoked-key.InRelease "$(cat "$F/revoked-primary.fingerprint")"
+          truncate -s 16777217 "$F/oversized.InRelease"
+          truncate -s 4194305 "$F/oversized-keyring.gpg"
+          expect_bridge_block oversized-inrelease trusted-keyring.gpg oversized.InRelease
+          expect_bridge_block oversized-keyring oversized-keyring.gpg valid-trusted.InRelease
+
+          "$RUNNER_TEMP/rnp-bridge-robustness" \
+            "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" \
+            "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/bridge-robustness.out"
+          grep -q '^decision=PASS$' "$RUNNER_TEMP/bridge-robustness.out"
+
+      - name: Build AddressSanitizer and UndefinedBehaviorSanitizer harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
+            -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy-sanitized.o"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-bridge-robustness.c \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness-sanitized.o"
+          clang++ $SAN "$RUNNER_TEMP/rnp-bridge-robustness-sanitized.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-sanitized.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness-sanitized"
+
+      - name: Run sanitizer robustness checks
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          set -euo pipefail
+          F="$RUNNER_TEMP/fixtures"
+          TRUSTED="$(cat "$F/trusted-primary.fingerprint")"
+          "$RUNNER_TEMP/rnp-bridge-robustness-sanitized" \
+            "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" \
+            "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/sanitizer-robustness.out"
+          grep -q '^decision=PASS$' "$RUNNER_TEMP/sanitizer-robustness.out"
+
+      - name: Upload host verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rnp-host-inrelease-verification
+          path: |
+            ${{ runner.temp }}/build-rnp-host/
+            ${{ runner.temp }}/rnp-install/
+            ${{ runner.temp }}/fixtures/
+            ${{ runner.temp }}/*.out
+          if-no-files-found: warn
+ "$RUNNER_TEMP/time-policy.out"
 
       - name: Generate disposable Debian InRelease fixtures
         shell: bash

@@ -333,6 +333,10 @@ orbit_rnp_verify_code orbit_rnp_verify_inrelease_with_payload(
     set_error(result, outcome, "Cryptographic signature and pinned primary-key identity verified.");
 
 cleanup:
+    if (outcome != ORBIT_RNP_VERIFY_VALID && payload) {
+        memset(payload, 0, payload_capacity);
+        if (payload_length) *payload_length = 0;
+    }
     if (result) result->code = outcome;
     if (primary_fingerprint && primary_fingerprint != signing_fingerprint) {
         rnp_buffer_destroy(primary_fingerprint);

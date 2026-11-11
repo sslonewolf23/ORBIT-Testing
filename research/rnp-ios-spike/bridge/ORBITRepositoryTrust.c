@@ -127,7 +127,7 @@ bool orbit_repository_trust_init(orbit_repository_trust_state *state,
     return true;
 }
 
-orbit_trust_code orbit_repository_trust_schedule_rotation(
+static orbit_trust_code schedule_verified_rotation(
     orbit_repository_trust_state *state,
     const char *expected_repository,
     const orbit_trust_rotation_proof *proof,
@@ -165,6 +165,48 @@ orbit_trust_code orbit_repository_trust_schedule_rotation(
     state->pending_activation = proof->activate_at;
     state->previous_valid_until = proof->previous_key_valid_until;
     return ORBIT_TRUST_ACCEPTED;
+}
+
+
+orbit_trust_code orbit_repository_trust_authorize_rotation(
+    orbit_repository_trust_state *state,
+    const char *expected_repository,
+    const uint8_t *rotation_inrelease,
+    size_t rotation_inrelease_length,
+    const uint8_t *current_public_key_bundle,
+    size_t current_bundle_length,
+    const uint8_t *candidate_public_key_bundle,
+    size_t candidate_bundle_length,
+    uint64_t now_seconds) {
+    if (!state || !expected_repository || !rotation_inrelease ||
+        rotation_inrelease_length == 0 || !current_public_key_bundle ||
+        current_bundle_length == 0 || !candidate_public_key_bundle ||
+        candidate_bundle_length == 0) return ORBIT_TRUST_INVALID_ARGUMENT;
+
+    uint8_t *authenticated_payload = (uint8_t *)malloc(ORBIT_TRUST_ROTATION_MAX_BYTES);
+    if (!authenticated_payload) return ORBIT_TRUST_INVALID_ARGUMENT;
+    size_t authenticated_length = 0;
+    orbit_rnp_verify_result verification;
+    orbit_rnp_verify_code verify_code = orbit_rnp_verify_inrelease_with_payload(
+        rotation_inrelease, rotation_inrelease_length,
+        current_public_key_bundle, current_bundle_length,
+        state->current_fingerprint, &verification,
+        authenticated_payload, ORBIT_TRUST_ROTATION_MAX_BYTES,
+        &authenticated_length);
+    if (verify_code != ORBIT_RNP_VERIFY_VALID) {
+        free(authenticated_payload);
+        return ORBIT_TRUST_ROTATION_SIGNATURE_REJECTED;
+    }
+
+    orbit_trust_rotation_proof proof;
+    bool parsed = orbit_trust_rotation_proof_parse(authenticated_payload,
+                                                    authenticated_length, &proof);
+    memset(authenticated_payload, 0, ORBIT_TRUST_ROTATION_MAX_BYTES);
+    free(authenticated_payload);
+    if (!parsed) return ORBIT_TRUST_PROOF_MALFORMED;
+    return schedule_verified_rotation(state, expected_repository, &proof,
+                                      &verification, candidate_public_key_bundle,
+                                      candidate_bundle_length, now_seconds);
 }
 
 bool orbit_repository_trust_advance(orbit_repository_trust_state *state,

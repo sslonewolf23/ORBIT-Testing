@@ -142,6 +142,13 @@ int main(int argc, char **argv) {
         &state, trusted_fpr, proof.previous_key_valid_until), true);
     expect("old-key-rejected-after-grace", orbit_repository_trust_fingerprint_allowed(
         &state, trusted_fpr, proof.previous_key_valid_until + 1U), false);
+    uint64_t before_prune_revision = state.revision;
+    expect("previous-key-not-pruned-at-inclusive-deadline",
+        orbit_repository_trust_prune_previous(&state, proof.previous_key_valid_until), false);
+    expect("expired-previous-key-pruned",
+        orbit_repository_trust_prune_previous(&state, proof.previous_key_valid_until + 1U), true);
+    expect("pruning-advances-revision", state.revision == before_prune_revision + 1U, true);
+    expect("pruned-key-no-longer-authorized", state.previous_fingerprint[0] == '\\0', true);
 
     orbit_repository_trust_state wrong_state;
     expect("wrong-candidate-state-init", orbit_repository_trust_init(&wrong_state, trusted_fpr), true);

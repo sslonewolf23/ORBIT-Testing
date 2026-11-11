@@ -65,7 +65,15 @@ jobs:
           set -euo pipefail
           test "$(git -C "$RUNNER_TEMP/rnp" rev-parse HEAD)" = "$RNP_COMMIT"
           source_file="$RUNNER_TEMP/rnp/src/lib/crypto/mem.cpp"
-          if ! grep -q '^#include <cstring>        shell: bash
+          if ! grep -q '^#include <cstring>$' "$source_file"; then
+            sed -i '/^#include <cstdio>$/a #include <cstring>' "$source_file"
+          fi
+          grep -q '^#include <cstring>$' "$source_file"
+          echo "Applied isolated <cstring> include fix to the temporary RNP checkout."
+          echo "Pinned upstream repository and commit remain unchanged."
+
+      - name: Build pinned host dependencies
+        shell: bash
         run: |
           set -euo pipefail
           git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"

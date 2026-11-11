@@ -242,6 +242,7 @@ mutated[body + 5] = 255
 (out / "unsupported-key-algorithm.gpg").write_bytes(mutated)
 PY
 gpg --batch --homedir "$WORK/other" --export "$OTHER_FPR" > "$OUT/other-keyring.gpg"
+gpg --batch --homedir "$WORK/recovery" --export "$RECOVERY_FPR" > "$OUT/recovery-keyring.gpg"
 
 # A dedicated old-key-authorized rotation statement. Activation is generated
 # relative to fixture creation so the test remains valid on future CI dates.
@@ -266,9 +267,9 @@ gpg --batch --homedir "$WORK/other" --local-user "$OTHER_FPR" --armor --clearsig
 
 # Emergency recovery is signed by a separately pinned offline root and must
 # activate immediately with no previous-key grace period.
-python3 - "$TRUSTED_FPR" "$OTHER_FPR" > "$WORK/Emergency-Rotation" <<'PY'
+python3 - "$TRUSTED_FPR" "$OTHER_FPR" "$OUT/emergency-activation.timestamp" > "$WORK/Emergency-Rotation" <<'PY'
 from datetime import datetime, timezone
-import sys
+import pathlib, sys
 now = datetime.now(timezone.utc).replace(microsecond=0)
 fmt = lambda value: value.strftime("%a, %d %b %Y %H:%M:%S UTC")
 print("ORBIT-Key-Rotation: 1")
@@ -277,9 +278,10 @@ print("Current-Fingerprint: " + sys.argv[1])
 print("Next-Fingerprint: " + sys.argv[2])
 print("Activate-At: " + fmt(now))
 print("Previous-Key-Valid-Until: " + fmt(now))
-with open(sys.argv[0] if False else "$OUT/emergency-activation.timestamp", "w") as _:
-    pass
+pathlib.Path(sys.argv[3]).write_text(str(int(now.timestamp())) + "\n")
 PY
+gpg --batch --homedir "$WORK/recovery" --local-user "$RECOVERY_FPR" --armor --clearsign \
+  --digest-algo SHA256 --output "$OUT/valid-emergency-rotation.InRelease" "$WORK/Emergency-Rotation"
 gpg --batch --homedir "$WORK/trusted" --export "$TRUSTED_FPR" "$OTHER_FPR" > "$OUT/combined-keyring.gpg"
 gpg --batch --homedir "$WORK/expired" --export "$EXPIRED_FPR" > "$OUT/expired-keyring.gpg"
 gpg --batch --homedir "$WORK/revoked" --export "$REVOKED_FPR" > "$OUT/revoked-keyring.gpg"

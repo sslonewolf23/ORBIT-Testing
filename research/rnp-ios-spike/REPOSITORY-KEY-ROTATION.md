@@ -90,6 +90,12 @@ The host persistence harness uses an intentionally non-cryptographic in-memory
 MAC solely to exercise API behavior, tamper detection, revision checks, and
 crash-window handling. It is not evidence of production cryptographic storage.
 
+The harness also covers explicit missing-versus-I/O-error handling, repository
+binding, same-revision substitution, stale snapshot rejection, failed atomic
+writes, interrupted counter advancement and recovery, plus transactional
+rollback of in-memory activation and previous-key pruning when storage commits
+fail.
+
 ## Test coverage
 
 The host fixture suite exercises:

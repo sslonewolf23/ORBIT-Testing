@@ -26,6 +26,7 @@ typedef struct {
     char pending_fingerprint[ORBIT_TRUST_FINGERPRINT_CAPACITY];
     uint64_t pending_activation;
     uint64_t previous_valid_until;
+    uint64_t last_observed_time;
     uint32_t generation;
     uint64_t revision;
 } orbit_repository_trust_state;
@@ -70,6 +71,11 @@ orbit_trust_code orbit_repository_trust_authorize_rotation(
  * authorized only until its signed grace deadline. */
 bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
                                     uint64_t now_seconds);
+/* Persisted callers must advance this floor before making a trust decision.
+ * Fingerprint checks accept only the exact last-observed timestamp. */
+bool orbit_repository_trust_observe_time(orbit_repository_trust_state *state,
+                                         uint64_t now_seconds);
+
 /* Remove the previous key only after its signed grace deadline. This is
  * a persisted trust-state mutation and advances the durable revision. */
 bool orbit_repository_trust_prune_previous(orbit_repository_trust_state *state,

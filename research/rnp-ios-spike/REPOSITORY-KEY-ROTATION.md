@@ -53,6 +53,41 @@ logic as time advances. Durable storage, rollback resistance, multi-device
 synchronization, transparency logging, recovery keys, multi-signature
 authorization, and emergency revocation distribution are not implemented.
 
+
+## Durable trust-state persistence
+
+`ORBITTrustPersistence.h/.c` adds a versioned, fixed-width, canonical record
+format bound to the repository identifier. The record contains the active,
+previous, and pending primary fingerprints, activation/grace timestamps, key
+generation, and a separate mutation revision. The record is authenticated by
+a platform-provided MAC callback and its revision must exactly match a
+platform-provided monotonic counter.
+
+Every state mutation advances the revision, including scheduling a rotation,
+activating it, and pruning an expired previous key. A record cannot be replaced
+with different bytes at the same revision. The counter is advanced before the
+atomic record write; if the write fails or the process crashes in that window,
+loading detects the mismatch and fails closed. Retrying the exact same saved
+state is idempotent.
+
+The backend is an explicit security boundary, not a default file-storage
+implementation. A production iOS adapter must provide a device-protected MAC
+key, atomic record replacement, and a repository-scoped monotonic counter that
+cannot be rolled back by restoring backups or app data. Ordinary files,
+UserDefaults, and a backup-restorable Keychain counter do not satisfy this
+contract. If a suitable monotonic primitive is unavailable, durable trust
+must remain disabled until an independently authenticated recovery or remote
+witness design is approved.
+
+Only one key transition may be pending. A subsequent rotation is blocked while
+the previous key's grace period remains active. After the signed deadline,
+`orbit_repository_trust_prune_previous` removes that old pin and advances the
+revision before another rotation can be scheduled.
+
+The host persistence harness uses an intentionally non-cryptographic in-memory
+MAC solely to exercise API behavior, tamper detection, revision checks, and
+crash-window handling. It is not evidence of production cryptographic storage.
+
 ## Test coverage
 
 The host fixture suite exercises:

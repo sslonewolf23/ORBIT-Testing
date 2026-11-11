@@ -56,6 +56,42 @@ typedef struct {
                        uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES]);
 } orbit_trust_store_backend;
 
+/* Load an existing trust record, or initialize and persist the caller's
+ * pinned bootstrap fingerprint only when the backend explicitly reports that
+ * no record exists and its monotonic counter is zero. */
+orbit_trust_store_code orbit_repository_trust_load_or_initialize(
+    orbit_repository_trust_state *state,
+    const char *repository_id,
+    const char *bootstrap_primary_fingerprint,
+    const orbit_trust_store_backend *backend);
+
+/* Transactional wrappers: an in-memory mutation is rolled back if durable
+ * persistence fails. trust_result reports the cryptographic/policy decision;
+ * the return value reports the storage commit result. */
+orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
+    orbit_repository_trust_state *state,
+    const char *repository_id,
+    const char *expected_repository,
+    const uint8_t *rotation_inrelease,
+    size_t rotation_inrelease_length,
+    const uint8_t *current_public_key_bundle,
+    size_t current_bundle_length,
+    const uint8_t *candidate_public_key_bundle,
+    size_t candidate_bundle_length,
+    uint64_t now_seconds,
+    const orbit_trust_store_backend *backend,
+    orbit_trust_code *trust_result);
+
+bool orbit_repository_trust_advance_and_store(
+    orbit_repository_trust_state *state, const char *repository_id,
+    uint64_t now_seconds, const orbit_trust_store_backend *backend,
+    orbit_trust_store_code *store_result);
+
+bool orbit_repository_trust_prune_previous_and_store(
+    orbit_repository_trust_state *state, const char *repository_id,
+    uint64_t now_seconds, const orbit_trust_store_backend *backend,
+    orbit_trust_store_code *store_result);
+
 /* Load only a MAC-authenticated record whose revision exactly matches the
  * platform monotonic counter. A missing record is distinct from corruption. */
 orbit_trust_store_code orbit_repository_trust_store_load(

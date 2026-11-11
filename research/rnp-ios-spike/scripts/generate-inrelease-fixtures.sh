@@ -70,8 +70,41 @@ sleep 2
 REVOKED_FPR="$(fingerprint_for "$WORK/revoked")"
 gpg --batch --homedir "$WORK/revoked" --local-user "$REVOKED_FPR" --armor --clearsign \
   --digest-algo SHA256 --output "$OUT/revoked-key.InRelease" "$WORK/Release"
-printf 'y\n0\n\n y\n' | script -q -e -c \
-  "gpg --homedir '$WORK/revoked' --output '$WORK/revocation.asc' --gen-revoke '$REVOKED_FPR'" /dev/null >/dev/null
+# macOS's BSD script(1) does not support the GNU -c interface. Use
+# Expect to answer GnuPG's interactive revocation prompts portably.
+command -v expect >/dev/null 2>&1 || {
+  echo "expect is required to generate the disposable revoked-key fixture" >&2
+  exit 1
+}
+expect "$WORK/revoked" "$WORK/revocation.asc" "$REVOKED_FPR" <<'EXPECT' >/dev/null
+set timeout 30
+set home [lindex $argv 0]
+set output [lindex $argv 1]
+set fingerprint [lindex $argv 2]
+spawn gpg --homedir $home --output $output --gen-revoke $fingerprint
+expect {
+  -re {Create a revocation certificate.*\(y/N\)} { send "y\r" }
+  timeout { exit 10 }
+  eof { exit 11 }
+}
+expect {
+  -re {Your decision\?} { send "0\r" }
+  timeout { exit 12 }
+  eof { exit 13 }
+}
+expect {
+  -re {Enter an optional description} { send "\r" }
+  timeout { exit 14 }
+  eof { exit 15 }
+}
+expect {
+  -re {Is this okay\? \(y/N\)} { send "y\r" }
+  timeout { exit 16 }
+  eof { exit 17 }
+}
+expect eof
+EXPECT
+test -s "$WORK/revocation.asc"
 gpg --batch --homedir "$WORK/revoked" --import "$WORK/revocation.asc" >/dev/null 2>&1
 
 # A SHA-1 signature is cryptographically generated but must be rejected by policy.

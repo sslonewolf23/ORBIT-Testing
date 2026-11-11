@@ -201,3 +201,90 @@ orbit_trust_store_code orbit_repository_trust_store_save(
         return ORBIT_TRUST_STORE_IO_ERROR;
     return observed==state->revision?ORBIT_TRUST_STORE_OK:ORBIT_TRUST_STORE_IO_ERROR;
 }
+
+
+orbit_trust_store_code orbit_repository_trust_load_or_initialize(
+    orbit_repository_trust_state *state,const char *repository_id,
+    const char *bootstrap_primary_fingerprint,
+    const orbit_trust_store_backend *backend) {
+    if(!state||!bootstrap_primary_fingerprint)
+        return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+    orbit_trust_store_code loaded=orbit_repository_trust_store_load(
+        state,repository_id,backend);
+    if(loaded!=ORBIT_TRUST_STORE_NOT_FOUND)return loaded;
+    orbit_repository_trust_state initial;
+    memset(&initial,0,sizeof(initial));
+    if(!orbit_repository_trust_init(&initial,bootstrap_primary_fingerprint))
+        return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+    orbit_trust_store_code saved=orbit_repository_trust_store_save(
+        &initial,repository_id,backend);
+    if(saved!=ORBIT_TRUST_STORE_OK) {
+        memset(state,0,sizeof(*state));
+        memset(&initial,0,sizeof(initial));
+        return saved;
+    }
+    *state=initial;
+    memset(&initial,0,sizeof(initial));
+    return ORBIT_TRUST_STORE_OK;
+}
+
+orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
+    orbit_repository_trust_state *state,const char *repository_id,
+    const char *expected_repository,const uint8_t *rotation_inrelease,
+    size_t rotation_inrelease_length,const uint8_t *current_public_key_bundle,
+    size_t current_bundle_length,const uint8_t *candidate_public_key_bundle,
+    size_t candidate_bundle_length,uint64_t now_seconds,
+    const orbit_trust_store_backend *backend,orbit_trust_code *trust_result) {
+    if(!state||!trust_result)return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+    orbit_repository_trust_state previous=*state;
+    *trust_result=orbit_repository_trust_authorize_rotation(
+        state,expected_repository,rotation_inrelease,rotation_inrelease_length,
+        current_public_key_bundle,current_bundle_length,candidate_public_key_bundle,
+        candidate_bundle_length,now_seconds);
+    if(*trust_result!=ORBIT_TRUST_ACCEPTED)return ORBIT_TRUST_STORE_OK;
+    orbit_trust_store_code saved=orbit_repository_trust_store_save(
+        state,repository_id,backend);
+    if(saved!=ORBIT_TRUST_STORE_OK)*state=previous;
+    memset(&previous,0,sizeof(previous));
+    return saved;
+}
+
+bool orbit_repository_trust_advance_and_store(
+    orbit_repository_trust_state *state,const char *repository_id,
+    uint64_t now_seconds,const orbit_trust_store_backend *backend,
+    orbit_trust_store_code *store_result) {
+    if(!state||!store_result){return false;}
+    orbit_repository_trust_state previous=*state;
+    if(!orbit_repository_trust_advance(state,now_seconds)) {
+        *store_result=ORBIT_TRUST_STORE_OK;
+        return false;
+    }
+    *store_result=orbit_repository_trust_store_save(state,repository_id,backend);
+    if(*store_result!=ORBIT_TRUST_STORE_OK) {
+        *state=previous;
+        memset(&previous,0,sizeof(previous));
+        return false;
+    }
+    memset(&previous,0,sizeof(previous));
+    return true;
+}
+
+bool orbit_repository_trust_prune_previous_and_store(
+    orbit_repository_trust_state *state,const char *repository_id,
+    uint64_t now_seconds,const orbit_trust_store_backend *backend,
+    orbit_trust_store_code *store_result) {
+    if(!state||!store_result)return false;
+    orbit_repository_trust_state previous=*state;
+    if(!orbit_repository_trust_prune_previous(state,now_seconds)) {
+        *store_result=ORBIT_TRUST_STORE_OK;
+        return false;
+    }
+    *store_result=orbit_repository_trust_store_save(state,repository_id,backend);
+    if(*store_result!=ORBIT_TRUST_STORE_OK) {
+        *state=previous;
+        memset(&previous,0,sizeof(previous));
+        return false;
+    }
+    memset(&previous,0,sizeof(previous));
+    return true;
+}

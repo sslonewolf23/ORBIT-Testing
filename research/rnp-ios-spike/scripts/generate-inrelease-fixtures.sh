@@ -156,6 +156,56 @@ gpg --batch --homedir "$WORK/trusted" --export "$TRUSTED_FPR" > "$OUT/trusted-ke
 printf '%s\n' "$SUBKEY_FPR" > "$OUT/trusted-signing-subkey.fingerprint"
 printf 'not an OpenPGP key bundle\n' > "$OUT/malformed-keyring.gpg"
 head -c 16 "$OUT/trusted-keyring.gpg" > "$OUT/truncated-keyring.gpg"
+
+# Deterministic malformed OpenPGP packet fixtures. These mutate only the
+# exported public key bundle; no secret key material is written to fixtures.
+python3 - "$OUT/trusted-keyring.gpg" "$OUT" <<'PY'
+import pathlib, sys
+
+source = pathlib.Path(sys.argv[1]).read_bytes()
+out = pathlib.Path(sys.argv[2])
+if len(source) < 8 or not (source[0] & 0x80):
+    raise SystemExit("Unexpected OpenPGP public-key packet framing")
+
+first = source[0]
+if first & 0x40:
+    tag = first & 0x3f
+    if len(source) < 2:
+        raise SystemExit("Truncated new-format packet header")
+    length_octet = source[1]
+    if length_octet < 192:
+        body = 2
+    elif length_octet <= 223:
+        body = 3
+    elif length_octet == 255:
+        body = 6
+    else:
+        raise SystemExit("Unexpected partial-body packet in fixture keyring")
+    new_format = True
+else:
+    tag = (first >> 2) & 0x0f
+    length_type = first & 0x03
+    body = (2, 3, 5, 1)[length_type]
+    new_format = False
+
+if tag != 6 or body + 6 > len(source):
+    raise SystemExit("Expected a complete primary public-key packet first")
+
+# Invalid CTB: bit 7 is clear.
+(out / "bad-packet-header.gpg").write_bytes(bytes([0]) + source[1:])
+# A packet header with no following length/body.
+(out / "truncated-packet-header.gpg").write_bytes(source[:1])
+# Declare an impossibly large first packet length without adding its body.
+if new_format:
+    oversized_header = bytes([0xC6, 0xFF, 0x7F, 0xFF, 0xFF, 0xFF])
+else:
+    oversized_header = bytes([0x9A, 0x7F, 0xFF])
+(out / "invalid-packet-length.gpg").write_bytes(oversized_header + source[body:])
+# The public-key packet algorithm octet follows version + 4-byte creation time.
+mutated = bytearray(source)
+mutated[body + 5] = 255
+(out / "unsupported-key-algorithm.gpg").write_bytes(mutated)
+PY
 gpg --batch --homedir "$WORK/other" --export "$OTHER_FPR" > "$OUT/other-keyring.gpg"
 gpg --batch --homedir "$WORK/trusted" --export "$TRUSTED_FPR" "$OTHER_FPR" > "$OUT/combined-keyring.gpg"
 gpg --batch --homedir "$WORK/expired" --export "$EXPIRED_FPR" > "$OUT/expired-keyring.gpg"

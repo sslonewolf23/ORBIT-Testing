@@ -243,6 +243,11 @@ jobs:
           expect_bridge_block truncated trusted-keyring.gpg truncated.InRelease
           expect_bridge_block unsigned trusted-keyring.gpg unsigned.Release
           expect_bridge_block malformed-fingerprint trusted-keyring.gpg valid-trusted.InRelease "NOT-A-FINGERPRINT"
+          expect_bridge_block wrong-primary-fingerprint trusted-keyring.gpg valid-trusted.InRelease "$OTHER"
+          expect_bridge_block fingerprint-39 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED:0:39}"
+          expect_bridge_block fingerprint-41 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}A"
+          expect_bridge_block fingerprint-63 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}${TRUSTED:0:23}"
+          expect_bridge_block fingerprint-65 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}${TRUSTED:0:25}"
           expect_bridge_block weak-hash trusted-keyring.gpg weak-hash.InRelease
           expect_bridge_block multiple-signatures combined-keyring.gpg multiple-signatures.InRelease
           expect_bridge_block expired-key expired-keyring.gpg expired-key.InRelease "$(cat "$F/expired-primary.fingerprint")"

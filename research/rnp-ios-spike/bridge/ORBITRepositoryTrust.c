@@ -232,6 +232,12 @@ bool orbit_repository_trust_fingerprint_allowed(
     uint64_t now_seconds) {
     char normalized[ORBIT_TRUST_FINGERPRINT_CAPACITY];
     if (!state || !normalize_fingerprint(primary_fingerprint, normalized)) return false;
+    if (state->pending_fingerprint[0] != '\0' &&
+        now_seconds >= state->pending_activation) {
+        if (strcmp(normalized, state->pending_fingerprint) == 0) return true;
+        if (strcmp(normalized, state->current_fingerprint) == 0)
+            return now_seconds <= state->previous_valid_until;
+    }
     if (strcmp(normalized, state->current_fingerprint) == 0) return true;
     return state->previous_fingerprint[0] != '\0' &&
            strcmp(normalized, state->previous_fingerprint) == 0 &&

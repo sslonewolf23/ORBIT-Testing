@@ -213,7 +213,8 @@ jobs:
           subkey_result=$?
           set -e
           test "$subkey_result" -eq 3
-          grep -q '^decision=VALID_BUT_UNTRUSTED
+          grep -q VALID_BUT_UNTRUSTED "$RUNNER_TEMP/subkey-wrong-primary.out"
+          echo "PASS: signing subkey rejected for wrong primary fingerprint"
           expect_block tampered-payload trusted-keyring.gpg tampered-payload.InRelease
           expect_block tampered-signature trusted-keyring.gpg tampered-signature.InRelease
           expect_block truncated-armor trusted-keyring.gpg truncated.InRelease

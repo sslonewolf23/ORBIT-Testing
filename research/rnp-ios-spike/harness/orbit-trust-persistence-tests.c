@@ -82,6 +82,11 @@ int main(void) {
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_OK,true);
     expect("restored-pin-matches",strcmp(loaded.current_fingerprint,pin)==0,true);
     expect("restored-revision-matches",loaded.revision==state.revision,true);
+    storage.locked=true;
+    expect("store-lock-contention-fails-closed",
+        orbit_repository_trust_store_load(&loaded,repo,&backend)==ORBIT_TRUST_STORE_IO_ERROR &&
+        loaded.current_fingerprint[0]=='\\0',true);
+    storage.locked=false;
 
     orbit_repository_trust_state changed=loaded;
     changed.revision++;

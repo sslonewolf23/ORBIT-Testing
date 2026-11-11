@@ -168,6 +168,18 @@ jobs:
             -o "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o"
           clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
             -I"$RUNNER_TEMP/rnp-ios-install/include" \
+            -I"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITReleaseMetadata.c \
+            -o "$RUNNER_TEMP/ORBITReleaseMetadata-ios.o"
+          clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-ios-install/include" \
+            -I"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRepositoryTrust.c \
+            -o "$RUNNER_TEMP/ORBITRepositoryTrust-ios.o"
+          clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-ios-install/include" \
             -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/harness/rnp-bridge-smoke.c \
             -o "$RUNNER_TEMP/rnp-bridge-smoke-ios.o"
@@ -175,6 +187,8 @@ jobs:
             "$RUNNER_TEMP/rnp-bridge-smoke-ios.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-ios.o" \
             "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o" \
+            "$RUNNER_TEMP/ORBITReleaseMetadata-ios.o" \
+            "$RUNNER_TEMP/ORBITRepositoryTrust-ios.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \

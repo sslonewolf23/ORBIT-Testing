@@ -148,7 +148,7 @@ int main(int argc, char **argv) {
     expect("expired-previous-key-pruned",
         orbit_repository_trust_prune_previous(&state, proof.previous_key_valid_until + 1U), true);
     expect("pruning-advances-revision", state.revision == before_prune_revision + 1U, true);
-    expect("pruned-key-no-longer-authorized", state.previous_fingerprint[0] == '\\0', true);
+    expect("pruned-key-no-longer-authorized", state.previous_fingerprint[0] == '\0', true);
 
     orbit_repository_trust_state wrong_state;
     expect("wrong-candidate-state-init", orbit_repository_trust_init(&wrong_state, trusted_fpr), true);

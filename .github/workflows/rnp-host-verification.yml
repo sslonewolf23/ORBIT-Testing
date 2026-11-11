@@ -561,6 +561,18 @@ jobs:
             | tee "$RUNNER_TEMP/trust-rotation.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/trust-rotation.out"
 
+      - name: Compile and run authenticated trust persistence tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITTrustPersistence.c \
+            research/rnp-ios-spike/harness/orbit-trust-persistence-tests.c \
+            -o "$RUNNER_TEMP/orbit-trust-persistence-tests"
+          "$RUNNER_TEMP/orbit-trust-persistence-tests" | tee "$RUNNER_TEMP/trust-persistence.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/trust-persistence.out"
+
       - name: Upload host verification evidence
         if: always()
         uses: actions/upload-artifact@v4

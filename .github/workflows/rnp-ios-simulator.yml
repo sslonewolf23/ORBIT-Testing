@@ -169,6 +169,10 @@ jobs:
             -c research/rnp-ios-spike/bridge/ORBITRepositoryTrust.c \
             -o "$RUNNER_TEMP/ORBITRepositoryTrust-ios.o"
           clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITTrustPersistence.c \
+            -o "$RUNNER_TEMP/ORBITTrustPersistence-ios.o"
+          clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
             -I"$RUNNER_TEMP/rnp-ios-install/include" \
             -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/harness/rnp-bridge-smoke.c \
@@ -179,6 +183,7 @@ jobs:
             "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o" \
             "$RUNNER_TEMP/ORBITReleaseMetadata-ios.o" \
             "$RUNNER_TEMP/ORBITRepositoryTrust-ios.o" \
+            "$RUNNER_TEMP/ORBITTrustPersistence-ios.o" \
             $(pkg-config --static --libs librnp) \
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \

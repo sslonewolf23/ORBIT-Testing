@@ -69,6 +69,18 @@ gpg --batch --homedir "$WORK/revoked" --import "$WORK/revocation.asc" >/dev/null
 gpg --batch --homedir "$WORK/trusted" --local-user "$TRUSTED_FPR" --armor --clearsign \
   --digest-algo SHA1 --output "$OUT/weak-hash.InRelease" "$WORK/Release"
 
+# A future-dated signature must be rejected even when its key is trusted.
+gpg --batch --homedir "$WORK/trusted" --faked-system-time 20300101000000! \
+  --local-user "$TRUSTED_FPR" --armor --clearsign \
+  --digest-algo SHA256 --output "$OUT/future-signature.InRelease" "$WORK/Release"
+
+# A cryptographically valid signature with a very short lifetime must be
+# rejected after its signature-expiration timestamp has passed.
+gpg --batch --homedir "$WORK/trusted" --default-sig-expire 2s \
+  --local-user "$TRUSTED_FPR" --armor --clearsign \
+  --digest-algo SHA256 --output "$OUT/expired-signature.InRelease" "$WORK/Release"
+sleep 3
+
 # A real message with two valid signatures. V1 intentionally blocks ambiguity.
 gpg --batch --homedir "$WORK/trusted" --local-user "$TRUSTED_FPR" \
   --local-user "$OTHER_FPR" --armor --clearsign --digest-algo SHA256 \

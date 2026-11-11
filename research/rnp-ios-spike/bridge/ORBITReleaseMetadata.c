@@ -222,8 +222,8 @@ bool orbit_release_verify_index(const orbit_release_metadata *metadata,
     const orbit_release_checksum *expected = NULL;
     for (size_t i = 0; i < metadata->checksum_count; ++i) {
         const orbit_release_checksum *candidate = &metadata->checksums[i];
-        if (!memchr(candidate->path, '\\0', sizeof(candidate->path)) ||
-            !memchr(candidate->sha256, '\\0', sizeof(candidate->sha256)) ||
+        if (!memchr(candidate->path, '\0', sizeof(candidate->path)) ||
+            !memchr(candidate->sha256, '\0', sizeof(candidate->sha256)) ||
             strlen(candidate->sha256) != 64U || !safe_path(candidate->path)) return false;
         for (size_t j = 0; j < i; ++j) {
             if (strcmp(metadata->checksums[j].path, candidate->path) == 0)

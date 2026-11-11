@@ -29,6 +29,35 @@ static int fail_after_success(orbit_fault_point p, rnp_result_t rc) {
  if (target_seen == target_occurrence) { triggered = 1; return 1; }
  return 0;
 }
+/* The wrapped names are referenced only by this test binary. */
+rnp_result_t __real_rnp_ffi_create(rnp_ffi_t *, const char *, const char *);
+rnp_result_t __real_rnp_input_from_memory(rnp_input_t *, const uint8_t *, size_t, bool);
+rnp_result_t __real_rnp_load_keys(rnp_ffi_t, const char *, rnp_input_t, uint32_t);
+rnp_result_t __real_rnp_get_public_key_count(rnp_ffi_t, size_t *);
+rnp_result_t __real_rnp_output_to_null(rnp_output_t *);
+rnp_result_t __real_rnp_op_verify_create(rnp_op_verify_t *, rnp_ffi_t, rnp_input_t, rnp_output_t);
+rnp_result_t __real_rnp_op_verify_set_flags(rnp_op_verify_t, uint32_t);
+rnp_result_t __real_rnp_op_verify_execute(rnp_op_verify_t);
+rnp_result_t __real_rnp_op_verify_get_signature_count(rnp_op_verify_t, size_t *);
+rnp_result_t __real_rnp_op_verify_get_signature_at(rnp_op_verify_t, size_t, rnp_op_verify_signature_t *);
+rnp_result_t __real_rnp_op_verify_signature_get_status(rnp_op_verify_signature_t);
+rnp_result_t __real_rnp_op_verify_signature_get_handle(rnp_op_verify_signature_t, rnp_signature_handle_t *);
+rnp_result_t __real_rnp_signature_is_valid(rnp_signature_handle_t, uint32_t);
+rnp_result_t __real_rnp_op_verify_signature_get_hash(rnp_op_verify_signature_t, char **);
+rnp_result_t __real_rnp_op_verify_signature_get_times(rnp_op_verify_signature_t, uint32_t *, uint32_t *);
+rnp_result_t __real_rnp_op_verify_signature_get_key(rnp_op_verify_signature_t, rnp_key_handle_t *);
+rnp_result_t __real_rnp_key_get_fprint(rnp_key_handle_t, char **);
+rnp_result_t __real_rnp_key_get_alg(rnp_key_handle_t, char **);
+rnp_result_t __real_rnp_key_get_curve(rnp_key_handle_t, char **);
+rnp_result_t __real_rnp_key_is_sub(rnp_key_handle_t, bool *);
+rnp_result_t __real_rnp_key_get_primary_fprint(rnp_key_handle_t, char **);
+rnp_result_t __real_rnp_locate_key(rnp_ffi_t, const char *, const char *, rnp_key_handle_t *);
+rnp_result_t __real_rnp_key_is_valid(rnp_key_handle_t, bool *);
+rnp_result_t __real_rnp_key_is_revoked(rnp_key_handle_t, bool *);
+rnp_result_t __real_rnp_key_get_creation(rnp_key_handle_t, uint32_t *);
+rnp_result_t __real_rnp_key_valid_till64(rnp_key_handle_t, uint64_t *);
+rnp_result_t __real_rnp_key_allows_usage(rnp_key_handle_t, const char *, bool *);
+
 #define WRAP_RETURN(name, p, params, args) \
  rnp_result_t __wrap_##name params { rnp_result_t rc = __real_##name args; \
  return fail_after_success(p, rc) ? (rnp_result_t)1U : rc; }
@@ -88,31 +117,3 @@ WRAP_RETURN(rnp_key_valid_till64, ORBIT_FAULT_KEY_VALID_TILL,
 WRAP_RETURN(rnp_key_allows_usage, ORBIT_FAULT_KEY_ALLOWS_USAGE,
  (rnp_key_handle_t key, const char *usage, bool *allowed), (key,usage,allowed))
 
-/* The wrapped names are referenced only by this test binary. */
-rnp_result_t __real_rnp_ffi_create(rnp_ffi_t *, const char *, const char *);
-rnp_result_t __real_rnp_input_from_memory(rnp_input_t *, const uint8_t *, size_t, bool);
-rnp_result_t __real_rnp_load_keys(rnp_ffi_t, const char *, rnp_input_t, uint32_t);
-rnp_result_t __real_rnp_get_public_key_count(rnp_ffi_t, size_t *);
-rnp_result_t __real_rnp_output_to_null(rnp_output_t *);
-rnp_result_t __real_rnp_op_verify_create(rnp_op_verify_t *, rnp_ffi_t, rnp_input_t, rnp_output_t);
-rnp_result_t __real_rnp_op_verify_set_flags(rnp_op_verify_t, uint32_t);
-rnp_result_t __real_rnp_op_verify_execute(rnp_op_verify_t);
-rnp_result_t __real_rnp_op_verify_get_signature_count(rnp_op_verify_t, size_t *);
-rnp_result_t __real_rnp_op_verify_get_signature_at(rnp_op_verify_t, size_t, rnp_op_verify_signature_t *);
-rnp_result_t __real_rnp_op_verify_signature_get_status(rnp_op_verify_signature_t);
-rnp_result_t __real_rnp_op_verify_signature_get_handle(rnp_op_verify_signature_t, rnp_signature_handle_t *);
-rnp_result_t __real_rnp_signature_is_valid(rnp_signature_handle_t, uint32_t);
-rnp_result_t __real_rnp_op_verify_signature_get_hash(rnp_op_verify_signature_t, char **);
-rnp_result_t __real_rnp_op_verify_signature_get_times(rnp_op_verify_signature_t, uint32_t *, uint32_t *);
-rnp_result_t __real_rnp_op_verify_signature_get_key(rnp_op_verify_signature_t, rnp_key_handle_t *);
-rnp_result_t __real_rnp_key_get_fprint(rnp_key_handle_t, char **);
-rnp_result_t __real_rnp_key_get_alg(rnp_key_handle_t, char **);
-rnp_result_t __real_rnp_key_get_curve(rnp_key_handle_t, char **);
-rnp_result_t __real_rnp_key_is_sub(rnp_key_handle_t, bool *);
-rnp_result_t __real_rnp_key_get_primary_fprint(rnp_key_handle_t, char **);
-rnp_result_t __real_rnp_locate_key(rnp_ffi_t, const char *, const char *, rnp_key_handle_t *);
-rnp_result_t __real_rnp_key_is_valid(rnp_key_handle_t, bool *);
-rnp_result_t __real_rnp_key_is_revoked(rnp_key_handle_t, bool *);
-rnp_result_t __real_rnp_key_get_creation(rnp_key_handle_t, uint32_t *);
-rnp_result_t __real_rnp_key_valid_till64(rnp_key_handle_t, uint64_t *);
-rnp_result_t __real_rnp_key_allows_usage(rnp_key_handle_t, const char *, bool *);

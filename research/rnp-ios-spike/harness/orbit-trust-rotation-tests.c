@@ -162,6 +162,24 @@ int main(int argc, char **argv) {
     const uint8_t bad_proof[] = "ORBIT-Key-Rotation: 1\nRepository: orbit-official\nUnknown: value\n";
     expect("unknown-proof-field-rejected", orbit_trust_rotation_proof_parse(
         bad_proof, sizeof(bad_proof) - 1U, &malformed), false);
+    const uint8_t duplicate_proof[] =
+        "ORBIT-Key-Rotation: 1\\nRepository: orbit-official\\n"
+        "Current-Fingerprint: 1111111111111111111111111111111111111111\\n"
+        "Current-Fingerprint: 2222222222222222222222222222222222222222\\n"
+        "Next-Fingerprint: 3333333333333333333333333333333333333333\\n"
+        "Activate-At: Tue, 10 Nov 2026 12:00:00 UTC\\n"
+        "Previous-Key-Valid-Until: Tue, 17 Nov 2026 12:00:00 UTC\\n";
+    expect("duplicate-rotation-field-rejected", orbit_trust_rotation_proof_parse(
+        duplicate_proof, sizeof(duplicate_proof) - 1U, &malformed), false);
+    orbit_repository_trust_state exhausted;
+    expect("generation-exhaustion-state-init", orbit_repository_trust_init(
+        &exhausted, trusted_fpr), true);
+    exhausted.generation = UINT32_MAX;
+    expect("generation-overflow-blocks-rotation", orbit_repository_trust_authorize_rotation(
+        &exhausted, "orbit-official", rotation, rotation_len, trusted, trusted_len,
+        candidate, candidate_len, now) == ORBIT_TRUST_GENERATION_EXHAUSTED, true);
+    expect("unknown-key-never-authorized", orbit_repository_trust_fingerprint_allowed(
+        &state, "1111111111111111111111111111111111111111", proof.previous_key_valid_until), false);
 
     printf("decision=%s checks=%u failures=%u\n", failures ? "FAIL" : "PASS", checks, failures);
     free(trusted); free(rotation); free(trusted_fpr); free(candidate);

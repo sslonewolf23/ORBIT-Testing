@@ -143,6 +143,7 @@ jobs:
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
             $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
             -o "$RUNNER_TEMP/rnp-inrelease-verify"
           clang -std=c11 -Wall -Wextra -Werror \
             -I"$RUNNER_TEMP/rnp-install/include" \
@@ -155,6 +156,7 @@ jobs:
             $(pkg-config --static --libs botan-3) \
             -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
             $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
             -o "$RUNNER_TEMP/rnp-bridge-smoke"
 
       - name: Generate disposable Debian InRelease fixtures

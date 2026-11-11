@@ -70,16 +70,21 @@ gpg --batch --homedir "$WORK/trusted" --local-user "$TRUSTED_FPR" --armor --clea
   --digest-algo SHA1 --output "$OUT/weak-hash.InRelease" "$WORK/Release"
 
 # A future-dated signature must be rejected even when its key is trusted.
-gpg --batch --homedir "$WORK/trusted" --faked-system-time 20300101000000! \
+gpg --batch --homedir "$WORK/trusted" --faked-system-time 20300101T000000! \
   --local-user "$TRUSTED_FPR" --armor --clearsign \
   --digest-algo SHA256 --output "$OUT/future-signature.InRelease" "$WORK/Release"
 
-# A cryptographically valid signature with a very short lifetime must be
-# rejected after its signature-expiration timestamp has passed.
-gpg --batch --homedir "$WORK/trusted" --default-sig-expire 2s \
-  --local-user "$TRUSTED_FPR" --armor --clearsign \
+# Create an old but cryptographically genuine signing key, then sign with a
+# one-day signature lifetime in 2020. The signature is expired at test time,
+# while the signing key itself remains valid.
+mkdir -m 700 "$WORK/old-signer"
+gpg --batch --homedir "$WORK/old-signer" --faked-system-time 20190101T000000! \
+  --pinentry-mode loopback --passphrase '' \
+  --quick-generate-key "Cydia Successor Fixture Old Signer <old@example.invalid>" ed25519 sign 0 >/dev/null 2>&1
+OLD_FPR="$(fingerprint_for "$WORK/old-signer")"
+gpg --batch --homedir "$WORK/old-signer" --faked-system-time 20200102T000000! \
+  --default-sig-expire 1d --local-user "$OLD_FPR" --armor --clearsign \
   --digest-algo SHA256 --output "$OUT/expired-signature.InRelease" "$WORK/Release"
-sleep 3
 
 # A real message with two valid signatures. V1 intentionally blocks ambiguity.
 gpg --batch --homedir "$WORK/trusted" --local-user "$TRUSTED_FPR" \
@@ -143,10 +148,12 @@ gpg --batch --homedir "$WORK/other" --export "$OTHER_FPR" > "$OUT/other-keyring.
 gpg --batch --homedir "$WORK/trusted" --export "$TRUSTED_FPR" "$OTHER_FPR" > "$OUT/combined-keyring.gpg"
 gpg --batch --homedir "$WORK/expired" --export "$EXPIRED_FPR" > "$OUT/expired-keyring.gpg"
 gpg --batch --homedir "$WORK/revoked" --export "$REVOKED_FPR" > "$OUT/revoked-keyring.gpg"
+gpg --batch --homedir "$WORK/old-signer" --export "$OLD_FPR" > "$OUT/old-signer-keyring.gpg"
 printf '%s\n' "$TRUSTED_FPR" > "$OUT/trusted-primary.fingerprint"
 printf '%s\n' "$OTHER_FPR" > "$OUT/other-primary.fingerprint"
 printf '%s\n' "$EXPIRED_FPR" > "$OUT/expired-primary.fingerprint"
 printf '%s\n' "$REVOKED_FPR" > "$OUT/revoked-primary.fingerprint"
+printf '%s\n' "$OLD_FPR" > "$OUT/old-signer-primary.fingerprint"
 : > "$OUT/empty-keyring.gpg"
 
 (

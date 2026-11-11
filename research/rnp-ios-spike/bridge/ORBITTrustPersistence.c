@@ -212,8 +212,10 @@ orbit_trust_store_code orbit_repository_trust_store_load(
     const orbit_trust_store_backend *backend) {
     if(!state||!valid_repo(repository_id)||!backend_valid(backend))
         return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
-    if(!backend->begin_transaction(backend->context,repository_id))
+    if(!backend->begin_transaction(backend->context,repository_id)) {
+        memset(state,0,sizeof(*state));
         return ORBIT_TRUST_STORE_IO_ERROR;
+    }
     orbit_trust_store_code result=store_load_locked(state,repository_id,backend);
     backend->end_transaction(backend->context,repository_id);
     return result;

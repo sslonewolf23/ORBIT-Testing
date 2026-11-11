@@ -30,7 +30,7 @@ test -n "$TRUSTED_FPR"
 test -n "$OTHER_FPR"
 
 # Add a dedicated signing subkey under the trusted primary.
-gpg --batch --homedir "$WORK/trusted" --quick-add-key "$TRUSTED_FPR" ed25519 sign 0
+gpg --batch --homedir "$WORK/trusted" --pinentry-mode loopback --passphrase "" --quick-add-key "$TRUSTED_FPR" ed25519 sign 0
 SUBKEY_FPR="$(gpg --batch --homedir "$WORK/trusted" --with-colons --list-keys "$TRUSTED_FPR" |
   awk -F: '$1 == "sub" { want=1; next } want && $1 == "fpr" { print $10; exit }')"
 test -n "$SUBKEY_FPR"

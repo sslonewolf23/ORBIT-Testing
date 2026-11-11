@@ -209,7 +209,6 @@ jobs:
             <key>LSRequiresIPhoneOS</key><true/>
             <key>MinimumOSVersion</key><string>15.0</string>
             <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
-            <key>DTPlatformName</key><string>iphonesimulator</string>
           </dict>
           </plist>
           PLIST
@@ -259,9 +258,7 @@ jobs:
           CONTAINER="$(xcrun simctl get_app_container "$DEVICE_ID" com.orbit.rnp.simulator-tests data)"
           REPORT="$CONTAINER/Documents/simulator-results.txt"
           for attempt in $(seq 1 45); do
-            if [ -s "$REPORT" ]; then
-              break
-            fi
+            if [ -s "$REPORT" ]; then break; fi
             sleep 2
           done
           if [ ! -s "$REPORT" ]; then

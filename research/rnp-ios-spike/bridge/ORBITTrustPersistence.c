@@ -73,7 +73,6 @@ static bool valid_state(const orbit_repository_trust_state *s) {
     if(s->pending_fingerprint[0]!='\0' &&
        s->previous_fingerprint[0]!='\0' &&
        strcmp(s->pending_fingerprint,s->previous_fingerprint)==0)return false;
-    if((s->generation==0U)!=(s->previous_fingerprint[0]=='\0'))return false;
     return s->revision!=0U;
 }
 static size_t encode_record(const orbit_repository_trust_state *s,const char *repo,

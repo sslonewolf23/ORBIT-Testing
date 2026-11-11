@@ -29,6 +29,8 @@ typedef enum {
 
 /*
  * Platform adapter contract:
+ * - begin/end_transaction must provide an exclusive repository-scoped lock
+ *   across each complete read/modify/write operation.
  * - read/advance_counter must expose a durable, atomic, non-rollbackable
  *   monotonic counter bound to this device and repository.
  * - write_record_atomic must replace the complete record atomically.
@@ -41,6 +43,8 @@ typedef enum {
  */
 typedef struct {
     void *context;
+    bool (*begin_transaction)(void *context, const char *repository_id);
+    void (*end_transaction)(void *context, const char *repository_id);
     bool (*read_counter)(void *context, const char *repository_id,
                          uint64_t *counter);
     bool (*advance_counter)(void *context, const char *repository_id,

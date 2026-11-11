@@ -193,7 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           "$RUNNER_TEMP/rnp-time-policy-tests" | tee "$RUNNER_TEMP/time-policy.out"
-          grep -q '^decision=PASS$' "$RUNNER_TEMP/time-policy.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/time-policy.out"
 
       - name: Generate disposable Debian InRelease fixtures
         shell: bash

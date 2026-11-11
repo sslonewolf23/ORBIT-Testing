@@ -19,6 +19,7 @@ new_home "$WORK/trusted" "Cydia Successor Fixture Trusted <trusted@example.inval
 new_home "$WORK/other" "Cydia Successor Fixture Other <other@example.invalid>"
 new_home "$WORK/expired" "Cydia Successor Fixture Expired <expired@example.invalid>"
 new_home "$WORK/revoked" "Cydia Successor Fixture Revoked <revoked@example.invalid>"
+new_home "$WORK/recovery" "ORBIT Offline Recovery Root <recovery@example.invalid>"
 
 fingerprint_for() {
   gpg --batch --homedir "$1" --with-colons --fingerprint |
@@ -26,6 +27,7 @@ fingerprint_for() {
 }
 TRUSTED_FPR="$(fingerprint_for "$WORK/trusted")"
 OTHER_FPR="$(fingerprint_for "$WORK/other")"
+RECOVERY_FPR="$(fingerprint_for "$WORK/recovery")"
 test -n "$TRUSTED_FPR"
 test -n "$OTHER_FPR"
 
@@ -261,6 +263,23 @@ gpg --batch --homedir "$WORK/trusted" --local-user "$TRUSTED_FPR" --armor --clea
   --digest-algo SHA256 --output "$OUT/valid-rotation.InRelease" "$WORK/Rotation"
 gpg --batch --homedir "$WORK/other" --local-user "$OTHER_FPR" --armor --clearsign \
   --digest-algo SHA256 --output "$OUT/unauthorized-rotation.InRelease" "$WORK/Rotation"
+
+# Emergency recovery is signed by a separately pinned offline root and must
+# activate immediately with no previous-key grace period.
+python3 - "$TRUSTED_FPR" "$OTHER_FPR" > "$WORK/Emergency-Rotation" <<'PY'
+from datetime import datetime, timezone
+import sys
+now = datetime.now(timezone.utc).replace(microsecond=0)
+fmt = lambda value: value.strftime("%a, %d %b %Y %H:%M:%S UTC")
+print("ORBIT-Key-Rotation: 1")
+print("Repository: orbit-official")
+print("Current-Fingerprint: " + sys.argv[1])
+print("Next-Fingerprint: " + sys.argv[2])
+print("Activate-At: " + fmt(now))
+print("Previous-Key-Valid-Until: " + fmt(now))
+with open(sys.argv[0] if False else "$OUT/emergency-activation.timestamp", "w") as _:
+    pass
+PY
 gpg --batch --homedir "$WORK/trusted" --export "$TRUSTED_FPR" "$OTHER_FPR" > "$OUT/combined-keyring.gpg"
 gpg --batch --homedir "$WORK/expired" --export "$EXPIRED_FPR" > "$OUT/expired-keyring.gpg"
 gpg --batch --homedir "$WORK/revoked" --export "$REVOKED_FPR" > "$OUT/revoked-keyring.gpg"

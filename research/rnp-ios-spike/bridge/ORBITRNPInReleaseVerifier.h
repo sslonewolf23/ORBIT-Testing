@@ -1,6 +1,7 @@
 #ifndef ORBIT_RNP_INRELEASE_VERIFIER_H
 #define ORBIT_RNP_INRELEASE_VERIFIER_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 

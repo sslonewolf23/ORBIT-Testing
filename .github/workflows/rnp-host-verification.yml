@@ -30,14 +30,24 @@ jobs:
       - name: Checkout project
         uses: actions/checkout@v4
 
-      - name: Show host toolchain
+      - name: Inspect preinstalled host toolchain
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential clang cmake ninja-build pkg-config gnupg util-linux
+          set -euo pipefail
+          required_tools=(clang clang++ cmake ninja pkg-config gpg git)
+          for tool in "${required_tools[@]}"; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::Required tool '$tool' is not preinstalled on this runner."
+              exit 1
+            fi
+            printf '%-12s %s\n' "$tool" "$(command -v "$tool")"
+          done
+          clang --version
           cmake --version
           ninja --version
-          clang --version
+          pkg-config --version
           gpg --version | head -n 2
+          df -h "$RUNNER_TEMP"
 
       - name: Fetch pinned RNP source and submodule
         shell: bash
@@ -196,6 +206,7 @@ jobs:
           truncate -s 4194305 "$F/oversized-keyring.gpg"
           expect_bridge_block oversized-inrelease trusted-keyring.gpg oversized.InRelease
           expect_bridge_block oversized-keyring oversized-keyring.gpg valid-trusted.InRelease
+
       - name: Upload host verification evidence
         if: always()
         uses: actions/upload-artifact@v4

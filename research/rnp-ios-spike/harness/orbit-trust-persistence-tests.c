@@ -138,6 +138,17 @@ int main(void) {
     orbit_repository_trust_state lifecycle_state;
     expect("lifecycle-bootstrap",orbit_repository_trust_load_or_initialize(
         &lifecycle_state,repo,pin,&lifecycle_backend)==ORBIT_TRUST_STORE_OK,true);
+    expect("clock-floor-persisted",
+        orbit_repository_trust_observe_time_and_store(&lifecycle_state,repo,50U,
+            &lifecycle_backend,&lifecycle_store_result),true);
+    expect("clock-rollback-rejected",
+        !orbit_repository_trust_observe_time_and_store(&lifecycle_state,repo,49U,
+            &lifecycle_backend,&lifecycle_store_result) &&
+        lifecycle_store_result==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);
+    expect("clock-floor-rejects-older-key-check-time",
+        !orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,49U),true);
+    expect("clock-floor-allows-exact-observed-time",
+        orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,50U),true);
     strcpy(lifecycle_state.pending_fingerprint,
            "ABCDEF0123456789ABCDEF0123456789ABCDEF01");
     lifecycle_state.pending_activation=100U;
@@ -160,7 +171,8 @@ int main(void) {
         orbit_repository_trust_advance_and_store(&lifecycle_state,repo,100U,
             &lifecycle_backend,&lifecycle_store_result) &&
         lifecycle_store_result==ORBIT_TRUST_STORE_OK &&
-        lifecycle_state.generation==1U,true);
+        lifecycle_state.generation==1U &&
+        lifecycle_state.last_observed_time==100U,true);
     expect("grace-prune-waits-through-inclusive-deadline",
         !orbit_repository_trust_prune_previous_and_store(&lifecycle_state,repo,200U,
             &lifecycle_backend,&lifecycle_store_result),true);
@@ -177,7 +189,10 @@ int main(void) {
         orbit_repository_trust_prune_previous_and_store(&lifecycle_state,repo,201U,
             &lifecycle_backend,&lifecycle_store_result) &&
         lifecycle_store_result==ORBIT_TRUST_STORE_OK &&
-        lifecycle_state.previous_fingerprint[0]=='\0',true);
+        lifecycle_state.previous_fingerprint[0]=='\0' &&
+        lifecycle_state.last_observed_time==201U,true);
+    expect("pruned-state-rejects-clock-rollback",
+        !orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,199U),true);
 
 
     printf("decision=%s checks=%u failures=%u\n",failures?"FAIL":"PASS",checks,failures);

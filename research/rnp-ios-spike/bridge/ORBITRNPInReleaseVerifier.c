@@ -1,6 +1,7 @@
 #include "ORBITRNPInReleaseVerifier.h"
 
 #include <rnp/rnp.h>
+#include <rnp/rnp_err.h>
 
 #include <ctype.h>
 #include <stdbool.h>

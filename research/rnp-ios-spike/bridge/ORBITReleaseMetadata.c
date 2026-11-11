@@ -29,6 +29,7 @@ static int hexval(char c) {
     return -1;
 }
 static bool parse_checksum(char *line, orbit_release_metadata *m) {
+    if (!line || !m || strlen(line) < 66U) return false;
     char *p=line; char digest[65];
     for (size_t i=0;i<64;i++) { if (hexval(p[i])<0) return false; digest[i]= (char)tolower((unsigned char)p[i]); }
     digest[64]='\0'; p+=64;

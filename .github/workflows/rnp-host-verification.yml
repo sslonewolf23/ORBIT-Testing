@@ -298,6 +298,53 @@ jobs:
             "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/bridge-robustness.out"
           grep -q '^decision=PASS$' "$RUNNER_TEMP/bridge-robustness.out"
 
+      - name: Build AddressSanitizer and UndefinedBehaviorSanitizer harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
+            -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-bridge-robustness.c \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness-sanitized.o"
+          clang++ $SAN "$RUNNER_TEMP/rnp-bridge-robustness-sanitized.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness-sanitized"
+
+      - name: Run sanitizer robustness checks
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          set -euo pipefail
+          F="$RUNNER_TEMP/fixtures"
+          TRUSTED="$(cat "$F/trusted-primary.fingerprint")"
+          "$RUNNER_TEMP/rnp-bridge-robustness-sanitized" \
+            "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" \
+            "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/sanitizer-robustness.out"
+          grep -q '^decision=PASS        uses: actions/upload-artifact@v4
+        with:
+          name: rnp-host-inrelease-verification
+          path: |
+            ${{ runner.temp }}/build-rnp-host/
+            ${{ runner.temp }}/rnp-install/
+            ${{ runner.temp }}/fixtures/
+            ${{ runner.temp }}/*.out
+          if-no-files-found: warn
+ "$RUNNER_TEMP/sanitizer-robustness.out"
+
       - name: Upload host verification evidence
         if: always()
         uses: actions/upload-artifact@v4

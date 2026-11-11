@@ -22,7 +22,7 @@ static int run_case(orbit_fault_point point, unsigned occurrence,
   fprintf(stderr,"FAIL: fault point %s occurrence %u was not reached\n",orbit_fault_name(point),occurrence);
   return 0;
  }
- if(code==ORBIT_RNP_VERIFY_VALID || result.code!=code || result.error[0]=='\\0') {
+ if(code==ORBIT_RNP_VERIFY_VALID || result.code!=code || result.error[0]=='\0') {
   fprintf(stderr,"FAIL: %s did not fail closed (return=%d result=%d error=%s)\n",
     orbit_fault_name(point),(int)code,(int)result.code,result.error);
   return 0;

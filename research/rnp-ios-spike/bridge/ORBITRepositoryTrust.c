@@ -237,6 +237,7 @@ bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
 bool orbit_repository_trust_prune_previous(orbit_repository_trust_state *state,
                                            uint64_t now_seconds) {
     if (!state || state->previous_fingerprint[0] == '\0' ||
+        state->pending_fingerprint[0] != '\0' ||
         now_seconds <= state->previous_valid_until ||
         state->revision == UINT64_MAX) return false;
     memset(state->previous_fingerprint, 0, sizeof(state->previous_fingerprint));

@@ -27,11 +27,13 @@ static bool advance_counter(void *ctx,const char *repo,uint64_t expected,uint64_
     if(m->fail_advance||m->counter!=expected||next!=expected+1U)return false;
     m->counter=next;return true;
 }
-static bool read_record(void *ctx,const char *repo,uint8_t *out,size_t cap,
+static orbit_trust_store_read_result read_record(void *ctx,const char *repo,uint8_t *out,size_t cap,
                         size_t *length,uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES]) {
     (void)repo;memory_store *m=ctx;
-    if(!m->has_record||m->length>cap)return false;
-    memcpy(out,m->record,m->length);*length=m->length;memcpy(mac,m->mac,sizeof(m->mac));return true;
+    if(!m->has_record)return ORBIT_TRUST_BACKEND_NOT_FOUND;
+    if(m->length>cap)return ORBIT_TRUST_BACKEND_ERROR;
+    memcpy(out,m->record,m->length);*length=m->length;memcpy(mac,m->mac,sizeof(m->mac));
+    return ORBIT_TRUST_BACKEND_OK;
 }
 static bool write_record(void *ctx,const char *repo,const uint8_t *record,size_t length,
                          const uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES]) {

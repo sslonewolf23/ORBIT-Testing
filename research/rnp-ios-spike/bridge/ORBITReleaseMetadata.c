@@ -160,10 +160,16 @@ bool orbit_release_parse_timestamp(const char *value, uint64_t *unix_seconds) {
     } else {
         if ((*p != '+' && *p != '-') || strlen(p) != 5U) return false;
         int sign = *p++ == '+' ? 1 : -1;
-        unsigned offset_hour, offset_minute;
-        if (!take_digits(&p, 2U, 2U, &offset_hour) ||
-            !take_digits(&p, 2U, 2U, &offset_minute) || *p != '\0' ||
-            offset_hour > 23U || offset_minute > 59U) return false;
+        if (strlen(p) != 4U) return false;
+        for (size_t i = 0; i < 4U; ++i) {
+            if (p[i] < '0' || p[i] > '9') return false;
+        }
+        unsigned offset_hour = (unsigned)(p[0] - '0') * 10U +
+                               (unsigned)(p[1] - '0');
+        unsigned offset_minute = (unsigned)(p[2] - '0') * 10U +
+                                 (unsigned)(p[3] - '0');
+        if (offset_hour > 23U || offset_minute > 59U) return false;
+        p += 4;
         offset_seconds = sign * (int)(offset_hour * 3600U + offset_minute * 60U);
     }
     if (*p != '\0' || year < 1970U || year > 9999U ||

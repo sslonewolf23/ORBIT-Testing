@@ -110,6 +110,7 @@ int main(int argc, char **argv) {
     orbit_repository_trust_state state;
     expect("initial-pin-created", orbit_repository_trust_init(&state, trusted_fpr), true);
     uint64_t now = (uint64_t)time(NULL);
+    expect("time-floor-initialized", orbit_repository_trust_observe_time(&state, now), true);
     expect("old-key-authorized-initially", orbit_repository_trust_fingerprint_allowed(
         &state, trusted_fpr, now), true);
     expect("candidate-not-authorized-before-rotation", orbit_repository_trust_fingerprint_allowed(
@@ -123,32 +124,41 @@ int main(int argc, char **argv) {
         &state, "orbit-official", rotation, rotation_len, trusted, trusted_len,
         candidate, candidate_len, now)
         == ORBIT_TRUST_ROTATION_ALREADY_PENDING, true);
+    expect("advance-time-to-before-activation",
+        orbit_repository_trust_observe_time(&state, proof.activate_at - 1U), true);
     expect("candidate-not-active-before-time", orbit_repository_trust_fingerprint_allowed(
         &state, candidate_fpr, proof.activate_at - 1U), false);
     expect("cannot-advance-before-activation", orbit_repository_trust_advance(
         &state, proof.activate_at - 1U), false);
+    expect("clock-rollback-rejected",
+        orbit_repository_trust_observe_time(&state, now), false);
+    expect("clock-rollback-cannot-reenable-old-time",
+        orbit_repository_trust_fingerprint_allowed(&state, trusted_fpr, now), false);
+    expect("advance-time-to-activation",
+        orbit_repository_trust_observe_time(&state, proof.activate_at), true);
     expect("pending-key-authorized-at-activation", orbit_repository_trust_fingerprint_allowed(
         &state, candidate_fpr, proof.activate_at), true);
-    expect("old-key-grace-applies-before-compaction", orbit_repository_trust_fingerprint_allowed(
-        &state, trusted_fpr, proof.previous_key_valid_until), true);
-    expect("old-key-expires-after-grace-before-compaction", orbit_repository_trust_fingerprint_allowed(
-        &state, trusted_fpr, proof.previous_key_valid_until + 1U), false);
     expect("rotation-activates-at-signed-time", orbit_repository_trust_advance(
         &state, proof.activate_at), true);
     expect("generation-increments", state.generation == 1U, true);
     expect("new-key-authorized-after-activation", orbit_repository_trust_fingerprint_allowed(
         &state, candidate_fpr, proof.activate_at), true);
+    expect("advance-time-to-grace-deadline",
+        orbit_repository_trust_observe_time(&state, proof.previous_key_valid_until), true);
     expect("old-key-allowed-during-grace", orbit_repository_trust_fingerprint_allowed(
         &state, trusted_fpr, proof.previous_key_valid_until), true);
-    expect("old-key-rejected-after-grace", orbit_repository_trust_fingerprint_allowed(
-        &state, trusted_fpr, proof.previous_key_valid_until + 1U), false);
-    uint64_t before_prune_revision = state.revision;
     expect("previous-key-not-pruned-at-inclusive-deadline",
         orbit_repository_trust_prune_previous(&state, proof.previous_key_valid_until), false);
+    expect("advance-time-past-grace",
+        orbit_repository_trust_observe_time(&state, proof.previous_key_valid_until + 1U), true);
+    expect("old-key-rejected-after-grace-before-compaction", orbit_repository_trust_fingerprint_allowed(
+        &state, trusted_fpr, proof.previous_key_valid_until + 1U), false);
+    uint64_t before_prune_revision = state.revision;
     expect("expired-previous-key-pruned",
         orbit_repository_trust_prune_previous(&state, proof.previous_key_valid_until + 1U), true);
     expect("pruning-advances-revision", state.revision == before_prune_revision + 1U, true);
-    expect("pruned-key-no-longer-authorized", state.previous_fingerprint[0] == '\0', true);
+    expect("pruned-key-no-longer-authorized", orbit_repository_trust_fingerprint_allowed(
+        &state, trusted_fpr, proof.previous_key_valid_until + 1U), false);
 
     orbit_repository_trust_state wrong_state;
     expect("wrong-candidate-state-init", orbit_repository_trust_init(&wrong_state, trusted_fpr), true);

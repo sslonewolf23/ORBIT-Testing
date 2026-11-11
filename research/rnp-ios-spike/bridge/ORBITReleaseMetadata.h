@@ -27,11 +27,19 @@ typedef struct {
 } orbit_release_metadata;
 
 /* Strictly parse a bounded Debian Release/InRelease plaintext payload.
- * Reject duplicate singleton fields, malformed SHA256 rows, duplicate paths,
- * unsafe relative paths, NUL bytes, and unsupported/ambiguous formatting.
  * This parser does not authenticate the input; verify InRelease first. */
 bool orbit_release_metadata_parse(const uint8_t *data, size_t length,
                                    orbit_release_metadata *result);
+
+/* Parse RFC 2822-style Debian timestamps with a validated weekday, calendar
+ * date, clock, and UTC or numeric +/-HHMM timezone. Rejects pre-epoch dates. */
+bool orbit_release_parse_timestamp(const char *value, uint64_t *unix_seconds);
+
+/* Convert parsed Date and optional Valid-Until fields to Unix timestamps.
+ * A missing Valid-Until is returned as zero and must be handled by max-age policy. */
+bool orbit_release_metadata_timestamps(const orbit_release_metadata *metadata,
+                                        uint64_t *date_seconds,
+                                        uint64_t *valid_until_seconds);
 
 bool orbit_release_freshness_valid(uint64_t date_seconds,
                                    uint64_t valid_until_seconds,

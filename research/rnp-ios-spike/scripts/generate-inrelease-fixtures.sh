@@ -29,6 +29,12 @@ OTHER_FPR="$(fingerprint_for "$WORK/other")"
 test -n "$TRUSTED_FPR"
 test -n "$OTHER_FPR"
 
+# Add a dedicated signing subkey under the trusted primary.
+gpg --batch --homedir "$WORK/trusted" --quick-add-key "$TRUSTED_FPR" ed25519 sign 0
+SUBKEY_FPR="$(gpg --batch --homedir "$WORK/trusted" --with-colons --list-keys "$TRUSTED_FPR" |
+  awk -F: '$1 == "sub" { want=1; next } want && $1 == "fpr" { print $10; exit }')"
+test -n "$SUBKEY_FPR"
+
 # Import the second disposable secret key only into this temporary signing home
 # so GnuPG can create a genuine two-signature clear-signed message.
 gpg --batch --homedir "$WORK/other" --export-secret-keys "$OTHER_FPR" > "$WORK/other-secret.gpg"
@@ -47,6 +53,9 @@ EOF
 
 gpg --batch --homedir "$WORK/trusted" --local-user "$TRUSTED_FPR" --armor --clearsign \
   --digest-algo SHA256 --output "$OUT/valid-trusted.InRelease" "$WORK/Release"
+
+gpg --batch --homedir "$WORK/trusted" --local-user "$SUBKEY_FPR" --armor --clearsign \
+  --digest-algo SHA256 --output "$OUT/valid-subkey.InRelease" "$WORK/Release"
 gpg --batch --homedir "$WORK/other" --armor --clearsign \
   --digest-algo SHA256 --output "$OUT/valid-other.InRelease" "$WORK/Release"
 
@@ -144,6 +153,8 @@ cp "$WORK/Release" "$OUT/unsigned.Release"
 
 # Export only public keys. The verifier must never receive test secret keys.
 gpg --batch --homedir "$WORK/trusted" --export "$TRUSTED_FPR" > "$OUT/trusted-keyring.gpg"
+printf '%s\n' "$SUBKEY_FPR" > "$OUT/trusted-signing-subkey.fingerprint"
+printf 'not an OpenPGP key bundle\n' > "$OUT/malformed-keyring.gpg"
 gpg --batch --homedir "$WORK/other" --export "$OTHER_FPR" > "$OUT/other-keyring.gpg"
 gpg --batch --homedir "$WORK/trusted" --export "$TRUSTED_FPR" "$OTHER_FPR" > "$OUT/combined-keyring.gpg"
 gpg --batch --homedir "$WORK/expired" --export "$EXPIRED_FPR" > "$OUT/expired-keyring.gpg"
@@ -162,4 +173,4 @@ printf '%s\n' "$OLD_FPR" > "$OUT/old-signer-primary.fingerprint"
 )
 
 echo "Generated disposable RNP fixtures in: $OUT"
-echo "Cases: valid-trusted, valid-other, tampered-payload, tampered-signature, truncated, malformed-framing, unsigned, missing-key, weak-hash, multiple-signatures, expired-key, revoked-key"
+echo "Cases: valid-trusted, valid-signing-subkey, valid-other, tampered-payload, tampered-signature, truncated, malformed-framing, unsigned, missing-key, malformed-keyring, weak-hash, multiple-signatures, expired-key, revoked-key"

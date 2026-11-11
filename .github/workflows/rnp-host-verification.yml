@@ -504,6 +504,7 @@ jobs:
             research/rnp-ios-spike/bridge/ORBITReleaseMetadata.c \
             research/rnp-ios-spike/harness/orbit-release-metadata-tests.c \
             $(pkg-config --static --libs botan-3) \
+            -lstdc++ \
             -o "$RUNNER_TEMP/orbit-release-metadata-tests"
           "$RUNNER_TEMP/orbit-release-metadata-tests" | tee "$RUNNER_TEMP/release-metadata-policy.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/release-metadata-policy.out"

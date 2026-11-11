@@ -23,7 +23,7 @@ static bool read_counter(void *ctx,const char *repo,uint64_t *counter) {
 }
 static bool advance_counter(void *ctx,const char *repo,uint64_t expected,uint64_t next) {
     (void)repo;memory_store *m=ctx;
-    if(m->counter!=expected||next!=expected+1U)return false;
+    if(m->fail_advance||m->counter!=expected||next!=expected+1U)return false;
     m->counter=next;return true;
 }
 static bool read_record(void *ctx,const char *repo,uint8_t *out,size_t cap,
@@ -110,9 +110,19 @@ int main(void) {
     expect("failed-atomic-write-reported",orbit_repository_trust_store_save(
         &next,repo,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
     storage.fail_write=false;
-    expect("counter-advanced-before-failed-write",storage.counter==next.revision,true);
-    expect("crash-window-fails-closed",orbit_repository_trust_store_load(
-        &loaded,repo,&backend)==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);
+    expect("failed-write-keeps-counter-unchanged",storage.counter==changed.revision,true);
+    expect("old-record-remains-loadable-after-failed-write",orbit_repository_trust_store_load(
+        &loaded,repo,&backend)==ORBIT_TRUST_STORE_OK && loaded.revision==changed.revision,true);
+    storage.fail_advance=true;
+    expect("counter-advance-interruption-reported",orbit_repository_trust_store_save(
+        &next,repo,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
+    storage.fail_advance=false;
+    expect("staged-record-does-not-prematurely-advance-counter",
+        storage.counter==changed.revision,true);
+    expect("load-recovers-authenticated-staged-record",
+        orbit_repository_trust_store_load(&loaded,repo,&backend)==ORBIT_TRUST_STORE_OK &&
+        loaded.revision==next.revision,true);
+    expect("recovery-completes-monotonic-counter",storage.counter==next.revision,true);
 
     printf("decision=%s checks=%u failures=%u\n",failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;

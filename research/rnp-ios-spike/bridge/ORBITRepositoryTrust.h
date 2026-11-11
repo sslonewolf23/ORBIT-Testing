@@ -27,6 +27,7 @@ typedef struct {
     uint64_t pending_activation;
     uint64_t previous_valid_until;
     uint32_t generation;
+    uint64_t revision;
 } orbit_repository_trust_state;
 
 typedef enum {

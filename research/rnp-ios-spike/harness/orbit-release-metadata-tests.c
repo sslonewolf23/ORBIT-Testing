@@ -35,7 +35,7 @@ int main(void){
  expect("invalid-timezone",orbit_release_parse_timestamp("Tue, 10 Nov 2026 12:00:00 PST",&parsed),false);
  expect("timezone-range",orbit_release_parse_timestamp("Tue, 10 Nov 2026 12:00:00 +2460",&parsed),false);
  expect("trailing-data",orbit_release_parse_timestamp("Tue, 10 Nov 2026 12:00:00 UTC junk",&parsed),false);
- expect("pre-epoch-rejected",orbit_release_parse_timestamp("Thu, 01 Jan 1970 00:00:00 -0100",&parsed),false);
+ expect("pre-epoch-rejected",orbit_release_parse_timestamp("Thu, 01 Jan 1970 00:00:00 +0100",&parsed),false);
 
  expect("fresh-before-valid-until",orbit_release_freshness_valid(100,200,199,1000,300),true);
  expect("fresh-at-valid-until",orbit_release_freshness_valid(100,200,200,1000,300),false);

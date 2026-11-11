@@ -136,6 +136,7 @@ int main(void) {
     memory_store lifecycle_storage;memset(&lifecycle_storage,0,sizeof(lifecycle_storage));
     orbit_trust_store_backend lifecycle_backend=backend_for(&lifecycle_storage);
     orbit_repository_trust_state lifecycle_state;
+    orbit_trust_store_code lifecycle_store_result=ORBIT_TRUST_STORE_OK;
     expect("lifecycle-bootstrap",orbit_repository_trust_load_or_initialize(
         &lifecycle_state,repo,pin,&lifecycle_backend)==ORBIT_TRUST_STORE_OK,true);
     expect("clock-floor-persisted",
@@ -158,7 +159,6 @@ int main(void) {
         &lifecycle_state,repo,&lifecycle_backend)==ORBIT_TRUST_STORE_OK,true);
     orbit_repository_trust_state before_advance=lifecycle_state;
     lifecycle_storage.fail_write=true;
-    orbit_trust_store_code lifecycle_store_result=ORBIT_TRUST_STORE_OK;
     expect("failed-activation-commit-rolls-back-memory",
         !orbit_repository_trust_advance_and_store(&lifecycle_state,repo,100U,
             &lifecycle_backend,&lifecycle_store_result) &&

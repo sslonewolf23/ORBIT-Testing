@@ -296,20 +296,7 @@ jobs:
           "$RUNNER_TEMP/rnp-bridge-robustness" \
             "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" \
             "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/bridge-robustness.out"
-          grep -q '^decision=PASS
-
-      - name: Upload host verification evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rnp-host-inrelease-verification
-          path: |
-            ${{ runner.temp }}/build-rnp-host/
-            ${{ runner.temp }}/rnp-install/
-            ${{ runner.temp }}/fixtures/
-            ${{ runner.temp }}/*.out
-          if-no-files-found: warn
- "$RUNNER_TEMP/bridge-robustness.out"
+          grep -q '^decision=PASS$' "$RUNNER_TEMP/bridge-robustness.out"
 
       - name: Upload host verification evidence
         if: always()

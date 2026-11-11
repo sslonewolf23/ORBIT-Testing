@@ -54,14 +54,15 @@ static bool valid_state(const orbit_repository_trust_state *s) {
        !valid_fingerprint_or_empty(s->pending_fingerprint)) return false;
     size_t current=strlen(s->current_fingerprint);
     if((current!=40U&&current!=64U))return false;
-    if(s->pending_fingerprint[0]=='\\0') {
+    if(s->pending_fingerprint[0]=='\0') {
         if(s->pending_activation!=0U)return false;
     } else {
         if(strcmp(s->pending_fingerprint,s->current_fingerprint)==0 ||
            s->pending_activation==0U ||
            s->previous_valid_until<s->pending_activation)return false;
     }
-    if(s->previous_fingerprint[0]=='\\0' && s->previous_valid_until!=0U &&\n       s->pending_fingerprint[0]=='\\0')return false;
+    if(s->previous_fingerprint[0]=='\0' && s->previous_valid_until!=0U &&
+       s->pending_fingerprint[0]=='\0')return false;
     return s->revision!=0U;
 }
 static size_t encode_record(const orbit_repository_trust_state *s,const char *repo,

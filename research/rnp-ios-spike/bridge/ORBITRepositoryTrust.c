@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static bool normalize_fingerprint(const char *input, char output[ORBIT_TRUST_FINGERPRINT_CAPACITY]) {
@@ -51,10 +52,10 @@ bool orbit_trust_rotation_proof_parse(const uint8_t *data, size_t length,
     char grace_text[64] = {0};
     bool seen_version = false, seen_repository = false, seen_current = false;
     bool seen_next = false, seen_activate = false, seen_grace = false;
-    char *buffer = (char *)data;
     /* Parse without modifying caller-owned authenticated payload. */
-    char local[ORBIT_TRUST_ROTATION_MAX_BYTES + 1U];
-    memcpy(local, buffer, length);
+    char *local = (char *)malloc(length + 1U);
+    if (!local) return false;
+    memcpy(local, data, length);
     local[length] = '\0';
     char *cursor = local;
     bool ok = true;
@@ -113,6 +114,7 @@ bool orbit_trust_rotation_proof_parse(const uint8_t *data, size_t length,
 
     if (ok) *proof = parsed;
     else memset(proof, 0, sizeof(*proof));
+    free(local);
     return ok;
 }
 

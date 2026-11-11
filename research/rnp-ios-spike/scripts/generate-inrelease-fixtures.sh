@@ -76,7 +76,7 @@ command -v expect >/dev/null 2>&1 || {
   echo "expect is required to generate the disposable revoked-key fixture" >&2
   exit 1
 }
-expect "$WORK/revoked" "$WORK/revocation.asc" "$REVOKED_FPR" <<'EXPECT' >/dev/null
+expect -f /dev/stdin "$WORK/revoked" "$WORK/revocation.asc" "$REVOKED_FPR" <<'EXPECT' >/dev/null
 set timeout 30
 set home [lindex $argv 0]
 set output [lindex $argv 1]

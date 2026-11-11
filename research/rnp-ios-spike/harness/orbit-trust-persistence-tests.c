@@ -9,6 +9,7 @@ typedef struct {
     size_t length;
     uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES];
     bool has_record;
+    bool locked;
     bool fail_read;
     bool fail_write;
     bool fail_advance;
@@ -19,6 +20,12 @@ static void expect(const char *name,bool actual,bool wanted) {
     ++checks;
     if(actual!=wanted){fprintf(stderr,"FAIL %s actual=%d expected=%d\n",name,actual,wanted);++failures;}
     else printf("PASS %s\n",name);
+}
+static bool begin_transaction(void *ctx,const char *repo) {
+    (void)repo;memory_store *m=ctx;if(m->locked)return false;m->locked=true;return true;
+}
+static void end_transaction(void *ctx,const char *repo) {
+    (void)repo;memory_store *m=ctx;m->locked=false;
 }
 static bool read_counter(void *ctx,const char *repo,uint64_t *counter) {
     (void)repo;memory_store *m=ctx;*counter=m->counter;return true;
@@ -55,7 +62,7 @@ static bool test_mac(void *ctx,const char *repo,const uint8_t *data,size_t lengt
     return true;
 }
 static orbit_trust_store_backend backend_for(memory_store *m) {
-    orbit_trust_store_backend b={m,read_counter,advance_counter,read_record,write_record,test_mac};return b;
+    orbit_trust_store_backend b={m,begin_transaction,end_transaction,read_counter,advance_counter,read_record,write_record,test_mac};return b;
 }
 int main(void) {
     const char *repo="orbit-official";
@@ -70,6 +77,7 @@ int main(void) {
     expect("missing-record-bootstraps-and-persists",orbit_repository_trust_load_or_initialize(
         &state,repo,pin,&backend)==ORBIT_TRUST_STORE_OK,true);
     expect("counter-advanced-to-initial-revision",storage.counter==state.revision,true);
+    expect("store-transaction-lock-released",!storage.locked,true);
     expect("state-restored",orbit_repository_trust_store_load(
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_OK,true);
     expect("restored-pin-matches",strcmp(loaded.current_fingerprint,pin)==0,true);

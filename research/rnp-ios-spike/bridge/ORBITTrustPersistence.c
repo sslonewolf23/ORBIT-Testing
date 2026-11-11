@@ -83,6 +83,7 @@ static size_t encode_record(const orbit_repository_trust_state *s,const char *re
     put_u32(out+p,s->generation);p+=4U;
     put_u64(out+p,s->pending_activation);p+=8U;
     put_u64(out+p,s->previous_valid_until);p+=8U;
+    put_u64(out+p,s->last_observed_time);p+=8U;
     memset(out+p,0,STORE_REPOSITORY_BYTES);memcpy(out+p,repo,strlen(repo));p+=STORE_REPOSITORY_BYTES;
     memcpy(out+p,s->current_fingerprint,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
     memcpy(out+p,s->previous_fingerprint,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
@@ -96,6 +97,7 @@ static bool decode_record(const uint8_t *in,size_t n,const char *repo,
     size_t p=12U; orbit_repository_trust_state s;memset(&s,0,sizeof(s));
     s.revision=get_u64(in+p);p+=8U;s.generation=get_u32(in+p);p+=4U;
     s.pending_activation=get_u64(in+p);p+=8U;s.previous_valid_until=get_u64(in+p);p+=8U;
+    s.last_observed_time=get_u64(in+p);p+=8U;
     if(!memchr(in+p,0,STORE_REPOSITORY_BYTES) ||
        strcmp((const char *)(in+p),repo)!=0)return false;
     p+=STORE_REPOSITORY_BYTES;

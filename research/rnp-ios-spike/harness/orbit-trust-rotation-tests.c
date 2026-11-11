@@ -163,12 +163,12 @@ int main(int argc, char **argv) {
     expect("unknown-proof-field-rejected", orbit_trust_rotation_proof_parse(
         bad_proof, sizeof(bad_proof) - 1U, &malformed), false);
     const uint8_t duplicate_proof[] =
-        "ORBIT-Key-Rotation: 1\\nRepository: orbit-official\\n"
-        "Current-Fingerprint: 1111111111111111111111111111111111111111\\n"
-        "Current-Fingerprint: 2222222222222222222222222222222222222222\\n"
-        "Next-Fingerprint: 3333333333333333333333333333333333333333\\n"
-        "Activate-At: Tue, 10 Nov 2026 12:00:00 UTC\\n"
-        "Previous-Key-Valid-Until: Tue, 17 Nov 2026 12:00:00 UTC\\n";
+        "ORBIT-Key-Rotation: 1\nRepository: orbit-official\n"
+        "Current-Fingerprint: 1111111111111111111111111111111111111111\n"
+        "Current-Fingerprint: 2222222222222222222222222222222222222222\n"
+        "Next-Fingerprint: 3333333333333333333333333333333333333333\n"
+        "Activate-At: Tue, 10 Nov 2026 12:00:00 UTC\n"
+        "Previous-Key-Valid-Until: Tue, 17 Nov 2026 12:00:00 UTC\n";
     expect("duplicate-rotation-field-rejected", orbit_trust_rotation_proof_parse(
         duplicate_proof, sizeof(duplicate_proof) - 1U, &malformed), false);
     orbit_repository_trust_state exhausted;

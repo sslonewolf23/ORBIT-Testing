@@ -24,9 +24,14 @@ static uint32_t get_u32(const uint8_t *in) {
 static uint64_t get_u64(const uint8_t *in) {
     uint64_t value=0; for(unsigned i=0;i<8U;++i)value=(value<<8)|in[i]; return value;
 }
+static size_t bounded_length(const char *value, size_t capacity) {
+    size_t n=0U;
+    while(n<capacity && value[n]!='\\0') ++n;
+    return n;
+}
 static bool bounded_string(const char *value, size_t capacity, bool empty_allowed) {
     if (!value) return false;
-    size_t n=strnlen(value,capacity);
+    size_t n=bounded_length(value,capacity);
     if (n==capacity || (!empty_allowed && n==0U)) return false;
     for(size_t i=0;i<n;++i) {
         unsigned char c=(unsigned char)value[i];

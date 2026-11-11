@@ -216,6 +216,10 @@ jobs:
           "$BRIDGE_BIN" "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/bridge-trusted.out"
           grep -q '^decision=ACCEPT$' "$RUNNER_TEMP/bridge-trusted.out"
 
+          NORMALIZED_TRUSTED="$(printf '%s' "$TRUSTED" | sed 's/../&:/g; s/:$//' | tr 'A-F' 'a-f')"
+          "$BRIDGE_BIN" "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$NORMALIZED_TRUSTED" | tee "$RUNNER_TEMP/bridge-normalized-fingerprint.out"
+          grep -q '^decision=ACCEPT$' "$RUNNER_TEMP/bridge-normalized-fingerprint.out"
+
           expect_bridge_block() {
             name="$1"; keyring="$2"; message="$3"; expected_fingerprint="${4:-$TRUSTED}"
             set +e

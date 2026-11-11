@@ -220,7 +220,7 @@ printf '%s\n' "$OLD_FPR" > "$OUT/old-signer-primary.fingerprint"
 
 (
   cd "$OUT"
-  sha256sum *.InRelease *.Release *.gpg > SHA256SUMS
+  shasum -a 256 *.InRelease *.Release *.gpg > SHA256SUMS
 )
 
 echo "Generated disposable RNP fixtures in: $OUT"

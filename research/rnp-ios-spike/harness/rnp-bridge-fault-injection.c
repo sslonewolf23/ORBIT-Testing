@@ -61,6 +61,6 @@ int main(int argc,char **argv) {
  }
  free(key);free(doc);free(subdoc);
  if(failures){fprintf(stderr,"decision=FAIL failures=%d\n",failures);return 1;}
- printf("decision=PASS fault_cases=%d\n",ORBIT_FAULT_COUNT+4);
+ printf("decision=PASS fault_cases=%d\n",ORBIT_FAULT_COUNT+3);
  return 0;
 }

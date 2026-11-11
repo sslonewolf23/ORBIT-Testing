@@ -141,7 +141,7 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror \\
             -I"$RUNNER_TEMP/rnp-install/include" \\
             -Iresearch/rnp-ios-spike/bridge \\
-            -c research/rnp-ios-spike/bridge/rnp-bridge-smoke.c \\
+            -c research/rnp-ios-spike/harness/rnp-bridge-smoke.c \\
             -o "$RUNNER_TEMP/rnp-bridge-smoke.o"
           clang++ "$RUNNER_TEMP/rnp-bridge-smoke.o" \\
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \\

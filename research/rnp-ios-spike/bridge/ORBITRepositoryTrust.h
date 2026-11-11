@@ -43,7 +43,9 @@ typedef enum {
     ORBIT_TRUST_GENERATION_EXHAUSTED = 8,
     ORBIT_TRUST_ROTATION_SIGNATURE_REJECTED = 9,
     ORBIT_TRUST_PREVIOUS_KEY_GRACE_ACTIVE = 10,
-    ORBIT_TRUST_TIME_ROLLBACK_REJECTED = 11
+    ORBIT_TRUST_TIME_ROLLBACK_REJECTED = 11,
+    ORBIT_TRUST_RECOVERY_SIGNATURE_REJECTED = 12,
+    ORBIT_TRUST_RECOVERY_POLICY_REJECTED = 13
 } orbit_trust_code;
 
 /* Parse only the dedicated ORBIT rotation statement from authenticated bytes.
@@ -64,6 +66,21 @@ orbit_trust_code orbit_repository_trust_authorize_rotation(
     size_t rotation_inrelease_length,
     const uint8_t *current_public_key_bundle,
     size_t current_bundle_length,
+    const uint8_t *candidate_public_key_bundle,
+    size_t candidate_bundle_length,
+    uint64_t now_seconds);
+
+/* Emergency recovery uses a separately pinned offline recovery key. Its
+ * signed proof must activate immediately with zero previous-key grace. It can
+ * supersede a pending rotation and discard an older previous-key grace pin. */
+orbit_trust_code orbit_repository_trust_authorize_recovery_rotation(
+    orbit_repository_trust_state *state,
+    const char *expected_repository,
+    const uint8_t *recovery_inrelease,
+    size_t recovery_inrelease_length,
+    const uint8_t *recovery_public_key_bundle,
+    size_t recovery_bundle_length,
+    const char *pinned_recovery_primary_fingerprint,
     const uint8_t *candidate_public_key_bundle,
     size_t candidate_bundle_length,
     uint64_t now_seconds);

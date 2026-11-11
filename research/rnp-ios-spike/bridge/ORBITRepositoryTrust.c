@@ -145,6 +145,8 @@ static orbit_trust_code schedule_verified_rotation(
     if (state->generation == UINT32_MAX || state->revision == UINT64_MAX)
         return ORBIT_TRUST_GENERATION_EXHAUSTED;
     if (state->pending_fingerprint[0] != '\0') return ORBIT_TRUST_ROTATION_ALREADY_PENDING;
+    if (state->previous_fingerprint[0] != '\0')
+        return ORBIT_TRUST_PREVIOUS_KEY_GRACE_ACTIVE;
     if (verified_rotation->code != ORBIT_RNP_VERIFY_VALID ||
         !normalize_fingerprint(verified_rotation->primary_fingerprint, signer) ||
         strcmp(signer, state->current_fingerprint) != 0 ||
@@ -227,6 +229,18 @@ bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
     memset(state->pending_fingerprint, 0, sizeof(state->pending_fingerprint));
     state->pending_activation = 0;
     ++state->generation;
+    ++state->revision;
+    return true;
+}
+
+
+bool orbit_repository_trust_prune_previous(orbit_repository_trust_state *state,
+                                           uint64_t now_seconds) {
+    if (!state || state->previous_fingerprint[0] == '\0' ||
+        now_seconds <= state->previous_valid_until ||
+        state->revision == UINT64_MAX) return false;
+    memset(state->previous_fingerprint, 0, sizeof(state->previous_fingerprint));
+    state->previous_valid_until = 0U;
     ++state->revision;
     return true;
 }

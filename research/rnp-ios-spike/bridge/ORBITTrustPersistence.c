@@ -26,7 +26,7 @@ static uint64_t get_u64(const uint8_t *in) {
 }
 static size_t bounded_length(const char *value, size_t capacity) {
     size_t n=0U;
-    while(n<capacity && value[n]!='\\0') ++n;
+    while(n<capacity && value[n]!='\0') ++n;
     return n;
 }
 static bool bounded_string(const char *value, size_t capacity, bool empty_allowed) {

@@ -91,7 +91,7 @@ int main(void) {
     uint8_t old_record[ORBIT_TRUST_STORE_RECORD_MAX],old_mac[ORBIT_TRUST_STORE_MAC_BYTES];
     memcpy(old_record,storage.record,newer_length);memcpy(old_mac,storage.mac,sizeof(old_mac));
     expect("repository-binding-rejected",orbit_repository_trust_store_load(
-        &loaded,"other-repository",&backend)==ORBIT_TRUST_STORE_FORMAT_REJECTED,true);
+        &loaded,"other-repository",&backend)==ORBIT_TRUST_STORE_AUTHENTICATION_FAILED,true);
 
     storage.record[20]=old_record[20];
     storage.record[20]^=0x01U;

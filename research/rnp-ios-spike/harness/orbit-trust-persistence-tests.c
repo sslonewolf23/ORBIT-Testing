@@ -10,6 +10,7 @@ typedef struct {
     uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES];
     bool has_record;
     bool fail_write;
+    bool fail_advance;
 } memory_store;
 
 static unsigned checks=0U,failures=0U;

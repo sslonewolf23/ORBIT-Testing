@@ -40,7 +40,8 @@ typedef enum {
     ORBIT_TRUST_ROTATION_WINDOW_REJECTED = 6,
     ORBIT_TRUST_ROTATION_ALREADY_PENDING = 7,
     ORBIT_TRUST_GENERATION_EXHAUSTED = 8,
-    ORBIT_TRUST_ROTATION_SIGNATURE_REJECTED = 9
+    ORBIT_TRUST_ROTATION_SIGNATURE_REJECTED = 9,
+    ORBIT_TRUST_PREVIOUS_KEY_GRACE_ACTIVE = 10
 } orbit_trust_code;
 
 /* Parse only the dedicated ORBIT rotation statement from authenticated bytes.
@@ -69,6 +70,11 @@ orbit_trust_code orbit_repository_trust_authorize_rotation(
  * authorized only until its signed grace deadline. */
 bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
                                     uint64_t now_seconds);
+/* Remove the previous key only after its signed grace deadline. This is
+ * a persisted trust-state mutation and advances the durable revision. */
+bool orbit_repository_trust_prune_previous(orbit_repository_trust_state *state,
+                                           uint64_t now_seconds);
+
 bool orbit_repository_trust_fingerprint_allowed(
     const orbit_repository_trust_state *state,
     const char *primary_fingerprint,

@@ -95,6 +95,10 @@ int main(void) {
     storage.record[20]^=0x01U;
     expect("record-tampering-rejected",orbit_repository_trust_store_load(
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_AUTHENTICATION_FAILED,true);
+    expect("corruption-never-reinitializes-from-bootstrap-pin",
+        orbit_repository_trust_load_or_initialize(&loaded,repo,
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",&backend)
+            ==ORBIT_TRUST_STORE_AUTHENTICATION_FAILED,true);
     memcpy(storage.record,newer_record,newer_length);memcpy(storage.mac,newer_mac,sizeof(newer_mac));
 
     orbit_repository_trust_state rollback=state;

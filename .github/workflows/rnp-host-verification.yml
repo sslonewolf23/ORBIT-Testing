@@ -208,6 +208,8 @@ jobs:
           expect_block malformed-framing trusted-keyring.gpg malformed-framing.InRelease
           expect_block unsigned trusted-keyring.gpg unsigned.Release
           expect_block weak-hash trusted-keyring.gpg weak-hash.InRelease
+          expect_block future-signature trusted-keyring.gpg future-signature.InRelease
+          expect_block expired-signature trusted-keyring.gpg expired-signature.InRelease
           expect_block multiple-signatures combined-keyring.gpg multiple-signatures.InRelease
           expect_block expired-key expired-keyring.gpg expired-key.InRelease "$(cat "$F/expired-primary.fingerprint")"
           expect_block revoked-key revoked-keyring.gpg revoked-key.InRelease "$(cat "$F/revoked-primary.fingerprint")"
@@ -249,6 +251,8 @@ jobs:
           expect_bridge_block fingerprint-63 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}${TRUSTED:0:23}"
           expect_bridge_block fingerprint-65 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}${TRUSTED:0:25}"
           expect_bridge_block weak-hash trusted-keyring.gpg weak-hash.InRelease
+          expect_bridge_block future-signature trusted-keyring.gpg future-signature.InRelease
+          expect_bridge_block expired-signature trusted-keyring.gpg expired-signature.InRelease
           expect_bridge_block multiple-signatures combined-keyring.gpg multiple-signatures.InRelease
           expect_bridge_block expired-key expired-keyring.gpg expired-key.InRelease "$(cat "$F/expired-primary.fingerprint")"
           expect_bridge_block revoked-key revoked-keyring.gpg revoked-key.InRelease "$(cat "$F/revoked-primary.fingerprint")"

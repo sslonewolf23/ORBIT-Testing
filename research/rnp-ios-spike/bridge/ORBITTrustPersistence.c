@@ -61,7 +61,7 @@ static bool valid_state(const orbit_repository_trust_state *s) {
            s->pending_activation==0U ||
            s->previous_valid_until<s->pending_activation)return false;
     }
-    if(s->previous_fingerprint[0]=='\\0' && s->previous_valid_until!=0U)return false;
+    if(s->previous_fingerprint[0]=='\\0' && s->previous_valid_until!=0U &&\n       s->pending_fingerprint[0]=='\\0')return false;
     return s->revision!=0U;
 }
 static size_t encode_record(const orbit_repository_trust_state *s,const char *repo,
@@ -140,7 +140,7 @@ orbit_trust_store_code orbit_repository_trust_store_save(
         return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
     uint64_t counter=0;if(!backend->read_counter(backend->context,repository_id,&counter))
         return ORBIT_TRUST_STORE_IO_ERROR;
-    if(state->revision<counter||state->revision>counter+1U)
+    if(counter==UINT64_MAX || state->revision<counter||state->revision>counter+1U)
         return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
     uint8_t record[ORBIT_TRUST_STORE_RECORD_MAX],mac[ORBIT_TRUST_STORE_MAC_BYTES];
     memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));

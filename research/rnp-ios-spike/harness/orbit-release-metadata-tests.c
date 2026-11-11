@@ -25,9 +25,9 @@ int main(void){
  const char unsafe[]="Date: x\nSuite: stable\nCodename: orbit\nArchitectures: arm64\nComponents: main\nSHA256:\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 ../Packages\n";
  expect("path-traversal",orbit_release_metadata_parse((const uint8_t*)unsafe,strlen(unsafe),&m),false);
 
- const char truncated_checksum[]="Date: x\\nSuite: stable\\nCodename: orbit\\nArchitectures: arm64\\nComponents: main\\nSHA256:\\n abc\\n";
+ const char truncated_checksum[]="Date: x\nSuite: stable\nCodename: orbit\nArchitectures: arm64\nComponents: main\nSHA256:\n abc\n";
  expect("truncated-checksum-row",orbit_release_metadata_parse((const uint8_t*)truncated_checksum,strlen(truncated_checksum),&m),false);
- const char digest_without_fields[]="Date: x\\nSuite: stable\\nCodename: orbit\\nArchitectures: arm64\\nComponents: main\\nSHA256:\\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n";
+ const char digest_without_fields[]="Date: x\nSuite: stable\nCodename: orbit\nArchitectures: arm64\nComponents: main\nSHA256:\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n";
  expect("checksum-missing-size-and-path",orbit_release_metadata_parse((const uint8_t*)digest_without_fields,strlen(digest_without_fields),&m),false);
 
  const char duplicate_path[]="Date: x\nSuite: stable\nCodename: orbit\nArchitectures: arm64\nComponents: main\nSHA256:\n aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 main/Packages\n bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 2 main/Packages\n";
@@ -52,7 +52,7 @@ int main(void){
  expect("pre-epoch-rejected",orbit_release_parse_timestamp("Thu, 01 Jan 1970 00:00:00 +0100",&parsed),false);
 
 
- const char index_release[]="Date: Tue, 10 Nov 2026 12:00:00 UTC\\nSuite: stable\\nCodename: orbit\\nArchitectures: arm64\\nComponents: main\\nSHA256:\\n ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad 3 main/Packages\\n";
+ const char index_release[]="Date: Tue, 10 Nov 2026 12:00:00 UTC\nSuite: stable\nCodename: orbit\nArchitectures: arm64\nComponents: main\nSHA256:\n ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad 3 main/Packages\n";
  const uint8_t package_index[]={'a','b','c'};
  expect("parse-index-release",orbit_release_metadata_parse((const uint8_t*)index_release,strlen(index_release),&m),true);
  expect("trusted-index-digest",orbit_release_verify_index(&m,ORBIT_RNP_VERIFY_VALID,"main/Packages",package_index,sizeof(package_index)),true);

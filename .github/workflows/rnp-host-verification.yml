@@ -10,9 +10,6 @@ on:
       - "research/rnp-ios-spike/bridge/**"
       - "research/rnp-ios-spike/scripts/**"
 
-concurrency:
-  group: rnp-host-verification-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read

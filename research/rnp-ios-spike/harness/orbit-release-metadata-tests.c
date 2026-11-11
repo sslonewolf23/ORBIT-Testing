@@ -48,6 +48,14 @@ int main(void){
  const uint8_t tampered_index[]={'a','b','d'};
  expect("index-content-tampering",orbit_release_verify_index(&m,ORBIT_RNP_VERIFY_VALID,"main/Packages",tampered_index,sizeof(tampered_index)),false);
 
+ orbit_release_metadata malformed_metadata=m;
+ memset(malformed_metadata.checksums[0].path,'x',sizeof(malformed_metadata.checksums[0].path));
+ expect("unterminated-checksum-path-rejected",orbit_release_verify_index(&malformed_metadata,ORBIT_RNP_VERIFY_VALID,"main/Packages",package_index,sizeof(package_index)),false);
+ malformed_metadata=m;
+ memset(malformed_metadata.checksums[0].sha256,'a',sizeof(malformed_metadata.checksums[0].sha256));
+ expect("unterminated-checksum-digest-rejected",orbit_release_verify_index(&malformed_metadata,ORBIT_RNP_VERIFY_VALID,"main/Packages",package_index,sizeof(package_index)),false);
+
+
  expect("fresh-before-valid-until",orbit_release_freshness_valid(100,200,199,1000,300),true);
  expect("fresh-at-valid-until",orbit_release_freshness_valid(100,200,200,1000,300),false);
  expect("future-date-outside-skew",orbit_release_freshness_valid(401,0,100,1000,300),false);

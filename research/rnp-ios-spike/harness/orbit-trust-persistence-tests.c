@@ -9,6 +9,7 @@ typedef struct {
     size_t length;
     uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES];
     bool has_record;
+    bool fail_read;
     bool fail_write;
     bool fail_advance;
 } memory_store;
@@ -30,6 +31,7 @@ static bool advance_counter(void *ctx,const char *repo,uint64_t expected,uint64_
 static orbit_trust_store_read_result read_record(void *ctx,const char *repo,uint8_t *out,size_t cap,
                         size_t *length,uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES]) {
     (void)repo;memory_store *m=ctx;
+    if(m->fail_read)return ORBIT_TRUST_BACKEND_ERROR;
     if(!m->has_record)return ORBIT_TRUST_BACKEND_NOT_FOUND;
     if(m->length>cap)return ORBIT_TRUST_BACKEND_ERROR;
     memcpy(out,m->record,m->length);*length=m->length;memcpy(mac,m->mac,sizeof(m->mac));
@@ -62,6 +64,10 @@ int main(void) {
     orbit_trust_store_backend backend=backend_for(&storage);
     orbit_repository_trust_state state,loaded;
     expect("initialize-pin",orbit_repository_trust_init(&state,pin),true);
+    storage.fail_read=true;
+    expect("storage-read-error-is-not-missing-record",orbit_repository_trust_store_load(
+        &loaded,repo,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
+    storage.fail_read=false;
     expect("missing-record-distinguished",orbit_repository_trust_store_load(
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_NOT_FOUND,true);
     expect("first-state-saved",orbit_repository_trust_store_save(

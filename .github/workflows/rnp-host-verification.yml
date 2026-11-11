@@ -150,6 +150,11 @@ jobs:
             -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/harness/rnp-bridge-smoke.c \
             -o "$RUNNER_TEMP/rnp-bridge-smoke.o"
+
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-bridge-robustness.c \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness.o"
           clang++ "$RUNNER_TEMP/rnp-bridge-smoke.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
             $(pkg-config --static --libs librnp) \
@@ -158,6 +163,15 @@ jobs:
             $(pkg-config --static --libs json-c) \
             -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
             -o "$RUNNER_TEMP/rnp-bridge-smoke"
+
+          clang++ "$RUNNER_TEMP/rnp-bridge-robustness.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness"
 
       - name: Generate disposable Debian InRelease fixtures
         shell: bash
@@ -207,6 +221,7 @@ jobs:
           expect_block missing-key empty-keyring.gpg valid-trusted.InRelease
           expect_block malformed-keyring malformed-keyring.gpg valid-trusted.InRelease
           expect_block empty-keyring empty-keyring.gpg valid-trusted.InRelease
+          expect_block truncated-keyring truncated-keyring.gpg valid-trusted.InRelease
           set +e
           "$BIN" "$F/trusted-keyring.gpg" "$F/valid-subkey.InRelease" "$OTHER" > "$RUNNER_TEMP/subkey-wrong-primary.out" 2>&1
           subkey_result=$?
@@ -277,6 +292,24 @@ jobs:
           truncate -s 4194305 "$F/oversized-keyring.gpg"
           expect_bridge_block oversized-inrelease trusted-keyring.gpg oversized.InRelease
           expect_bridge_block oversized-keyring oversized-keyring.gpg valid-trusted.InRelease
+
+          "$RUNNER_TEMP/rnp-bridge-robustness" \
+            "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" \
+            "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/bridge-robustness.out"
+          grep -q '^decision=PASS
+
+      - name: Upload host verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rnp-host-inrelease-verification
+          path: |
+            ${{ runner.temp }}/build-rnp-host/
+            ${{ runner.temp }}/rnp-install/
+            ${{ runner.temp }}/fixtures/
+            ${{ runner.temp }}/*.out
+          if-no-files-found: warn
+ "$RUNNER_TEMP/bridge-robustness.out"
 
       - name: Upload host verification evidence
         if: always()

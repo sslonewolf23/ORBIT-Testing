@@ -129,6 +129,52 @@ int main(void) {
         orbit_repository_trust_store_load(&loaded,repo,&backend)==ORBIT_TRUST_STORE_OK &&
         loaded.revision==next.revision,true);
     expect("recovery-completes-monotonic-counter",storage.counter==next.revision,true);
+    memory_store lifecycle_storage;memset(&lifecycle_storage,0,sizeof(lifecycle_storage));
+    orbit_trust_store_backend lifecycle_backend=backend_for(&lifecycle_storage);
+    orbit_repository_trust_state lifecycle_state;
+    expect("lifecycle-bootstrap",orbit_repository_trust_load_or_initialize(
+        &lifecycle_state,repo,pin,&lifecycle_backend)==ORBIT_TRUST_STORE_OK,true);
+    strcpy(lifecycle_state.pending_fingerprint,
+           "ABCDEF0123456789ABCDEF0123456789ABCDEF01");
+    lifecycle_state.pending_activation=100U;
+    lifecycle_state.previous_valid_until=200U;
+    ++lifecycle_state.revision;
+    expect("pending-state-committed",orbit_repository_trust_store_save(
+        &lifecycle_state,repo,&lifecycle_backend)==ORBIT_TRUST_STORE_OK,true);
+    orbit_repository_trust_state before_advance=lifecycle_state;
+    lifecycle_storage.fail_write=true;
+    orbit_trust_store_code lifecycle_store_result=ORBIT_TRUST_STORE_OK;
+    expect("failed-activation-commit-rolls-back-memory",
+        !orbit_repository_trust_advance_and_store(&lifecycle_state,repo,100U,
+            &lifecycle_backend,&lifecycle_store_result) &&
+        lifecycle_store_result==ORBIT_TRUST_STORE_IO_ERROR &&
+        lifecycle_state.revision==before_advance.revision &&
+        strcmp(lifecycle_state.current_fingerprint,before_advance.current_fingerprint)==0 &&
+        strcmp(lifecycle_state.pending_fingerprint,before_advance.pending_fingerprint)==0,true);
+    lifecycle_storage.fail_write=false;
+    expect("activation-commits-atomically",
+        orbit_repository_trust_advance_and_store(&lifecycle_state,repo,100U,
+            &lifecycle_backend,&lifecycle_store_result) &&
+        lifecycle_store_result==ORBIT_TRUST_STORE_OK &&
+        lifecycle_state.generation==1U,true);
+    expect("grace-prune-waits-through-inclusive-deadline",
+        !orbit_repository_trust_prune_previous_and_store(&lifecycle_state,repo,200U,
+            &lifecycle_backend,&lifecycle_store_result),true);
+    lifecycle_storage.fail_write=true;
+    uint64_t before_prune=lifecycle_state.revision;
+    expect("failed-prune-commit-rolls-back-memory",
+        !orbit_repository_trust_prune_previous_and_store(&lifecycle_state,repo,201U,
+            &lifecycle_backend,&lifecycle_store_result) &&
+        lifecycle_store_result==ORBIT_TRUST_STORE_IO_ERROR &&
+        lifecycle_state.revision==before_prune &&
+        lifecycle_state.previous_fingerprint[0]!='\0',true);
+    lifecycle_storage.fail_write=false;
+    expect("expired-key-prune-commits",
+        orbit_repository_trust_prune_previous_and_store(&lifecycle_state,repo,201U,
+            &lifecycle_backend,&lifecycle_store_result) &&
+        lifecycle_store_result==ORBIT_TRUST_STORE_OK &&
+        lifecycle_state.previous_fingerprint[0]=='\0',true);
+
 
     printf("decision=%s checks=%u failures=%u\n",failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;

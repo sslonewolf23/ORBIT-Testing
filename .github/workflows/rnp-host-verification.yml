@@ -34,7 +34,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          required_tools=(clang clang++ cmake ninja pkg-config gpg git)
+          if ! command -v expect >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y expect
+          fi
+          required_tools=(clang clang++ cmake ninja pkg-config gpg git expect)
           for tool in "${required_tools[@]}"; do
             if ! command -v "$tool" >/dev/null 2>&1; then
               echo "::error::Required tool '$tool' is not preinstalled on this runner."

@@ -206,6 +206,18 @@ orbit_trust_store_code orbit_repository_trust_store_save(
 }
 
 
+static void reload_or_invalidate_state(
+    orbit_repository_trust_state *state,const char *repository_id,
+    const orbit_trust_store_backend *backend) {
+    orbit_repository_trust_state recovered;
+    memset(&recovered,0,sizeof(recovered));
+    if(orbit_repository_trust_store_load(&recovered,repository_id,backend)==ORBIT_TRUST_STORE_OK)
+        *state=recovered;
+    else
+        memset(state,0,sizeof(*state));
+    memset(&recovered,0,sizeof(recovered));
+}
+
 orbit_trust_store_code orbit_repository_trust_load_or_initialize(
     orbit_repository_trust_state *state,const char *repository_id,
     const char *bootstrap_primary_fingerprint,
@@ -239,17 +251,14 @@ orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
     size_t candidate_bundle_length,uint64_t now_seconds,
     const orbit_trust_store_backend *backend,orbit_trust_code *trust_result) {
     if(!state||!trust_result)return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
-    orbit_repository_trust_state previous=*state;
     if(!orbit_repository_trust_observe_time(state,now_seconds)) {
         *trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;
-        memset(&previous,0,sizeof(previous));
         return ORBIT_TRUST_STORE_OK;
     }
     orbit_trust_store_code time_saved=orbit_repository_trust_store_save(
         state,repository_id,backend);
     if(time_saved!=ORBIT_TRUST_STORE_OK) {
-        *state=previous;
-        memset(&previous,0,sizeof(previous));
+        reload_or_invalidate_state(state,repository_id,backend);
         return time_saved;
     }
     orbit_repository_trust_state time_committed=*state;
@@ -260,12 +269,11 @@ orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
     if(*trust_result==ORBIT_TRUST_ACCEPTED) {
         orbit_trust_store_code saved=orbit_repository_trust_store_save(
             state,repository_id,backend);
-        if(saved!=ORBIT_TRUST_STORE_OK)*state=time_committed;
-        memset(&previous,0,sizeof(previous));
+        if(saved!=ORBIT_TRUST_STORE_OK)
+            reload_or_invalidate_state(state,repository_id,backend);
         memset(&time_committed,0,sizeof(time_committed));
         return saved;
     }
-    memset(&previous,0,sizeof(previous));
     memset(&time_committed,0,sizeof(time_committed));
     return ORBIT_TRUST_STORE_OK;
 }
@@ -275,18 +283,15 @@ bool orbit_repository_trust_observe_time_and_store(
     uint64_t now_seconds,const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result) {
     if(!state||!store_result)return false;
-    orbit_repository_trust_state previous=*state;
     if(!orbit_repository_trust_observe_time(state,now_seconds)) {
         *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
         return false;
     }
     *store_result=orbit_repository_trust_store_save(state,repository_id,backend);
     if(*store_result!=ORBIT_TRUST_STORE_OK) {
-        *state=previous;
-        memset(&previous,0,sizeof(previous));
+        reload_or_invalidate_state(state,repository_id,backend);
         return false;
     }
-    memset(&previous,0,sizeof(previous));
     return true;
 }
 
@@ -295,18 +300,15 @@ bool orbit_repository_trust_advance_and_store(
     uint64_t now_seconds,const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result) {
     if(!state||!store_result){return false;}
-    orbit_repository_trust_state previous=*state;
     if(!orbit_repository_trust_advance(state,now_seconds)) {
         *store_result=ORBIT_TRUST_STORE_OK;
         return false;
     }
     *store_result=orbit_repository_trust_store_save(state,repository_id,backend);
     if(*store_result!=ORBIT_TRUST_STORE_OK) {
-        *state=previous;
-        memset(&previous,0,sizeof(previous));
+        reload_or_invalidate_state(state,repository_id,backend);
         return false;
     }
-    memset(&previous,0,sizeof(previous));
     return true;
 }
 
@@ -315,17 +317,14 @@ bool orbit_repository_trust_prune_previous_and_store(
     uint64_t now_seconds,const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result) {
     if(!state||!store_result)return false;
-    orbit_repository_trust_state previous=*state;
     if(!orbit_repository_trust_prune_previous(state,now_seconds)) {
         *store_result=ORBIT_TRUST_STORE_OK;
         return false;
     }
     *store_result=orbit_repository_trust_store_save(state,repository_id,backend);
     if(*store_result!=ORBIT_TRUST_STORE_OK) {
-        *state=previous;
-        memset(&previous,0,sizeof(previous));
+        reload_or_invalidate_state(state,repository_id,backend);
         return false;
     }
-    memset(&previous,0,sizeof(previous));
     return true;
 }

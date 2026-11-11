@@ -134,6 +134,17 @@ jobs:
           cmake --build "$RUNNER_TEMP/build-rnp-ios-simulator" --target librnp --parallel 3
           cmake --install "$RUNNER_TEMP/build-rnp-ios-simulator" --component development
 
+      - name: Generate disposable verification fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v gpg >/dev/null 2>&1; then
+            brew install gnupg
+          fi
+          gpg --version | head -n 2
+          bash research/rnp-ios-spike/scripts/generate-inrelease-fixtures.sh "$RUNNER_TEMP/fixtures"
+          (cd "$RUNNER_TEMP/fixtures" && shasum -a 256 -c SHA256SUMS)
+
       - name: Compile and statically link the verifier for iOS Simulator
         shell: bash
         run: |
@@ -172,6 +183,115 @@ jobs:
           xcrun --sdk iphonesimulator lipo -info "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator"
           xcrun --sdk iphonesimulator nm -gU "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator" | grep '_orbit_rnp_verify_inrelease'
           xcrun --sdk iphonesimulator otool -l "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator" | grep -A5 'LC_BUILD_VERSION'
+
+      - name: Package native verifier into an iOS Simulator app
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+          TARGET="arm64-apple-ios${IOS_DEPLOYMENT_TARGET}-simulator"
+          APP="$RUNNER_TEMP/ORBITRNPsimulator.app"
+          mkdir -p "$APP"
+          cp -R "$RUNNER_TEMP/fixtures/." "$APP/"
+          cat > "$APP/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key><string>en</string>
+            <key>CFBundleExecutable</key><string>ORBITRNPsimulator</string>
+            <key>CFBundleIdentifier</key><string>com.orbit.rnp.simulator-tests</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>CFBundleName</key><string>ORBIT RNP Simulator Tests</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>1.0</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>LSRequiresIPhoneOS</key><true/>
+            <key>MinimumOSVersion</key><string>15.0</string>
+            <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+            <key>DTPlatformName</key><string>iphonesimulator</string>
+          </dict>
+          </plist>
+          PLIST
+          swiftc -target "$TARGET" -sdk "$SDK" \
+            -import-objc-header research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.h \
+            -Iresearch/rnp-ios-spike/bridge \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-ios.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/lib" -lbz2 -lz -lc++ \
+            -framework UIKit -framework Foundation \
+            research/rnp-ios-spike/harness/ORBITRNPsimulatorApp.swift \
+            -o "$APP/ORBITRNPsimulator"
+          plutil -lint "$APP/Info.plist"
+          file "$APP/ORBITRNPsimulator"
+          xcrun --sdk iphonesimulator lipo -info "$APP/ORBITRNPsimulator"
+          echo "ORBIT_SIMULATOR_APP=$APP" >> "$GITHUB_ENV"
+
+      - name: Execute verifier tests inside iOS Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/sim-devices.json"
+          DEVICE_ID="$(python3 - "$RUNNER_TEMP/sim-devices.json" <<'PY'
+          import json, sys
+          data = json.load(open(sys.argv[1]))
+          for runtime, devices in data["devices"].items():
+              if "iOS" not in runtime:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and device.get("name", "").startswith("iPhone"):
+                      print(device["udid"])
+                      raise SystemExit(0)
+          raise SystemExit("No available iPhone simulator found")
+          PY
+          )"
+          DEVICE_STATE="$(xcrun simctl list devices | grep "$DEVICE_ID" | sed -E 's/.*\(([^()]*)\)$/\1/')"
+          if [ "$DEVICE_STATE" != "Booted" ]; then
+            xcrun simctl boot "$DEVICE_ID"
+          fi
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          xcrun simctl install "$DEVICE_ID" "$ORBIT_SIMULATOR_APP"
+          xcrun simctl launch "$DEVICE_ID" com.orbit.rnp.simulator-tests
+          CONTAINER="$(xcrun simctl get_app_container "$DEVICE_ID" com.orbit.rnp.simulator-tests data)"
+          REPORT="$CONTAINER/Documents/simulator-results.txt"
+          for attempt in $(seq 1 45); do
+            if [ -s "$REPORT" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ ! -s "$REPORT" ]; then
+            echo "::error::Simulator test app did not produce its result report."
+            xcrun simctl spawn "$DEVICE_ID" log show --last 2m --style compact --predicate 'process == "ORBITRNPsimulator"' || true
+            exit 1
+          fi
+          cp "$REPORT" "$RUNNER_TEMP/simulator-results.txt"
+          cat "$RUNNER_TEMP/simulator-results.txt"
+          grep -q '^result=PASS        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rnp-ios-simulator-arm64-build
+          path: |
+            ${{ runner.temp }}/build-rnp-ios-simulator/
+            ${{ runner.temp }}/rnp-ios-install/
+            ${{ runner.temp }}/rnp-bridge-smoke-ios-simulator
+            ${{ runner.temp }}/simulator-results.txt
+          if-no-files-found: warn
+ "$RUNNER_TEMP/simulator-results.txt"
+          grep -q '^failures=0        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rnp-ios-simulator-arm64-build
+          path: |
+            ${{ runner.temp }}/build-rnp-ios-simulator/
+            ${{ runner.temp }}/rnp-ios-install/
+            ${{ runner.temp }}/rnp-bridge-smoke-ios-simulator
+          if-no-files-found: warn
+ "$RUNNER_TEMP/simulator-results.txt"
 
       - name: Upload iOS Simulator build evidence
         if: always()

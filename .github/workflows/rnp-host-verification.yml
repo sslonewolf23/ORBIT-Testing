@@ -291,6 +291,10 @@ jobs:
           expect_bridge_block missing-signer other-keyring.gpg valid-trusted.InRelease
           expect_bridge_block subkey-wrong-primary trusted-keyring.gpg valid-subkey.InRelease "$OTHER"
           expect_bridge_block malformed-keyring malformed-keyring.gpg valid-trusted.InRelease
+          expect_bridge_block bad-packet-header bad-packet-header.gpg valid-trusted.InRelease
+          expect_bridge_block truncated-packet-header truncated-packet-header.gpg valid-trusted.InRelease
+          expect_bridge_block invalid-packet-length invalid-packet-length.gpg valid-trusted.InRelease
+          expect_bridge_block unsupported-key-algorithm unsupported-key-algorithm.gpg valid-trusted.InRelease
           expect_bridge_block empty-keyring empty-keyring.gpg valid-trusted.InRelease
           expect_bridge_block wrong-primary other-keyring.gpg valid-other.InRelease
           expect_bridge_block tampered-payload trusted-keyring.gpg tampered-payload.InRelease
@@ -406,6 +410,10 @@ jobs:
           cp "$RUNNER_TEMP/fixtures/valid-trusted.InRelease" "$CORPUS/seed-valid-inrelease"
           cp "$RUNNER_TEMP/fixtures/malformed-keyring.gpg" "$CORPUS/seed-malformed-keyring"
           cp "$RUNNER_TEMP/fixtures/truncated-keyring.gpg" "$CORPUS/seed-truncated-keyring"
+          cp "$RUNNER_TEMP/fixtures/bad-packet-header.gpg" "$CORPUS/seed-bad-packet-header"
+          cp "$RUNNER_TEMP/fixtures/truncated-packet-header.gpg" "$CORPUS/seed-truncated-packet-header"
+          cp "$RUNNER_TEMP/fixtures/invalid-packet-length.gpg" "$CORPUS/seed-invalid-packet-length"
+          cp "$RUNNER_TEMP/fixtures/unsupported-key-algorithm.gpg" "$CORPUS/seed-unsupported-key-algorithm"
           cp "$RUNNER_TEMP/fixtures/valid-subkey.InRelease" "$CORPUS/seed-subkey-inrelease"
           "$RUNNER_TEMP/rnp-bridge-fuzz" "$CORPUS" \
             -runs=1500 -max_len=262144 -timeout=5 -rss_limit_mb=2048 \

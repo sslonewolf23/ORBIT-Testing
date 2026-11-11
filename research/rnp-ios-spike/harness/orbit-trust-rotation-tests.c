@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
         &unauthorized_result);
     expect("unauthorized-new-key-cannot-authorize-rotation",
         unauthorized_code == ORBIT_RNP_VERIFY_SIGNER_MISMATCH, true);
-    uint8_t rejected_payload[128];
+    uint8_t rejected_payload[ORBIT_TRUST_ROTATION_MAX_BYTES];
     memset(rejected_payload, 0x5a, sizeof(rejected_payload));
     size_t rejected_payload_length = 99U;
     orbit_rnp_verify_result rejected_result;

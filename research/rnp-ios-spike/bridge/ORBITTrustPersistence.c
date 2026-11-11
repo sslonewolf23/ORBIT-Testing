@@ -186,6 +186,7 @@ orbit_trust_store_code orbit_repository_trust_store_save(
                        constant_time_equal(existing_mac,mac,sizeof(mac));
         memset(existing,0,sizeof(existing));memset(existing_mac,0,sizeof(existing_mac));
         memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));
+        if(existing_status==ORBIT_TRUST_BACKEND_ERROR)return ORBIT_TRUST_STORE_IO_ERROR;
         return identical?ORBIT_TRUST_STORE_OK:ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
     }
     bool written=backend->write_record_atomic(backend->context,repository_id,record,length,mac);

@@ -551,7 +551,7 @@ jobs:
             "$F/revoked-keyring.gpg" "$F/revoked-primary.fingerprint" \
             "$F/recovery-keyring.gpg" "$F/recovery-primary.fingerprint" \
             "$F/valid-emergency-rotation.InRelease" "$F/emergency-activation.timestamp" \
-            "$F/non-immediate-recovery.InRelease" \ \
+            "$F/non-immediate-recovery.InRelease" \
             | tee "$RUNNER_TEMP/trust-rotation.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/trust-rotation.out"
 

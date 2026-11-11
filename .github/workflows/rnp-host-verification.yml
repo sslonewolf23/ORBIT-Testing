@@ -23,6 +23,7 @@ jobs:
       SEXPP_COMMIT: c641a2f36520bab783657a58650d9fda548b9dec
       VCPKG_COMMIT: e54ef0fcc9a82033a61e51002552a910a5d57282
       VCPKG_DISABLE_METRICS: "1"
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
@@ -69,6 +70,12 @@ jobs:
           echo "Applied isolated <cstring> include fix to the temporary RNP checkout."
           echo "Pinned upstream repository and commit remain unchanged."
 
+      - name: Cache pinned vcpkg dependency archives
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-ubuntu-24.04-e54ef0fcc9a82033a61e51002552a910a5d57282-x64-linux-botan3-v1
+
       - name: Build pinned host dependencies
         shell: bash
         run: |
@@ -104,8 +111,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig"
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
           pkg-config --modversion librnp
+          pkg-config --modversion botan-3
+          echo "librnp static link flags:"
+          pkg-config --static --libs librnp
+          echo "Botan static link flags:"
+          pkg-config --static --libs botan-3
           clang -std=c11 -Wall -Wextra -Werror -I"$RUNNER_TEMP/rnp-install/include" \
             -c research/rnp-ios-spike/harness/rnp-inrelease-verify.c \
             -o "$RUNNER_TEMP/rnp-inrelease-verify.o"
@@ -117,6 +129,7 @@ jobs:
           clang++ "$RUNNER_TEMP/rnp-inrelease-verify.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
             $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
             -o "$RUNNER_TEMP/rnp-inrelease-verify"
           clang -std=c11 -Wall -Wextra -Werror \
             -I"$RUNNER_TEMP/rnp-install/include" \
@@ -126,6 +139,7 @@ jobs:
           clang++ "$RUNNER_TEMP/rnp-bridge-smoke.o" \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
             $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
             -o "$RUNNER_TEMP/rnp-bridge-smoke"
 
       - name: Generate disposable Debian InRelease fixtures

@@ -10,6 +10,8 @@ on:
       - ".github/workflows/rnp-ios-simulator.yml"
       - "research/rnp-ios-spike/bridge/**"
       - "research/rnp-ios-spike/harness/rnp-bridge-smoke.c"
+      - "research/rnp-ios-spike/harness/ORBITRNPsimulatorApp.swift"
+      - "research/rnp-ios-spike/scripts/**"
 
 permissions:
   contents: read
@@ -188,6 +190,7 @@ jobs:
           set -euo pipefail
           SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
           TARGET="arm64-apple-ios${IOS_DEPLOYMENT_TARGET}-simulator"
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-ios-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/arm64-ios-simulator/lib/pkgconfig"
           APP="$RUNNER_TEMP/ORBITRNPsimulator.app"
           mkdir -p "$APP"
           cp -R "$RUNNER_TEMP/fixtures/." "$APP/"

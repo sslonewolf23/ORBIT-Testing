@@ -159,7 +159,8 @@ static orbit_trust_code schedule_verified_rotation(
                                                        candidate_bundle_length,
                                                        proof->next_fingerprint))
         return ORBIT_TRUST_CANDIDATE_KEY_REJECTED;
-    if (proof->activate_at < now_seconds ||
+    if (now_seconds < state->last_observed_time ||
+        proof->activate_at < now_seconds ||
         proof->activate_at - now_seconds > ORBIT_TRUST_MAX_ACTIVATION_DELAY_SECONDS ||
         proof->previous_key_valid_until < proof->activate_at ||
         proof->previous_key_valid_until - proof->activate_at >
@@ -234,6 +235,16 @@ bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
 }
 
 
+bool orbit_repository_trust_observe_time(orbit_repository_trust_state *state,
+                                         uint64_t now_seconds) {
+    if (!state || now_seconds < state->last_observed_time) return false;
+    if (now_seconds == state->last_observed_time) return true;
+    if (state->revision == UINT64_MAX) return false;
+    state->last_observed_time = now_seconds;
+    ++state->revision;
+    return true;
+}
+
 bool orbit_repository_trust_prune_previous(orbit_repository_trust_state *state,
                                            uint64_t now_seconds) {
     if (!state || state->previous_fingerprint[0] == '\0' ||
@@ -251,7 +262,7 @@ bool orbit_repository_trust_fingerprint_allowed(
     const char *primary_fingerprint,
     uint64_t now_seconds) {
     char normalized[ORBIT_TRUST_FINGERPRINT_CAPACITY];
-    if (!state || !normalize_fingerprint(primary_fingerprint, normalized)) return false;
+    if (!state || now_seconds != state->last_observed_time ||\n        !normalize_fingerprint(primary_fingerprint, normalized)) return false;
     if (state->pending_fingerprint[0] != '\0' &&
         now_seconds >= state->pending_activation) {
         if (strcmp(normalized, state->pending_fingerprint) == 0) return true;

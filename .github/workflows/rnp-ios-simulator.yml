@@ -118,6 +118,7 @@ jobs:
             -DVCPKG_OVERLAY_TRIPLETS="$RUNNER_TEMP/ios-triplets" \
             -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
             -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_MACOSX_BUNDLE=OFF \
             -DCMAKE_OSX_SYSROOT=iphonesimulator \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET="$IOS_DEPLOYMENT_TARGET" \

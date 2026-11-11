@@ -20,7 +20,7 @@ permissions:
 jobs:
   verify-inrelease-fixtures:
     name: Host C-FFI signature fixture tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       RNP_COMMIT: aad1892e4d8423398a0b973bd0a7e4544c359afc
       SEXPP_COMMIT: c641a2f36520bab783657a58650d9fda548b9dec

@@ -557,6 +557,7 @@ jobs:
         run: |
           set -euo pipefail
           clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
             -Iresearch/rnp-ios-spike/bridge \
             research/rnp-ios-spike/bridge/ORBITTrustPersistence.c \
             research/rnp-ios-spike/harness/orbit-trust-persistence-tests.c \

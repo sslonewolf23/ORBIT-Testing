@@ -138,9 +138,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v gpg >/dev/null 2>&1; then
-            brew install gnupg
-          fi
+          if ! command -v gpg >/dev/null 2>&1; then brew install gnupg; fi
           gpg --version | head -n 2
           bash research/rnp-ios-spike/scripts/generate-inrelease-fixtures.sh "$RUNNER_TEMP/fixtures"
           (cd "$RUNNER_TEMP/fixtures" && shasum -a 256 -c SHA256SUMS)
@@ -249,9 +247,7 @@ jobs:
           PY
           )"
           DEVICE_STATE="$(xcrun simctl list devices | grep "$DEVICE_ID" | sed -E 's/.*\(([^()]*)\)$/\1/')"
-          if [ "$DEVICE_STATE" != "Booted" ]; then
-            xcrun simctl boot "$DEVICE_ID"
-          fi
+          if [ "$DEVICE_STATE" != "Booted" ]; then xcrun simctl boot "$DEVICE_ID"; fi
           xcrun simctl bootstatus "$DEVICE_ID" -b
           xcrun simctl install "$DEVICE_ID" "$ORBIT_SIMULATOR_APP"
           xcrun simctl launch "$DEVICE_ID" com.orbit.rnp.simulator-tests
@@ -268,27 +264,8 @@ jobs:
           fi
           cp "$REPORT" "$RUNNER_TEMP/simulator-results.txt"
           cat "$RUNNER_TEMP/simulator-results.txt"
-          grep -q '^result=PASS        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rnp-ios-simulator-arm64-build
-          path: |
-            ${{ runner.temp }}/build-rnp-ios-simulator/
-            ${{ runner.temp }}/rnp-ios-install/
-            ${{ runner.temp }}/rnp-bridge-smoke-ios-simulator
-            ${{ runner.temp }}/simulator-results.txt
-          if-no-files-found: warn
- "$RUNNER_TEMP/simulator-results.txt"
-          grep -q '^failures=0        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rnp-ios-simulator-arm64-build
-          path: |
-            ${{ runner.temp }}/build-rnp-ios-simulator/
-            ${{ runner.temp }}/rnp-ios-install/
-            ${{ runner.temp }}/rnp-bridge-smoke-ios-simulator
-          if-no-files-found: warn
- "$RUNNER_TEMP/simulator-results.txt"
+          grep -q '^result=PASS$' "$RUNNER_TEMP/simulator-results.txt"
+          grep -q '^failures=0$' "$RUNNER_TEMP/simulator-results.txt"
 
       - name: Upload iOS Simulator build evidence
         if: always()
@@ -299,4 +276,5 @@ jobs:
             ${{ runner.temp }}/build-rnp-ios-simulator/
             ${{ runner.temp }}/rnp-ios-install/
             ${{ runner.temp }}/rnp-bridge-smoke-ios-simulator
+            ${{ runner.temp }}/simulator-results.txt
           if-no-files-found: warn

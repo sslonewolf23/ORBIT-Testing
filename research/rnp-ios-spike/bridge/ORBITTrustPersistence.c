@@ -179,9 +179,9 @@ orbit_trust_store_code orbit_repository_trust_store_save(
         uint8_t existing_mac[ORBIT_TRUST_STORE_MAC_BYTES];
         size_t existing_length=0U;
         memset(existing,0,sizeof(existing));memset(existing_mac,0,sizeof(existing_mac));
-        bool read_ok=backend->read_record(backend->context,repository_id,existing,
-                                          sizeof(existing),&existing_length,existing_mac);
-        bool identical=read_ok && existing_length==length &&
+        orbit_trust_store_read_result existing_status=backend->read_record(
+            backend->context,repository_id,existing,sizeof(existing),&existing_length,existing_mac);
+        bool identical=existing_status==ORBIT_TRUST_BACKEND_OK && existing_length==length &&
                        constant_time_equal(existing,record,length) &&
                        constant_time_equal(existing_mac,mac,sizeof(mac));
         memset(existing,0,sizeof(existing));memset(existing_mac,0,sizeof(existing_mac));

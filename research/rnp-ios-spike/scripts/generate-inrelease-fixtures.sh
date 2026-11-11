@@ -282,6 +282,8 @@ pathlib.Path(sys.argv[3]).write_text(str(int(now.timestamp())) + "\n")
 PY
 gpg --batch --homedir "$WORK/recovery" --local-user "$RECOVERY_FPR" --armor --clearsign \
   --digest-algo SHA256 --output "$OUT/valid-emergency-rotation.InRelease" "$WORK/Emergency-Rotation"
+gpg --batch --homedir "$WORK/recovery" --local-user "$RECOVERY_FPR" --armor --clearsign \
+  --digest-algo SHA256 --output "$OUT/non-immediate-recovery.InRelease" "$WORK/Rotation"
 gpg --batch --homedir "$WORK/trusted" --export "$TRUSTED_FPR" "$OTHER_FPR" > "$OUT/combined-keyring.gpg"
 gpg --batch --homedir "$WORK/expired" --export "$EXPIRED_FPR" > "$OUT/expired-keyring.gpg"
 gpg --batch --homedir "$WORK/revoked" --export "$REVOKED_FPR" > "$OUT/revoked-keyring.gpg"

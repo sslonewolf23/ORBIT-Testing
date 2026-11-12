@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
 	"encoding/pem"
@@ -38,6 +39,14 @@ func loadConfig() (config, error) {
 	if c.appID == "" || c.rootPEM == "" || c.dbPath == "" ||
 		c.tlsCert == "" || c.tlsKey == "" {
 		return c, errors.New("ORBIT_APP_ID, ORBIT_APP_ATTEST_ROOT_PEM, ORBIT_DB_PATH, ORBIT_TLS_CERT and ORBIT_TLS_KEY are required")
+	}
+	appParts := strings.SplitN(c.appID, ".", 2)
+	if len(appParts) != 2 || len(appParts[0]) != 10 || appParts[1] == "" ||
+		strings.TrimSpace(c.appID) != c.appID || len(c.appID) > 255 {
+		return c, errors.New("ORBIT_APP_ID must be the exact 10-character Team ID followed by a bundle identifier")
+	}
+	if !filepath.IsAbs(c.dbPath) {
+		return c, errors.New("ORBIT_DB_PATH must be an absolute path")
 	}
 	if c.environment != "development" && c.environment != "production" {
 		return c, errors.New("ORBIT_APP_ATTEST_ENV must be development or production")
@@ -129,6 +138,7 @@ func main() {
 	mux.HandleFunc("POST /v1/orbit/journal/head", s.head)
 	mux.HandleFunc("POST /v1/orbit/journal/compare-and-swap", s.compareAndSwap)
 	server := &http.Server{Addr: cfg.listen, Handler: securityHeaders(mux),
+		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12},
 		ReadHeaderTimeout: 5*time.Second, ReadTimeout: 10*time.Second,
 		WriteTimeout: 15*time.Second, IdleTimeout: 30*time.Second,
 		MaxHeaderBytes: 16<<10}

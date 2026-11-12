@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS key_recovery_history (
 CREATE TRIGGER IF NOT EXISTS key_recovery_history_no_update
 BEFORE UPDATE ON key_recovery_history BEGIN SELECT RAISE(ABORT, 'recovery history is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS key_recovery_history_no_delete
-BEFORE DELETE ON key_recovery_history BEGIN SELECT RAISE(ABORT, 'recovery history is immutable'); END;
+BEFORE DELETE ON key_recovery_history BEGIN SELECT RAISE(ABORT, 'recovery history is immutable'); END;`
 	if _, err = db.Exec(schema); err != nil { db.Close(); return nil, err }
 	if _, err = db.Exec("ALTER TABLE installations ADD COLUMN recovery_verifier BLOB"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") { db.Close(); return nil, err }
 	if _, err = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS installations_recovery_verifier_unique ON installations(recovery_verifier) WHERE recovery_verifier IS NOT NULL"); err != nil { db.Close(); return nil, err }

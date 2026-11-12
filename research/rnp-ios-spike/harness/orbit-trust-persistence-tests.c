@@ -211,6 +211,10 @@ int main(int argc,char **argv) {
         !orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,49U),true);
     expect("clock-floor-allows-exact-observed-time",
         orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,50U),true);
+    expect("transition-wrapper-rejects-backward-clock",
+        !orbit_repository_trust_advance_and_store(&lifecycle_state,repo,49U,
+            &lifecycle_backend,&lifecycle_store_result) &&
+        lifecycle_store_result==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);
     strcpy(lifecycle_state.pending_fingerprint,
            "ABCDEF0123456789ABCDEF0123456789ABCDEF01");
     lifecycle_state.pending_activation=100U;

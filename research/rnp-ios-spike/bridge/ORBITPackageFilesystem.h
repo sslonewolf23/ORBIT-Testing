@@ -6,6 +6,7 @@
 
 #define ORBIT_FILESYSTEM_COMPONENT_CAPACITY 64U
 #define ORBIT_FILESYSTEM_CHANGE_VERSION 1U
+#define ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY 1025U
 
 typedef enum {
     ORBIT_FILESYSTEM_OK = 0,
@@ -30,6 +31,8 @@ typedef struct {
     char target_name[ORBIT_FILESYSTEM_COMPONENT_CAPACITY];
     char staged_name[ORBIT_FILESYSTEM_COMPONENT_CAPACITY];
     char backup_name[ORBIT_FILESYSTEM_COMPONENT_CAPACITY];
+    char target_parent_path[ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY];
+    char staged_parent_path[ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY];
     bool preimage_exists;
     uint64_t preimage_device;
     uint64_t preimage_inode;
@@ -49,6 +52,18 @@ orbit_filesystem_code orbit_package_filesystem_prepare_remove(
     int target_parent_fd, const char *target_name,
     int backup_parent_fd, const char *backup_name,
     orbit_package_file_change *change);
+
+/* Optional journal locators are relative to the caller's trusted install and
+ * staging roots. Empty strings identify the root directory itself. */
+orbit_filesystem_code orbit_package_filesystem_set_parent_paths(
+    orbit_package_file_change *change,
+    const char *target_parent_relative_path,
+    const char *staged_parent_relative_path);
+
+/* Opens a relative parent path without following symlinks. Caller owns the
+ * returned descriptor and must close it. */
+orbit_filesystem_code orbit_package_filesystem_open_parent_directory(
+    int trusted_root_fd, const char *relative_path, int *directory_fd);
 
 /* Apply, rollback, and finalize are identity-checked and safe to retry.
  * All parent descriptors must be trusted directory handles on the same volume.

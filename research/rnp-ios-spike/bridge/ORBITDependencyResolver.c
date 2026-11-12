@@ -135,13 +135,13 @@ static bool parse_relation_fields(const char *expression,
     strcpy(copy, expression);
     trim(copy);
     char *open = strchr(copy, '(');
-    op[0] = '\\0';
-    version[0] = '\\0';
+    op[0] = '\0';
+    version[0] = '\0';
     if (open) {
         char *close = strchr(open, ')');
-        if (!close || close[1] != '\\0') return false;
-        *open = '\\0';
-        *close = '\\0';
+        if (!close || close[1] != '\0') return false;
+        *open = '\0';
+        *close = '\0';
         char *value = open + 1;
         trim(value);
         char *space = value;
@@ -149,7 +149,7 @@ static bool parse_relation_fields(const char *expression,
         size_t op_length = (size_t)(space - value);
         if (op_length == 0U || op_length >= 3U) return false;
         memcpy(op, value, op_length);
-        op[op_length] = '\\0';
+        op[op_length] = '\0';
         if (strcmp(op, "<<") && strcmp(op, "<=") && strcmp(op, "=") &&
             strcmp(op, ">=") && strcmp(op, ">>")) return false;
         while (isspace((unsigned char)*space)) ++space;
@@ -252,7 +252,7 @@ static bool relation_atom_valid(const char *expression) {
     if(!*copy||!isalnum((unsigned char)copy[0]))return false;
     char *colon=strchr(copy,':');
     if(colon) {
-        *colon='\\0';
+        *colon='\0';
         const char *qualifier=colon+1;
         if(strcmp(qualifier,"native")&&strcmp(qualifier,"any"))return false;
     }
@@ -277,15 +277,13 @@ static bool package_satisfies_dependency(const orbit_package_record *package,
     while (*end && !isspace((unsigned char)*end) && *end != '(') ++end;
     char *colon = NULL;
     for (char *p = normalized; p < end; ++p) if (*p == ':') colon = p;
-    bool allow_foreign = false;
     if (colon) {
-        *colon = '\\0';
+        *colon = '\0';
         const char *qualifier = colon + 1;
         if (strcmp(qualifier, "native") == 0) {
             if (strcmp(package->architecture, "all") != 0 &&
                 strcmp(package->architecture, architecture) != 0) return false;
         } else if (strcmp(qualifier, "any") == 0) {
-            allow_foreign = true;
             if (strcmp(package->architecture, "all") != 0 &&
                 strcmp(package->architecture, architecture) != 0 &&
                 strcmp(package->multi_arch, "allowed") != 0) return false;
@@ -299,7 +297,6 @@ static bool package_satisfies_dependency(const orbit_package_record *package,
                strcmp(package->architecture, architecture) != 0) {
         return false;
     }
-    (void)allow_foreign;
     return package_satisfies_relation(package, normalized, malformed_provides);
 }
 static bool installed_satisfies(resolver *r,const char *expression) {

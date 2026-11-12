@@ -295,6 +295,29 @@ int main(void) {
     backend.store_atomic = memory_store;
     backend.clear_atomic = memory_clear;
 
+    uint8_t nonempty_cleanup_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xC2U };
+    int nonempty_cleanup_fd = -1;
+    EXPECT("nonempty cleanup fixture directory created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, nonempty_cleanup_id, true,
+            &nonempty_cleanup_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("nonempty cleanup sentinel created",
+        nonempty_cleanup_fd >= 0 &&
+        write_file_at(nonempty_cleanup_fd, "preserve", "do-not-delete"));
+    if (nonempty_cleanup_fd >= 0) close(nonempty_cleanup_fd);
+    EXPECT("empty-journal cleanup still refuses a nonempty backup directory",
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, nonempty_cleanup_id) ==
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    nonempty_cleanup_fd = openat(base_fd,
+        "c2000000000000000000000000000000",
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (nonempty_cleanup_fd >= 0) {
+        (void)unlinkat(nonempty_cleanup_fd, "preserve", 0);
+        close(nonempty_cleanup_fd);
+    }
+    (void)unlinkat(base_fd, "c2000000000000000000000000000000", AT_REMOVEDIR);
+
     uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xA1U };
     orbit_package_file_change changes[2];
     EXPECT("successful transaction fixtures created",

@@ -139,6 +139,18 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
         return finish(result, ORBIT_REPOSITORY_VERIFY_INDEX_REJECTED);
     }
 
+    /* Recheck the pin after the expensive signature and digest work so a
+     * concurrent emergency rotation cannot leave a stale authorization. */
+    bool still_authorized = orbit_repository_trust_fingerprint_allowed_and_store(
+        trust_state, repository_id, expected_primary_fingerprint, now_seconds,
+        trust_backend, &result->trust_store_code);
+    if (result->trust_store_code != ORBIT_TRUST_STORE_OK) {
+        return finish(result, ORBIT_REPOSITORY_VERIFY_TRUST_STORE_ERROR);
+    }
+    if (!still_authorized) {
+        return finish(result, ORBIT_REPOSITORY_VERIFY_SIGNER_NOT_TRUSTED);
+    }
+
     result->verified_index_bytes = index_length;
     return finish(result, ORBIT_REPOSITORY_VERIFY_VALID);
 }

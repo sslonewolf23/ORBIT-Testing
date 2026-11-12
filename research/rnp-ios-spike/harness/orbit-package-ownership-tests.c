@@ -71,6 +71,11 @@ int main(void){
  orbit_package_ownership_snapshot sh={shared,3};orbit_package_record pa=pkg("pkg-a","1","iphoneos-arm64");
  EXPECT("shared directory retained on removal",orbit_package_ownership_plan_remove(&sh,&pa,&p)==ORBIT_OWNERSHIP_OK && p.count==1 && strcmp(p.records[0].path,"Library/Shared/a.dylib")==0);
  orbit_package_ownership_plan_destroy(&p);
+ orbit_package_ownership_record foreign_child[]={own("Library/Shared","pkg-a",true),own("Library/Shared/b.dylib","pkg-b",false)};
+ orbit_package_ownership_snapshot child_snapshot={foreign_child,2};
+ EXPECT("directory with foreign descendant is not scheduled for removal",
+   orbit_package_ownership_plan_remove(&child_snapshot,&pa,&p)==ORBIT_OWNERSHIP_OK && p.count==0);
+ orbit_package_ownership_plan_destroy(&p);
  EXPECT("unknown package removal blocked",orbit_package_ownership_plan_remove(&s,&b,&p)==ORBIT_OWNERSHIP_NOT_OWNER);
  orbit_package_ownership_record bad=own("../escape","bad",false);orbit_package_ownership_snapshot bs={&bad,1};
  EXPECT("corrupt database fails closed",orbit_package_ownership_plan_install(&bs,&a,files,2,&p)==ORBIT_OWNERSHIP_CORRUPT_DATABASE);

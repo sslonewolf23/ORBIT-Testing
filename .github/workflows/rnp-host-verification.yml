@@ -741,9 +741,12 @@ jobs:
           set -euo pipefail
           clang -std=c11 -Wall -Wextra -Werror \
             -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
             research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
             research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalCodec.c \
             research/rnp-ios-spike/harness/orbit-package-filesystem-journal-codec-tests.c \
+            -lz -lbz2 -llzma -lzstd \
             -o "$RUNNER_TEMP/orbit-package-filesystem-journal-codec-tests"
           "$RUNNER_TEMP/orbit-package-filesystem-journal-codec-tests" \
             | tee "$RUNNER_TEMP/package-filesystem-journal-codec.out"

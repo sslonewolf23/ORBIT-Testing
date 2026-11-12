@@ -54,8 +54,12 @@ func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 				remote.Head.Digest[:],boolInt(remote.Head.Tombstone),s.now().Unix(),
 				verifier,int64(remote.Sequence))
 		} else {
-			_, err = tx.Exec("UPDATE installations SET recovery_verifier=? WHERE key_id=? AND (recovery_verifier IS NULL OR recovery_verifier=?)",
-				verifier,remote.KeyID,verifier)
+			_, err = tx.Exec(`UPDATE installations SET recovery_verifier=?,public_key=?,
+				assertion_counter=?,revision=?,head_digest=?,tombstone=?,anchor_sequence=?
+				WHERE key_id=? AND (recovery_verifier IS NULL OR recovery_verifier=?)`,
+				verifier,remote.PublicKey,remote.Counter,u64Bytes(remote.Head.Revision),
+				remote.Head.Digest[:],boolInt(remote.Head.Tombstone),int64(remote.Sequence),
+				remote.KeyID,verifier)
 		}
 		if err != nil { return zero, err }
 		return remote,nil

@@ -135,17 +135,21 @@ func (s *service) readSigned(w http.ResponseWriter, r *http.Request) (signedRequ
 	return req, raw, assertion, true
 }
 
-func (s *service) authenticateAssertion(tx interfaceTx, keyID string, request, assertion []byte) (storedInstallation, uint32, error) {
+func (s *service) authenticateAssertion(tx *sql.Tx, keyID string, request, assertion []byte) (storedInstallation, uint32, error) {
 	var result storedInstallation
 	var counter uint32
 	var tomb int
+	var digest []byte
 	err := tx.QueryRow("SELECT public_key,assertion_counter,revision,head_digest,tombstone FROM installations WHERE key_id=?", keyID).
-		Scan(&result.PublicKey, &result.Counter, &result.Revision, &result.Digest, &tomb)
+		Scan(&result.PublicKey, &result.Counter, &result.Revision, &digest, &tomb)
 	if err != nil { return result,0,err }
-	if len(result.Revision) != 8 || len(result.Digest) != 32 { return result,0,errors.New("corrupt witness row") }
+	if len(result.Revision) != 8 || len(digest) != 32 || (tomb != 0 && tomb != 1) {
+		return result,0,errors.New("corrupt witness row")
+	}
+	copy(result.Digest[:], digest)
 	result.Tombstone = tomb == 1
 	result.Head.Revision = binary.BigEndian.Uint64(result.Revision)
-	copy(result.Head.Digest[:], result.Digest[:])
+	result.Head.Digest = result.Digest
 	result.Head.Tombstone = result.Tombstone
 	counter, err = s.verifyAssertion(result.PublicKey, request, assertion)
 	if err != nil || counter <= result.Counter { return result,0,errors.New("assertion counter replay") }

@@ -147,7 +147,13 @@ static orbit_filesystem_code ensure_backup_link(
         return backup == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
                ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
-    if (backup_links != 2) return ORBIT_FILESYSTEM_CONFLICT;
+    if (backup_links != 2) {
+        if (created_backup_link) {
+            (void)unlinkat(backup_parent_fd, change->backup_name, 0);
+            (void)fsync(backup_parent_fd);
+        }
+        return ORBIT_FILESYSTEM_CONFLICT;
+    }
     if (fsync(backup_parent_fd) < 0) return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     return ORBIT_FILESYSTEM_OK;
 }
@@ -319,7 +325,7 @@ orbit_filesystem_code orbit_package_filesystem_apply(
             return backup_links == 1 ? ORBIT_FILESYSTEM_OK :
                    ORBIT_FILESYSTEM_CONFLICT;
         }
-        if (target == FILE_ID_MATCH && backup == FILE_ID_MISSING) {
+        if (target == FILE_ID_MATCH) {
             orbit_filesystem_code linked = ensure_backup_link(
                 target_parent_fd, backup_parent_fd, change);
             if (linked != ORBIT_FILESYSTEM_OK) return linked;

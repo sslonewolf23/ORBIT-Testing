@@ -183,3 +183,14 @@ They are still research code, not wired into a production ORBIT app or
 privileged helper. Real App Attest enrollment, physical-device crash-point
 tests, and independent security review remain required. Installation remains
 disabled.
+
+
+## Package-level install and removal orchestration (feature branch)
+
+`ORBITPackageInstallTransaction.h/.c` now composes the read-only file planner with the authenticated envelope executor for already-staged package manifests. Before planning, it canonical-encodes the caller's installed ownership snapshot and requires an exact byte-for-byte match with the committed ownership payload supplied by the caller. It then builds a complete replacement ownership snapshot and submits the file changes and ownership payload through one enveloped transaction.
+
+The install path covers obsolete regular-file removal and new regular-file replacement. The new removal planner and orchestration path remove only regular files owned by the exact package name + architecture identity. Directory ownership rows are removed from the selected package's snapshot, but directory filesystem objects are never recursively deleted; this avoids removing shared directories or content owned by other packages. Both paths retain the old ownership snapshot until file finalization completes and use the envelope's rollback path on apply failure.
+
+Current planner constraints are deliberate and fail closed: parent directories must already exist, directory creation and file/directory type transitions are unsupported, and removal currently requires at least one owned regular file because the journal codec requires a non-empty change list. The package-level API assumes the caller has already staged and validated the archive, holds the package-wide cross-process lock, has initialized the authenticated EMPTY envelope, and retains the lock through recovery and backup cleanup. It does not run maintainer scripts or enable production package installation.
+
+Host tests now include install orchestration and partial-apply rollback fixtures plus ownership-aware removal planning. The end-to-end install test exposed a failure in its first CI run; the latest harness includes diagnostic return codes so the failing stage can be isolated before calling the integration verified. The iOS workflow cross-compiles this code; physical-device testing and production helper integration remain outstanding.

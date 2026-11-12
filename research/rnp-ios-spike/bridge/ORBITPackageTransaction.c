@@ -19,13 +19,12 @@ static bool journal_valid(const orbit_transaction_journal *j) {
        j->operation_count>ORBIT_TRANSACTION_MAX_OPERATIONS||
        j->revision==0U||j->rollback_cursor>j->operation_count)return false;
     for(uint32_t i=0;i<j->operation_count;++i) {
-        const typeof(j->operations[0]) *op=&j->operations[i];
-        if((op->action!=ORBIT_TRANSACTION_INSTALL&&
-            op->action!=ORBIT_TRANSACTION_REMOVE)||
-           op->state>ORBIT_TRANSACTION_STEP_ROLLED_BACK||
-           !bounded_string(op->name,sizeof(op->name))||
-           !bounded_string(op->version_string,sizeof(op->version_string))||
-           !bounded_string(op->architecture,sizeof(op->architecture)))return false;
+        if((j->operations[i].action!=ORBIT_TRANSACTION_INSTALL&&
+            j->operations[i].action!=ORBIT_TRANSACTION_REMOVE)||
+           j->operations[i].state>ORBIT_TRANSACTION_STEP_ROLLED_BACK||
+           !bounded_string(j->operations[i].name,sizeof(j->operations[i].name))||
+           !bounded_string(j->operations[i].version_string,sizeof(j->operations[i].version_string))||
+           !bounded_string(j->operations[i].architecture,sizeof(j->operations[i].architecture)))return false;
     }
     return true;
 }
@@ -62,9 +61,10 @@ static orbit_transaction_code finish_rollback(
     const orbit_transaction_journal_backend *jb,
     const orbit_transaction_package_backend *pb,
     orbit_transaction_code original) {
-    if(!rollback_journal(j,jb,pb))return ORBIT_TRANSACTION_ROLLBACK_REQUIRED;
-    if(!jb->clear_atomic(jb->context,j->revision))
-        return ORBIT_TRANSACTION_ROLLBACK_REQUIRED;
+    bool rolled_back=rollback_journal(j,jb,pb);
+    bool cleared=rolled_back&&jb->clear_atomic(jb->context,j->revision);
+    free(j);
+    if(!cleared)return ORBIT_TRANSACTION_ROLLBACK_REQUIRED;
     return original;
 }
 orbit_transaction_code orbit_package_transaction_execute(

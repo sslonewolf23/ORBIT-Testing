@@ -275,19 +275,26 @@ int main(void) {
         code==ORBIT_DEPENDENCY_UNSATISFIED);
 
     package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",NULL,NULL,
+            "foreign-lib");
+    code=orbit_dependency_plan_build(&arch_catalog,installed_foreign,1U,
+                                     "arch-app","iphoneos-arm64",&plan);
+    expect("conflict-detects-installed-foreign-architecture",
+        code==ORBIT_DEPENDENCY_CONFLICT);
+
+    package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",NULL,NULL,
             "foreign-lib:any");
     code=orbit_dependency_plan_build(&arch_catalog,installed_foreign,1U,
                                      "arch-app","iphoneos-arm64",&plan);
-    expect("qualified-conflict-detects-installed-foreign-provider",
-        code==ORBIT_DEPENDENCY_CONFLICT);
+    expect("unsupported-conflict-architecture-qualifier-fails-closed",
+        code==ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION);
 
     package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",NULL,NULL,NULL);
     package(&arch_records[1],"foreign-blocker","1.0","iphoneos-arm64e",NULL,NULL,
-            "arch-app:any");
+            "arch-app");
     const orbit_package_record *installed_blocker[]={&arch_records[1]};
     code=orbit_dependency_plan_build(&arch_catalog,installed_blocker,1U,
                                      "arch-app","iphoneos-arm64",&plan);
-    expect("reverse-qualified-conflict-detects-foreign-installed-package",
+    expect("reverse-conflict-detects-foreign-installed-package",
         code==ORBIT_DEPENDENCY_CONFLICT);
 
     orbit_dependency_plan_destroy(&plan);

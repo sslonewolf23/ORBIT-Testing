@@ -21,7 +21,7 @@ func TestAllowedBundleVersionParsing(t *testing.T) {
 	for _, value := range []string{"1.0","2.4.1","build_7"} {
 		if _, ok := got[value]; !ok { t.Fatalf("bundle version %q missing", value) }
 	}
-	for _, raw := range []string{"", "1.0,,2.0", "1.0, 2.0", "1.0,1.0", "../1", "version;bad"} {
+	for _, raw := range []string{"", "1.0,,2.0", "1.0, 2.0", "1.0,1.0", "1.0,2.0", "../1", "version;bad"} {
 		if _, err := parseAllowedBundleVersions(raw); err == nil {
 			t.Fatalf("invalid bundle-version allowlist %q accepted", raw)
 		}

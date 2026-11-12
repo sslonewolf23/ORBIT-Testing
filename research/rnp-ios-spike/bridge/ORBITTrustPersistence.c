@@ -279,6 +279,8 @@ orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
     size_t candidate_bundle_length,uint64_t now_seconds,
     const orbit_trust_store_backend *backend,orbit_trust_code *trust_result) {
     if(!state||!trust_result)return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
+    if(loaded!=ORBIT_TRUST_STORE_OK)return loaded;
     if(!orbit_repository_trust_observe_time(state,now_seconds)) {
         *trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;
         return ORBIT_TRUST_STORE_OK;
@@ -308,6 +310,11 @@ bool orbit_repository_trust_observe_time_and_store(
     uint64_t now_seconds,const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result) {
     if(!state||!store_result)return false;
+    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
+    if(loaded!=ORBIT_TRUST_STORE_OK) {
+        *store_result=loaded;
+        return false;
+    }
     if(!orbit_repository_trust_observe_time(state,now_seconds)) {
         *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
         return false;
@@ -330,6 +337,8 @@ orbit_trust_store_code orbit_repository_trust_authorize_recovery_rotation_and_st
     uint64_t now_seconds,const orbit_trust_store_backend *backend,
     orbit_trust_code *trust_result) {
     if(!state||!trust_result)return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
+    if(loaded!=ORBIT_TRUST_STORE_OK)return loaded;
     if(now_seconds<state->last_observed_time) {
         *trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;
         return ORBIT_TRUST_STORE_OK;
@@ -423,6 +432,11 @@ bool orbit_repository_trust_advance_and_store(
     uint64_t now_seconds,const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result) {
     if(!state||!store_result){return false;}
+    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
+    if(loaded!=ORBIT_TRUST_STORE_OK) {
+        *store_result=loaded;
+        return false;
+    }
     if(now_seconds<state->last_observed_time) {
         *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
         return false;
@@ -448,6 +462,11 @@ bool orbit_repository_trust_prune_previous_and_store(
     uint64_t now_seconds,const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result) {
     if(!state||!store_result)return false;
+    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
+    if(loaded!=ORBIT_TRUST_STORE_OK) {
+        *store_result=loaded;
+        return false;
+    }
     if(now_seconds<state->last_observed_time) {
         *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
         return false;

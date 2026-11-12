@@ -13,7 +13,8 @@ static orbit_transaction_code native_enter(
     const orbit_transaction_native_lock_context *context,
     orbit_bootstrap_lockset *lockset) {
     if (!context || context->bootstrap_root_descriptor < 0 ||
-        !context->profile || !context->observed_admin_relative)
+        !context->profile || !context->bootstrap_root_apt_path ||
+        !context->effective_status_path)
         return ORBIT_TRANSACTION_INVALID_ARGUMENT;
     if (atomic_flag_test_and_set_explicit(
             &g_native_transaction_gate, memory_order_acquire))
@@ -24,9 +25,19 @@ static orbit_transaction_code native_enter(
     for (size_t i = 0; i < ORBIT_BOOTSTRAP_LOCKSET_CAPACITY; ++i)
         lockset->locks[i].descriptor = -1;
 
+    char admin_relative[ORBIT_APT_PATH_CAPACITY];
+    if (!orbit_apt_resolve_admin_directory(
+            context->bootstrap_root_apt_path,
+            context->effective_status_path,
+            admin_relative, sizeof(admin_relative))) {
+        atomic_flag_clear_explicit(&g_native_transaction_gate,
+                                   memory_order_release);
+        return ORBIT_TRANSACTION_INVALID_ARGUMENT;
+    }
+
     orbit_native_lock_code acquired = orbit_bootstrap_lockset_acquire(
         context->bootstrap_root_descriptor, context->profile,
-        context->observed_admin_relative, context->expected_owner, lockset);
+        admin_relative, context->expected_owner, lockset);
     if (acquired == ORBIT_NATIVE_LOCK_OK) return ORBIT_TRANSACTION_OK;
 
     atomic_flag_clear_explicit(&g_native_transaction_gate,

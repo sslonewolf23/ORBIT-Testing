@@ -277,9 +277,15 @@ int main(void) {
     EXPECT("foreign actor replacement fixture",
         remove_if_present(target_fd, "foreign-change") &&
         write_file_at(target_fd, "foreign-change", "foreign"));
-    EXPECT("rollback refuses to delete a foreign replacement",
+    orbit_filesystem_code foreign_rollback_result =
         orbit_package_filesystem_rollback(
-            target_fd, stage_fd, backup_fd, &change) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+            target_fd, stage_fd, backup_fd, &change);
+    if (foreign_rollback_result != ORBIT_FILESYSTEM_RECOVERY_REQUIRED)
+        fprintf(stderr, "foreign rollback returned code=%d (expected=%d)\\n",
+                (int)foreign_rollback_result,
+                (int)ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("rollback refuses to delete a foreign replacement",
+        foreign_rollback_result == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
 
     close(backup_fd);
     close(stage_fd);

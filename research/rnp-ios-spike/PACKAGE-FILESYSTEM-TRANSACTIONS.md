@@ -29,7 +29,7 @@ Apply/rollback/finalize infer progress from target, stage, and backup inode iden
 
 The caller must hold an exclusive package filesystem transaction lock from preparation through finalization or rollback. All parent descriptors must remain open and refer to the intended directories. Staging, target, and backup must be on the same volume. Hard-link support is required; unsupported filesystems fail closed.
 
-The fixed-size change record is a recovery payload, not a self-authenticating journal. The caller must encode and persist it using the authenticated, monotonic journal backend; do not write a raw C struct as an unauthenticated file.
+The fixed-size change record is a recovery payload, not a self-authenticating journal. The caller must encode and persist it using the authenticated, monotonic journal backend; do not write a raw C struct as an unauthenticated file. No adapter currently connects these per-file records to the existing package transaction journal, so durable per-file recovery is not yet integrated.
 
 ## Limitations
 

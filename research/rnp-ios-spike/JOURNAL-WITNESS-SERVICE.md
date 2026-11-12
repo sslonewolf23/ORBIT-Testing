@@ -170,3 +170,20 @@ strict CBOR/resource-limit review, challenge cleanup/rate limiting, current
 Apple root rotation handling, production account/recovery policy, and tests
 against real Apple-issued development and production attestations. Do not
 deploy it as the production trust anchor until those items are reviewed.
+
+
+## Important gap in the current reference implementation
+
+The protocol contract above requires an authenticated account/installation
+binding that survives App Attest key replacement. The current Go reference
+implementation stores one row per `keyID` and does not yet implement that
+account/installation identity. A fresh App Attest key can therefore register
+as a new row with an initial revision-zero head. This is **not sufficient**
+for production rollback resistance across reinstall or key loss.
+
+Likewise, the SQLite database is crash-durable but can be rolled back by
+restoring an older database snapshot. Production requires an independent
+monotonic anchor or a strongly consistent externally protected store. The
+current server is a protocol and verification reference, not a production
+freshness authority. Package installation must remain disabled until both
+gaps are closed and independently reviewed.

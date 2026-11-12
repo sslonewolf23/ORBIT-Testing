@@ -15,6 +15,7 @@ func (m *memoryAnchor) Latest(_ context.Context,id string)(anchorCheckpoint,bool
 }
 func (m *memoryAnchor) Append(_ context.Context,id string,c anchorCheckpoint) error {
 	if err:=validateCheckpoint(c); err!=nil { return err }
+	if c.InstallationID!=id { return errors.New("installation binding mismatch") }
 	prior,ok:=m.items[id]
 	if !ok {
 		if c.Sequence!=1 || c.PreviousHash!=([32]byte{}) { return errAnchorConflict }
@@ -37,9 +38,8 @@ func TestCheckpointHashDetectsMutation(t *testing.T) {
 
 func TestMemoryAnchorRequiresContiguousAppend(t *testing.T) {
 	a:=newMemoryAnchor()
-	c:=anchorCheckpoint{InstallationID:"",Sequence:1,KeyID:"key",PublicKey:[]byte{1},Head:witnessHead{Tombstone:true}}
+	c:=anchorCheckpoint{InstallationID:installationAnchorID([]byte{2}),Sequence:1,KeyID:"key",PublicKey:[]byte{1},Head:witnessHead{Tombstone:true}}
 	c.Hash=checkpointHash(c)
-	if err:=c.InstallationID=installationAnchorID([]byte{2}); c.Hash=checkpointHash(c)
 	if err:=a.Append(context.Background(),c.InstallationID,c); err!=nil { t.Fatal(err) }
 	next:=c
 	next.Sequence=3
@@ -97,7 +97,7 @@ func TestReconcileRejectsLocalStateAheadOfAnchor(t *testing.T) {
 		(key_id,public_key,attestation_digest,assertion_counter,revision,head_digest,tombstone,created_at,recovery_verifier,anchor_sequence)
 		VALUES('key',?,?,1,?,?,0,1,?,2)`,[]byte("pub"),[]byte("att"),u64Bytes(1),head.Digest[:],verifier); err!=nil { t.Fatal(err) }
 	anchor:=newMemoryAnchor()
-	c:=anchorCheckpoint{Sequence:1,KeyID:"key",PublicKey:[]byte("pub"),Counter:1,Head:head}
+	c:=anchorCheckpoint{InstallationID:installationAnchorID(verifier),Sequence:1,KeyID:"key",PublicKey:[]byte("pub"),Counter:1,Head:head}
 	c.Hash=checkpointHash(c); anchor.items[installationAnchorID(verifier)]=c
 	s:=&service{db:db,anchor:anchor}
 	tx,err:=db.Begin(); if err!=nil { t.Fatal(err) }

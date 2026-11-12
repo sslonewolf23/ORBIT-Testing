@@ -139,7 +139,8 @@ int main(void) {
     skipped.journal_length = 0U;
     skipped.pending_ownership = NULL;
     skipped.pending_ownership_length = 0U;
-    skipped.committed_ownership = ownership_new;
+    memset(skipped.transaction_id, 0, sizeof(skipped.transaction_id));
+    skipped.committed_ownership = ownership_old;
     EXPECT("committed state cannot skip pending snapshot promotion",
         orbit_package_transaction_envelope_validate_transition(
             &committed, &skipped) ==
@@ -164,6 +165,10 @@ int main(void) {
             &empty, encoded, 1U, &encoded_length) ==
             ORBIT_TRANSACTION_ENVELOPE_BUFFER_TOO_SMALL);
 
+    EXPECT("restore canonical empty envelope for trailing-byte test",
+        orbit_package_transaction_envelope_encode(
+            &empty, encoded, sizeof(encoded), &encoded_length) ==
+            ORBIT_TRANSACTION_ENVELOPE_OK);
     EXPECT("reject trailing bytes",
         orbit_package_transaction_envelope_decode(
             encoded, encoded_length + 1U, journal_out, sizeof(journal_out),
@@ -183,6 +188,7 @@ int main(void) {
             sizeof(pending_out), &decoded) ==
             ORBIT_TRANSACTION_ENVELOPE_MALFORMED);
 
+    encoded[7] = 0U;
     EXPECT("reject truncated payload",
         orbit_package_transaction_envelope_decode(
             encoded, encoded_length - 1U, journal_out, sizeof(journal_out),

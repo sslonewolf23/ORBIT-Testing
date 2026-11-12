@@ -15,7 +15,7 @@
 static unsigned checks;
 static unsigned failures;
 #define EXPECT(label, condition) do { ++checks; if (!(condition)) { ++failures; \
-    fprintf(stderr, "FAIL: %s\\n", label); } } while (0)
+    fprintf(stderr, "FAIL: %s\n", label); } } while (0)
 
 static void octal(uint8_t *output, size_t length, uint64_t value) {
     char buffer[32];
@@ -67,10 +67,10 @@ static size_t append_ar_member(uint8_t *output, size_t offset,
     char size_text[16];
     (void)snprintf(size_text, sizeof(size_text), "%-10zu", body_length);
     memcpy(header + 48U, size_text, 10U);
-    memcpy(header + 58U, "`\\n", 2U);
+    memcpy(header + 58U, "`\n", 2U);
     if (body_length != 0U) memcpy(header + 60U, body, body_length);
     size_t next = offset + 60U + body_length;
-    if (((60U + body_length) & 1U) != 0U) output[next++] = '\\n';
+    if (((60U + body_length) & 1U) != 0U) output[next++] = '\n';
     return next;
 }
 
@@ -80,9 +80,9 @@ static size_t make_deb(uint8_t *output, const uint8_t *payload,
     size_t control_length = make_tar(control_tar, "control", NULL, 0U);
     size_t data_length = make_tar(
         data_tar, "Library/ORBIT/staged.bin", payload, payload_length);
-    memcpy(output, "!<arch>\\n", 8U);
+    memcpy(output, "!<arch>\n", 8U);
     size_t offset = 8U;
-    static const uint8_t version[] = "2.0\\n";
+    static const uint8_t version[] = "2.0\n";
     offset = append_ar_member(output, offset, "debian-binary", version, 4U);
     offset = append_ar_member(output, offset, "control.tar", control_tar, control_length);
     offset = append_ar_member(output, offset, "data.tar", data_tar, data_length);
@@ -161,11 +161,11 @@ int main(void) {
     EXPECT("symlink stage cleanup succeeds",
         orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK);
     EXPECT("no file escaped into staging base",
-        !path_exists_at(base_fd, "staged.bin"));
+        !path_exists_at(base_fd, "ORBIT"));
 
     close(base_fd);
     EXPECT("temporary base directory removed", rmdir(base_path) == 0);
-    printf("staging_checks=%u failures=%u\\ndecision=%s\\n",
+    printf("staging_checks=%u failures=%u\ndecision=%s\n",
            checks, failures, failures == 0U ? "PASS" : "FAIL");
     return failures == 0U ? EXIT_SUCCESS : EXIT_FAILURE;
 }

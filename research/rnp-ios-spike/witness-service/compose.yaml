@@ -17,6 +17,8 @@ services:
     environment:
       ORBIT_APP_ID: "${ORBIT_APP_ID:?set ORBIT_APP_ID}"
       ORBIT_APP_ATTEST_ENV: "${ORBIT_APP_ATTEST_ENV:?set development or production}"
+      ORBIT_APP_ATTEST_ALLOWED_CATEGORIES: "${ORBIT_APP_ATTEST_ALLOWED_CATEGORIES:?set approved category integers}"
+      ORBIT_APP_ATTEST_ALLOWED_BUNDLE_VERSIONS: "${ORBIT_APP_ATTEST_ALLOWED_BUNDLE_VERSIONS:?set exact approved bundle versions}"
       ORBIT_APP_ATTEST_ROOT_PEM: /run/secrets/apple-app-attest-root.pem
       ORBIT_DB_PATH: /var/lib/orbit/witness.sqlite
       ORBIT_LISTEN: 0.0.0.0:8443

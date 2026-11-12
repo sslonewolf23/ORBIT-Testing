@@ -910,6 +910,8 @@ jobs:
             research/rnp-ios-spike/bridge/ORBITPackageOwnershipCodec.c \
             research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
             research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilePlan.c \
+            research/rnp-ios-spike/bridge/ORBITPackageInstallTransaction.c \
             research/rnp-ios-spike/harness/orbit-package-filesystem-journal-envelope-tests.c \
             -lz -lbz2 -llzma -lzstd \
             -o "$RUNNER_TEMP/orbit-package-filesystem-journal-envelope-tests"

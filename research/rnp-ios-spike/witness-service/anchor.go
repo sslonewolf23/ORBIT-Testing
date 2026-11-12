@@ -126,7 +126,7 @@ func (d *dynamoAnchor) Latest(ctx context.Context, installationID string) (ancho
 		priorRaw, ok := prior.Item["checkpoint"].(*types.AttributeValueMemberB)
 		if !ok { return zero,false,errors.New("anchor predecessor malformed") }
 		var priorCheckpoint anchorCheckpoint
-		if err := json.Unmarshal(priorRaw.Value,&priorCheckpoint); err != nil || validateCheckpoint(priorCheckpoint)!=nil || priorCheckpoint.Hash!=c.PreviousHash {
+		if err := json.Unmarshal(priorRaw.Value,&priorCheckpoint); err != nil || validateCheckpoint(priorCheckpoint)!=nil || priorCheckpoint.InstallationID!=installationID || priorCheckpoint.Sequence!=c.Sequence-1 || priorCheckpoint.Hash!=c.PreviousHash {
 			return zero,false,errors.New("anchor predecessor hash mismatch")
 		}
 	}

@@ -16,7 +16,7 @@ typedef enum {
     ORBIT_JOURNAL_CODEC_MALFORMED
 } orbit_journal_codec_code;
 
-/* Canonical payload codec. Revision is authenticated by the outer ORBJ
+/* Canonical payload codec. Revision is authenticated by the outer ORBE
  * envelope and is supplied separately when decoding. Never persist raw C
  * structs or compiler padding. */
 orbit_journal_codec_code orbit_package_filesystem_journal_encode(

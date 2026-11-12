@@ -80,7 +80,7 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	checkpoint, found, anchorErr := s.anchor.Latest(r.Context(),installationID)
 	if anchorErr != nil { jsonError(w,503,"witness anchor unavailable"); return }
 	if !found {
-		checkpoint = anchorCheckpoint{Sequence:1,KeyID:req.KeyID,
+		checkpoint = anchorCheckpoint{InstallationID:installationID,Sequence:1,KeyID:req.KeyID,
 			PublicKey:append([]byte(nil),publicDER...),Counter:0,
 			Head:witnessHead{Revision:0,Tombstone:true}}
 		checkpoint.Hash = checkpointHash(checkpoint)

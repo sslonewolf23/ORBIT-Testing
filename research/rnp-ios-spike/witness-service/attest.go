@@ -47,6 +47,31 @@ func cborBytes(value any) ([]byte, bool) {
 	return b, ok
 }
 
+func verifyAppAttestExtensions(authData []byte, extensionOffset int) error {
+	if len(authData) < 37 || authData[32]&0x80 == 0 ||
+		extensionOffset < 37 || extensionOffset >= len(authData) {
+		return errors.New("missing App Attest authenticator extensions")
+	}
+	var credentialPublicKey any
+	remaining, err := cbor.UnmarshalFirst(authData[extensionOffset:], &credentialPublicKey)
+	if err != nil || len(remaining) == 0 {
+		return errors.New("malformed authenticator credential key")
+	}
+	var extensions map[string]any
+	if err := cbor.Unmarshal(remaining, &extensions); err != nil {
+		return errors.New("malformed App Attest extension map")
+	}
+	category, ok := extensions["apple_validation_category_01"].(uint64)
+	if !ok || !(category >= 1 && category <= 6 || category == 10) {
+		return errors.New("invalid App Attest validation category")
+	}
+	bundleVersion, ok := extensions["apple_bundle_version_01"].(string)
+	if !ok || bundleVersion == "" || len(bundleVersion) > 128 {
+		return errors.New("invalid App Attest bundle version")
+	}
+	return nil
+}
+
 func parseAuthData(data []byte, requireAttested bool) (rpHash [32]byte, counter uint32, credentialID []byte, err error) {
 	if len(data) < 37 { err = errors.New("short authenticator data"); return }
 	copy(rpHash[:], data[:32])
@@ -107,6 +132,9 @@ func (s *service) verifyAttestation(keyID string, challenge, object []byte) ([]b
 	if s.environment == "development" { expected = []byte("appattestdevelop") }
 	expectedAAGUID := make([]byte, 16); copy(expectedAAGUID, expected)
 	if !bytes.Equal(aaguid, expectedAAGUID) { return nil, errors.New("App Attest environment mismatch") }
+	if err := verifyAppAttestExtensions(envelope.AuthData, 55+len(credentialID)); err != nil {
+		return nil, err
+	}
 	return x509.MarshalPKIXPublicKey(pub)
 }
 
@@ -125,6 +153,9 @@ func (s *service) verifyAssertion(publicDER, clientData, assertion []byte) (uint
 	if err != nil { return 0, err }
 	appHash := sha256.Sum256([]byte(s.appID))
 	if rpHash != appHash { return 0, errors.New("assertion App ID hash mismatch") }
+	if authData[32]&0x80 != 0 {
+		if err := verifyAppAttestExtensions(authData, 37); err != nil { return 0, err }
+	}
 	pubAny, err := x509.ParsePKIXPublicKey(publicDER)
 	if err != nil { return 0, err }
 	pub, ok := pubAny.(*ecdsa.PublicKey)

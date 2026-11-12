@@ -19,7 +19,7 @@ All callback writes are provisional. If archive inspection or staging fails, dis
 - Uses `openat`, `mkdirat`, `fstatat`, `unlinkat`, and descriptor-relative traversal.
 - Uses `O_NOFOLLOW` and `O_DIRECTORY` for directory traversal and file creation.
 - Rejects unsafe archive paths, symlink parents, existing file destinations, non-regular file descriptors, and unexpected link counts.
-- Creates a new private 0700 staging root; implicit directories are 0755.
+- Creates a new private 0700 staging root; implicit directories are 0755. Explicit directory entries must retain owner read/write/execute bits so staged content remains traversable and cleanup can safely enumerate it.
 - Preserves only validated ordinary permission bits (0777); setuid, setgid, and sticky bits are rejected by archive inspection.
 - Writes files with exclusive creation, verifies exact payload offsets and lengths, and fsyncs completed files and relevant directories.
 - Recursive discard uses no-follow metadata inspection and descriptor-relative unlink operations; partial cleanup can be retried.

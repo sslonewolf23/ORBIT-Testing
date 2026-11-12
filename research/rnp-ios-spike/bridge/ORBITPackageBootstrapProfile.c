@@ -1,5 +1,7 @@
 #include "ORBITPackageBootstrapProfile.h"
 
+#include <string.h>
+
 static const orbit_bootstrap_profile profiles[] = {
     {
         ORBIT_BOOTSTRAP_PROCursus_ROOTFUL,
@@ -31,4 +33,12 @@ const orbit_bootstrap_profile *orbit_bootstrap_profile_get(
             return &profiles[i];
     }
     return 0;
+}
+
+int orbit_bootstrap_profile_matches_admin_directory(
+    const orbit_bootstrap_profile *profile, const char *observed_admin_relative) {
+    return profile && profile->dpkg_admin_directory_relative &&
+        observed_admin_relative &&
+        strcmp(profile->dpkg_admin_directory_relative,
+               observed_admin_relative) == 0;
 }

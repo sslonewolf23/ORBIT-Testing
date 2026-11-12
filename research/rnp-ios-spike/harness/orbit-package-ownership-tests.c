@@ -97,7 +97,7 @@ int main(void){
  orbit_package_ownership_record upgrade_old[]={own("Library/ORBIT","old-core",true),own("Library/ORBIT/old.dylib","old-core",false),own("Library/Other/keep.dylib","other",false)};
  orbit_package_ownership_snapshot upgrade_snapshot={upgrade_old,3U};
  orbit_archive_entry upgrade_entries[]={{"Library/ORBIT",0,0U,true},{"Library/ORBIT/new.dylib",4096,0U,false}};
- EXPECT("upgrade builds full snapshot and drops stale paths",orbit_package_ownership_snapshot_install(&upgrade_snapshot,&upgrade,upgrade_entries,2U,replacement_records,ORBIT_OWNERSHIP_MAX_RECORDS,&replacement)==ORBIT_OWNERSHIP_OK&&replacement.count==3U&&strcmp(replacement.records[1].path,"Library/Other/keep.dylib")==0&&strcmp(replacement.records[2].path,"Library/ORBIT/new.dylib")==0);
+ EXPECT("upgrade builds full snapshot and drops stale paths",orbit_package_ownership_snapshot_install(&upgrade_snapshot,&upgrade,upgrade_entries,2U,replacement_records,ORBIT_OWNERSHIP_MAX_RECORDS,&replacement)==ORBIT_OWNERSHIP_OK&&replacement.count==3U&&strcmp(replacement.records[0].path,"Library/Other/keep.dylib")==0&&strcmp(replacement.records[2].path,"Library/ORBIT/new.dylib")==0);
  orbit_package_ownership_record shared_rows[]={own("Library/Shared","pkg-a",true),own("Library/Shared","pkg-b",true),own("Library/Shared/a.dylib","pkg-a",false)};
  orbit_package_ownership_snapshot shared_snapshot={shared_rows,3U};orbit_package_record remove_a=pkg("pkg-a","1","iphoneos-arm64");
  EXPECT("removal drops shared-directory ownership row but preserves other owner",orbit_package_ownership_snapshot_remove(&shared_snapshot,&remove_a,replacement_records,ORBIT_OWNERSHIP_MAX_RECORDS,&replacement)==ORBIT_OWNERSHIP_OK&&replacement.count==1U&&strcmp(replacement.records[0].package_name,"pkg-b")==0);

@@ -34,4 +34,10 @@ bool orbit_packages_index_parse(const uint8_t *data, size_t length,
                                 orbit_packages_index *result);
 void orbit_packages_index_destroy(orbit_packages_index *index);
 
+/* Verify downloaded .deb bytes against the exact Filename/Size/SHA256 record.
+ * Call only after the Packages index itself has passed Release verification. */
+bool orbit_package_verify_artifact(const orbit_package_record *package,
+                                   const uint8_t *artifact_data,
+                                   size_t artifact_length);
+
 #endif

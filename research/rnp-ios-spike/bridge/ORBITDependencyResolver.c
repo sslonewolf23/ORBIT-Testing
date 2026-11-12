@@ -200,13 +200,26 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
     }
     (void)p;return true;
 }
+static bool reverse_conflict(resolver *r,const orbit_package_record *candidate) {
+    for(size_t i=0;i<r->installed_count;++i) {
+        const orbit_package_record *existing=r->installed[i];
+        if(!existing)continue;
+        if(!check_conflict_relation(r,existing,candidate->name))return false;
+    }
+    for(size_t i=0;i<r->available->count;++i) {
+        if(r->state[i]!=1U)continue;
+        const orbit_package_record *existing=&r->available->packages[i];
+        if(!check_conflict_relation(r,existing,candidate->name))return false;
+    }
+    return true;
+}
 static bool resolve_index(resolver *r,size_t index) {
     if(index>=r->available->count){r->error=ORBIT_DEPENDENCY_PACKAGE_NOT_FOUND;return false;}
     if(r->state[index]==2U)return true;
     if(r->state[index]==1U){r->error=ORBIT_DEPENDENCY_CYCLE;return false;}
     const orbit_package_record *p=&r->available->packages[index];
     r->state[index]=1U;
-    if(!check_conflict_relation(r,p,p->conflicts)||
+    if(!reverse_conflict(r,p)||!check_conflict_relation(r,p,p->conflicts)||
        !check_conflict_relation(r,p,p->breaks))return false;
     if(!resolve_relation(r,p->pre_depends)||!resolve_relation(r,p->depends))return false;
     if(r->count>=ORBIT_DEPENDENCY_PLAN_MAX){r->error=ORBIT_DEPENDENCY_LIMIT;return false;}

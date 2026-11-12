@@ -289,7 +289,6 @@ orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
         reload_or_invalidate_state(state,repository_id,backend);
         return time_saved;
     }
-    orbit_repository_trust_state time_committed=*state;
     *trust_result=orbit_repository_trust_authorize_rotation(
         state,expected_repository,rotation_inrelease,rotation_inrelease_length,
         current_public_key_bundle,current_bundle_length,candidate_public_key_bundle,
@@ -299,10 +298,8 @@ orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
             state,repository_id,backend);
         if(saved!=ORBIT_TRUST_STORE_OK)
             reload_or_invalidate_state(state,repository_id,backend);
-        memset(&time_committed,0,sizeof(time_committed));
         return saved;
     }
-    memset(&time_committed,0,sizeof(time_committed));
     return ORBIT_TRUST_STORE_OK;
 }
 

@@ -1,4 +1,5 @@
 #include "ORBITPackageArchive.h"
+#include "ORBITPackageDecompress.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -163,6 +164,83 @@ static orbit_archive_code check_path_collision(const path_set *set,
     return ORBIT_ARCHIVE_OK;
 }
 
+
+typedef struct {
+    uint8_t *bytes;
+    size_t length;
+    size_t capacity;
+} archive_buffer;
+
+static bool collect_decompressed(void *context, const uint8_t *bytes, size_t length) {
+    archive_buffer *buffer = (archive_buffer *)context;
+    if (!buffer || !bytes || length == 0U ||
+        length > (size_t)ORBIT_DECOMPRESS_OUTPUT_MAX - buffer->length)
+        return false;
+    size_t required = buffer->length + length;
+    if (required > buffer->capacity) {
+        size_t capacity = buffer->capacity ? buffer->capacity : ORBIT_DECOMPRESS_CHUNK_BYTES;
+        while (capacity < required) {
+            if (capacity > (size_t)ORBIT_DECOMPRESS_OUTPUT_MAX / 2U) {
+                capacity = (size_t)ORBIT_DECOMPRESS_OUTPUT_MAX;
+                break;
+            }
+            capacity *= 2U;
+        }
+        uint8_t *grown = (uint8_t *)realloc(buffer->bytes, capacity);
+        if (!grown) return false;
+        buffer->bytes = grown;
+        buffer->capacity = capacity;
+    }
+    memcpy(buffer->bytes + buffer->length, bytes, length);
+    buffer->length = required;
+    return true;
+}
+
+static bool member_compression(const char *name, const char *base,
+                               orbit_decompress_format *format, bool *compressed) {
+    *compressed = false;
+    if (strcmp(name, base) == 0) return true;
+    char candidate[32];
+    const char *suffixes[] = { ".gz", ".xz", ".bz2", ".zst" };
+    const orbit_decompress_format formats[] = {
+        ORBIT_DECOMPRESS_GZIP, ORBIT_DECOMPRESS_XZ,
+        ORBIT_DECOMPRESS_BZIP2, ORBIT_DECOMPRESS_ZSTD
+    };
+    for (size_t i = 0U; i < sizeof(suffixes) / sizeof(suffixes[0]); ++i) {
+        if (snprintf(candidate, sizeof(candidate), "%s%s", base, suffixes[i]) > 0 &&
+            strcmp(name, candidate) == 0) {
+            *format = formats[i];
+            *compressed = true;
+            return true;
+        }
+    }
+    return false;
+}
+
+static orbit_archive_code inspect_tar_member(
+    const uint8_t *member, size_t member_length, bool compressed,
+    orbit_decompress_format format, orbit_archive_report *report) {
+    if (!compressed) return inspect_tar(member, member_length, report);
+    archive_buffer decoded = { 0 };
+    uint64_t decoded_length = 0U;
+    orbit_decompress_code code = orbit_package_decompress_stream(
+        format, member, member_length, ORBIT_DECOMPRESS_OUTPUT_MAX,
+        collect_decompressed, &decoded, &decoded_length);
+    orbit_archive_code result;
+    if (code == ORBIT_DECOMPRESS_LIMIT) {
+        result = ORBIT_ARCHIVE_LIMIT;
+    } else if (code != ORBIT_DECOMPRESS_OK ||
+               decoded_length != (uint64_t)decoded.length) {
+        result = ORBIT_ARCHIVE_MALFORMED_TAR;
+    } else {
+        result = inspect_tar(decoded.bytes, decoded.length, report);
+    }
+    free(decoded.bytes);
+    return result;
+}
+
+static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length, orbit_archive_report *report);
+
 static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length,
                                       orbit_archive_report *report) {
     if (!tar || length < TAR_BLOCK_BYTES * 2U ||
@@ -274,8 +352,12 @@ orbit_archive_code orbit_package_archive_inspect_deb(
     size_t offset = 8U;
     const uint8_t *control_tar = NULL;
     size_t control_tar_length = 0U;
+    orbit_decompress_format control_format = ORBIT_DECOMPRESS_GZIP;
+    bool control_compressed = false;
     const uint8_t *data_tar = NULL;
     size_t data_tar_length = 0U;
+    orbit_decompress_format data_format = ORBIT_DECOMPRESS_GZIP;
+    bool data_compressed = false;
     unsigned members = 0U;
     while (offset < deb_length) {
         if (deb_length - offset < AR_HEADER_BYTES) {
@@ -309,7 +391,7 @@ orbit_archive_code orbit_package_archive_inspect_deb(
                 report->code = ORBIT_ARCHIVE_DUPLICATE_PATH; return report->code;
             }
             report->saw_control_archive = true;
-            if (strcmp(name, "control.tar") != 0) {
+            if (!member_compression(name, "control.tar", &control_format, &control_compressed)) {
                 report->code = ORBIT_ARCHIVE_UNSUPPORTED_COMPRESSION; return report->code;
             }
             control_tar = body;
@@ -319,7 +401,7 @@ orbit_archive_code orbit_package_archive_inspect_deb(
                 report->code = ORBIT_ARCHIVE_DUPLICATE_PATH; return report->code;
             }
             report->saw_data_archive = true;
-            if (strcmp(name, "data.tar") != 0) {
+            if (!member_compression(name, "data.tar", &data_format, &data_compressed)) {
                 report->code = ORBIT_ARCHIVE_UNSUPPORTED_COMPRESSION; return report->code;
             }
             data_tar = body;
@@ -340,10 +422,10 @@ orbit_archive_code orbit_package_archive_inspect_deb(
         !report->saw_data_archive || !control_tar || !data_tar) {
         report->code = ORBIT_ARCHIVE_MISSING_COMPONENT; return report->code;
     }
-    orbit_archive_report control_report;
-    memset(&control_report, 0, sizeof(control_report));
-    report->code = inspect_tar(control_tar, control_tar_length, &control_report);
+    report->code = inspect_tar_member(control_tar, control_tar_length,
+                                      control_compressed, control_format, report);
     if (report->code != ORBIT_ARCHIVE_OK) return report->code;
-    report->code = inspect_tar(data_tar, data_tar_length, report);
+    report->code = inspect_tar_member(data_tar, data_tar_length,
+                                      data_compressed, data_format, report);
     return report->code;
 }

@@ -583,10 +583,11 @@ jobs:
             -o "$RUNNER_TEMP/orbit-trust-persistence-tests"
           F="$RUNNER_TEMP/fixtures"
           "$RUNNER_TEMP/orbit-trust-persistence-tests" \
-            "$F/trusted-primary.fingerprint" "$F/recovery-keyring.gpg" \
+            "$F/trusted-primary.fingerprint" "$F/trusted-keyring.gpg" \
+            "$F/valid-rotation.InRelease" "$F/recovery-keyring.gpg" \
             "$F/recovery-primary.fingerprint" "$F/valid-emergency-rotation.InRelease" \
             "$F/other-keyring.gpg" "$F/other-primary.fingerprint" \
-            "$F/emergency-activation.timestamp" \
+            "$F/emergency-activation.timestamp" 
             | tee "$RUNNER_TEMP/trust-persistence.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/trust-persistence.out"
 

@@ -202,6 +202,13 @@ static bool package_satisfies_relation(const orbit_package_record *package,
     }
     char list[RELATION_MAX];
     strcpy(list, package->provides);
+    /* strtok_r skips empty fields; reject malformed comma lists explicitly. */
+    size_t provides_length = strlen(list);
+    if (list[0] == ',' || list[provides_length - 1U] == ',' ||
+        strstr(list, ",,") != NULL) {
+        if (malformed_provides) *malformed_provides = true;
+        return false;
+    }
     char *save = NULL;
     for (char *item = strtok_r(list, ",", &save); item;
          item = strtok_r(NULL, ",", &save)) {

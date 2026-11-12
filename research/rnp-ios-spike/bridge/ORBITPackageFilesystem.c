@@ -290,6 +290,11 @@ orbit_filesystem_code orbit_package_filesystem_open_parent_directory(
         !valid_parent_path(relative_path, ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     *directory_fd = -1;
+    struct stat root_status;
+    if (fstat(trusted_root_fd, &root_status) < 0)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    if (!S_ISDIR(root_status.st_mode))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     int current_fd = fcntl(trusted_root_fd, F_DUPFD_CLOEXEC, 0);
     if (current_fd < 0) return ORBIT_FILESYSTEM_IO_ERROR;
     if (relative_path[0] == '\0') {

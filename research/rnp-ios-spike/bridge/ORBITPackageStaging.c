@@ -347,7 +347,8 @@ orbit_staging_code orbit_package_staging_discard(
             staging->base_directory_fd, staging->staging_name,
             O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
         if (staging->staging_directory_fd < 0) {
-            if (errno != ENOENT) return ORBIT_STAGING_IO_ERROR;
+            if (errno != ENOENT || fsync(staging->base_directory_fd) < 0)
+                return ORBIT_STAGING_IO_ERROR;
             staging->staging_name[0] = '\0';
             staging->complete = false;
             staging->failed = false;
@@ -364,6 +365,8 @@ orbit_staging_code orbit_package_staging_discard(
     if (close(root_fd) < 0) return ORBIT_STAGING_IO_ERROR;
     if (unlinkat(staging->base_directory_fd, staging->staging_name,
                  AT_REMOVEDIR) < 0 && errno != ENOENT)
+        return ORBIT_STAGING_IO_ERROR;
+    if (fsync(staging->base_directory_fd) < 0)
         return ORBIT_STAGING_IO_ERROR;
     staging->staging_name[0] = '\0';
     staging->complete = false;

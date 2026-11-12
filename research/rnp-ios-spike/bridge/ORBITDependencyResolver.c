@@ -209,11 +209,6 @@ static bool resolve_relation(resolver *r,const char *relation) {
                 satisfied=true;break;
             }
             if(r->error!=ORBIT_DEPENDENCY_OK)return false;
-            /* Only simple package/version relations are supported for now. */
-            if(strchr(alt,'[')||strchr(alt,']')||strchr(alt,':')||
-               (strchr(alt,'<')==NULL&&strchr(alt,'>')==NULL&&strchr(alt,'(')!=NULL)) {
-                r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;
-            }
         }
         if(!satisfied){r->error=ORBIT_DEPENDENCY_UNSATISFIED;return false;}
     }
@@ -240,11 +235,12 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
             if(relation_satisfied(q,copy)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
         }
         for(size_t i=0;i<r->available->count;++i) {
-            if(r->state[i]!=1U)continue;
+            if(r->state[i]!=1U||!package_arch_ok(&r->available->packages[i],r->architecture))continue;
             char copy[RELATION_MAX];strcpy(copy,item);
             if(relation_satisfied(&r->available->packages[i],copy)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
         }
         for(size_t i=0;i<r->count;++i) {
+            if(!package_arch_ok(r->ordered[i],r->architecture))continue;
             char copy[RELATION_MAX];strcpy(copy,item);
             if(relation_satisfied(r->ordered[i],copy)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
         }
@@ -286,10 +282,12 @@ static bool record_rejects_candidate(resolver *r,
 static bool reverse_conflict(resolver *r,const orbit_package_record *candidate) {
     for(size_t i=0;i<r->installed_count;++i) {
         const orbit_package_record *existing=r->installed[i];
-        if(existing&&record_rejects_candidate(r,existing,candidate))return false;
+        if(existing&&package_arch_ok(existing,r->architecture)&&
+           record_rejects_candidate(r,existing,candidate))return false;
     }
     for(size_t i=0;i<r->available->count;++i) {
-        if(r->state[i]!=1U)continue;
+        if(r->state[i]!=1U||
+           !package_arch_ok(&r->available->packages[i],r->architecture))continue;
         if(record_rejects_candidate(r,&r->available->packages[i],candidate))return false;
     }
     return true;

@@ -20,7 +20,8 @@ typedef struct {
  * Debian APT's debSystem::Lock ordering. Missing lock files are created
  * exactly as APT does (O_CREAT, 0640, F_SETLK). */
 orbit_native_lock_code orbit_bootstrap_lockset_acquire(
-    int root_fd, const orbit_bootstrap_profile *profile, uid_t expected_owner,
+    int root_fd, const orbit_bootstrap_profile *profile,
+    const char *observed_admin_relative, uid_t expected_owner,
     orbit_bootstrap_lockset *lockset);
 
 /* Releases in reverse acquisition order and closes the dpkg admin directory. */

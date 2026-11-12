@@ -90,7 +90,9 @@ int main(void) {
     size_t length = make_deb(deb, "./Library/ORBIT/example.dylib", '0');
     EXPECT("valid uncompressed deb accepted",
            orbit_package_archive_inspect_deb(deb, length, &report) == ORBIT_ARCHIVE_OK);
-    EXPECT("manifest entry counted", report.entries == 1U);\n    EXPECT("normalized path remains safe", orbit_package_archive_path_is_safe("Library/ORBIT/example.dylib"));
+    EXPECT("manifest entry counted", report.entries == 1U);
+    EXPECT("normalized path remains safe",
+           orbit_package_archive_path_is_safe("Library/ORBIT/example.dylib"));
     EXPECT("required deb members present",
            report.saw_debian_binary && report.saw_control_archive && report.saw_data_archive);
 

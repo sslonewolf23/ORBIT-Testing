@@ -59,7 +59,9 @@ static bool valid_state(const orbit_repository_trust_state *s) {
        !valid_fingerprint_or_empty(s->previous_fingerprint) ||
        !valid_fingerprint_or_empty(s->pending_fingerprint)) return false;
     size_t current=strlen(s->current_fingerprint);
-    if((current!=40U&&current!=64U))return false;
+    size_t recovery=strlen(s->recovery_fingerprint);
+    if((current!=40U&&current!=64U)||(recovery!=40U&&recovery!=64U)||
+       strcmp(s->current_fingerprint,s->recovery_fingerprint)==0)return false;
     if(s->pending_fingerprint[0]=='\0') {
         if(s->pending_activation!=0U)return false;
     } else {
@@ -70,9 +72,11 @@ static bool valid_state(const orbit_repository_trust_state *s) {
     if(s->previous_fingerprint[0]=='\0' && s->previous_valid_until!=0U &&
        s->pending_fingerprint[0]=='\0')return false;
     if(s->previous_fingerprint[0]!='\0' &&
-       strcmp(s->previous_fingerprint,s->current_fingerprint)==0)return false;
+       (strcmp(s->previous_fingerprint,s->current_fingerprint)==0||
+        strcmp(s->previous_fingerprint,s->recovery_fingerprint)==0))return false;
     if(s->pending_fingerprint[0]!='\0' &&
-       s->previous_fingerprint[0]!='\0')return false;
+       (strcmp(s->pending_fingerprint,s->recovery_fingerprint)==0||
+        s->previous_fingerprint[0]!='\0'))return false;
     return s->revision!=0U;
 }
 static size_t encode_record(const orbit_repository_trust_state *s,const char *repo,

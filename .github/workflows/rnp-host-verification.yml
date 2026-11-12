@@ -674,6 +674,22 @@ jobs:
           "$RUNNER_TEMP/orbit-package-ownership-tests" | tee "$RUNNER_TEMP/package-ownership.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-ownership.out"
 
+      - name: Compile and run canonical ownership database codec tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnership.c \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnershipCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/harness/orbit-package-ownership-codec-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-ownership-codec-tests"
+          "$RUNNER_TEMP/orbit-package-ownership-codec-tests" | tee "$RUNNER_TEMP/package-ownership-codec.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-ownership-codec.out"
+
       - name: Compile and run package archive inspection tests
         shell: bash
         run: |

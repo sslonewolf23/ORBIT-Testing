@@ -126,8 +126,7 @@ int main(int argc, char **argv) {
     expect("independent-recovery-root-pinned-at-enrollment",
         strcmp(state.recovery_fingerprint,recovery_fpr)==0,true);
     expect("offline-recovery-root-is-not-a-repository-signer",
-        orbit_repository_trust_fingerprint_allowed(&state,recovery_fpr,
-            (uint64_t)time(NULL)),false);
+        orbit_repository_trust_fingerprint_allowed(&state,recovery_fpr,0U),false);
     orbit_repository_trust_state recovery_as_candidate;
     expect("recovery-root-cannot-be-enrolled-as-next-signing-key",
         orbit_repository_trust_init(&recovery_as_candidate,trusted_fpr,candidate_fpr),true);

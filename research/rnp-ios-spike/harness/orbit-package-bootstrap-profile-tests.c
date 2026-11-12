@@ -41,6 +41,12 @@ int main(void) {
         dopamine->dpkg_admin_directory_relative[0] == 'v');
     EXPECT("unknown profile rejected",
         orbit_bootstrap_profile_get((orbit_bootstrap_profile_id)999) == NULL);
+    EXPECT("active APT dpkg directory matches profile",
+        rootless && orbit_bootstrap_profile_matches_admin_directory(
+            rootless, "var/lib/dpkg"));
+    EXPECT("APT status-directory override is rejected",
+        rootless && !orbit_bootstrap_profile_matches_admin_directory(
+            rootless, "private/var/lib/dpkg"));
 
     printf("bootstrap_profile_checks_passed=%u\nbootstrap_profile_checks_failed=%u\n",
            passed, failed);

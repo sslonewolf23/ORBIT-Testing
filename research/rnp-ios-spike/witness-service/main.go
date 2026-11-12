@@ -117,10 +117,31 @@ BEFORE UPDATE ON key_recovery_history BEGIN SELECT RAISE(ABORT, 'recovery histor
 CREATE TRIGGER IF NOT EXISTS key_recovery_history_no_delete
 BEFORE DELETE ON key_recovery_history BEGIN SELECT RAISE(ABORT, 'recovery history is immutable'); END;`
 	if _, err = db.Exec(schema); err != nil { db.Close(); return nil, err }
-	if _, err = db.Exec("ALTER TABLE installations ADD COLUMN recovery_verifier BLOB"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") { db.Close(); return nil, err }
+	if err = ensureRecoveryVerifierColumn(db); err != nil { db.Close(); return nil, err }
 	if _, err = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS installations_recovery_verifier_unique ON installations(recovery_verifier) WHERE recovery_verifier IS NOT NULL"); err != nil { db.Close(); return nil, err }
 	if err = os.Chmod(path, 0600); err != nil { db.Close(); return nil, err }
 	return db, nil
+}
+
+func ensureRecoveryVerifierColumn(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(installations)")
+	if err != nil { return err }
+	found := false
+	for rows.Next() {
+		var cid, notNull, primary int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primary); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "recovery_verifier" { found = true }
+	}
+	if err := rows.Err(); err != nil { rows.Close(); return err }
+	if err := rows.Close(); err != nil { return err }
+	if found { return nil }
+	_, err = db.Exec("ALTER TABLE installations ADD COLUMN recovery_verifier BLOB")
+	return err
 }
 
 func loadRoots(path string) (*x509.CertPool, error) {

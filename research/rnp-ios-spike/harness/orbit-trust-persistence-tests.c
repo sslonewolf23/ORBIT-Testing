@@ -131,6 +131,8 @@ int main(int argc,char **argv) {
     expect("state-restored",orbit_repository_trust_store_load(
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_OK,true);
     expect("restored-pin-matches",strcmp(loaded.current_fingerprint,pin)==0,true);
+    expect("independent-recovery-pin-survives-record-reload",
+        strcmp(loaded.recovery_fingerprint,recovery_pin)==0,true);
     expect("restored-revision-matches",loaded.revision==state.revision,true);
     storage.locked=true;
     expect("store-lock-contention-fails-closed",
@@ -291,10 +293,12 @@ int main(int argc,char **argv) {
         normal_decision==ORBIT_TRUST_ACCEPTED &&
         strcmp(normal_state.current_fingerprint,trusted_fpr)==0 &&
         strcmp(normal_state.pending_fingerprint,candidate_fpr)==0 &&
+        strcmp(normal_state.recovery_fingerprint,recovery_fpr)==0 &&
         normal_state.pending_activation>normal_now,true);
     expect("normal-pending-rotation-survives-reload",
         orbit_repository_trust_store_load(&normal_reloaded,repo,&normal_backend)==ORBIT_TRUST_STORE_OK &&
         strcmp(normal_reloaded.pending_fingerprint,candidate_fpr)==0 &&
+        strcmp(normal_reloaded.recovery_fingerprint,recovery_fpr)==0 &&
         normal_reloaded.last_observed_time==normal_now,true);
     expect("normal-new-key-not-accepted-before-activation",
         !orbit_repository_trust_fingerprint_allowed_and_store(
@@ -323,6 +327,7 @@ int main(int argc,char **argv) {
     expect("persisted-emergency-pin-survives-reload",
         orbit_repository_trust_store_load(&reloaded_recovery_state,repo,&recovery_backend)==ORBIT_TRUST_STORE_OK &&
         strcmp(reloaded_recovery_state.current_fingerprint,candidate_fpr)==0 &&
+        strcmp(reloaded_recovery_state.recovery_fingerprint,recovery_fpr)==0 &&
         reloaded_recovery_state.last_observed_time==recovery_now,true);
     expect("persisted-recovery-lookup-enforces-new-key",
         orbit_repository_trust_fingerprint_allowed_and_store(
@@ -351,6 +356,7 @@ int main(int argc,char **argv) {
     expect("failed-emergency-commit-reloads-last-durable-pin",
         strcmp(failed_recovery_state.current_fingerprint,trusted_fpr)==0 &&
         failed_recovery_state.pending_fingerprint[0]=='\0' &&
+        strcmp(failed_recovery_state.recovery_fingerprint,recovery_fpr)==0 &&
         failed_recovery_state.last_observed_time==0U,true);
 
     memory_store verify_storage;memset(&verify_storage,0,sizeof(verify_storage));

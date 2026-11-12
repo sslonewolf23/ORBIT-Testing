@@ -524,8 +524,6 @@ int main(void) {
     free(install_committed_buffer);
     free(install_pending_buffer);
     free(install_memory.payload);
-    close(stage_library);
-    close(install_library);
     EXPECT("end-to-end backup directory cleaned",
         unlinkat(root_fd, "backup-install", AT_REMOVEDIR) == 0);
     EXPECT("end-to-end install tree cleaned",
@@ -615,6 +613,8 @@ int main(void) {
     EXPECT("end-to-end rollback staged fixtures cleaned",
         unlinkat(stage_library, "orbit-first.dylib", 0) == 0 &&
         unlinkat(stage_library, "orbit-second.dylib", 0) == 0);
+    close(stage_library);
+    close(install_library);
     close(stage_library);
     close(install_library);
     EXPECT("end-to-end package directories removed",

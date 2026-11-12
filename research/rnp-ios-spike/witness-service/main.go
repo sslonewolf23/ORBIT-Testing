@@ -24,6 +24,7 @@ type config struct {
 	listen     string
 	tlsCert    string
 	tlsKey     string
+	recoveryPepper string
 }
 
 func loadConfig() (config, error) {
@@ -35,16 +36,18 @@ func loadConfig() (config, error) {
 		listen: strings.TrimSpace(os.Getenv("ORBIT_LISTEN")),
 		tlsCert: strings.TrimSpace(os.Getenv("ORBIT_TLS_CERT")),
 		tlsKey: strings.TrimSpace(os.Getenv("ORBIT_TLS_KEY")),
+		recoveryPepper: strings.TrimSpace(os.Getenv("ORBIT_RECOVERY_PEPPER")),
 	}
 	if c.appID == "" || c.rootPEM == "" || c.dbPath == "" ||
-		c.tlsCert == "" || c.tlsKey == "" {
-		return c, errors.New("ORBIT_APP_ID, ORBIT_APP_ATTEST_ROOT_PEM, ORBIT_DB_PATH, ORBIT_TLS_CERT and ORBIT_TLS_KEY are required")
+		c.tlsCert == "" || c.tlsKey == "" || c.recoveryPepper == "" {
+		return c, errors.New("ORBIT_APP_ID, ORBIT_APP_ATTEST_ROOT_PEM, ORBIT_DB_PATH, ORBIT_TLS_CERT, ORBIT_TLS_KEY and ORBIT_RECOVERY_PEPPER are required")
 	}
 	appParts := strings.SplitN(c.appID, ".", 2)
 	if len(appParts) != 2 || len(appParts[0]) != 10 || appParts[1] == "" ||
 		strings.TrimSpace(c.appID) != c.appID || len(c.appID) > 255 {
 		return c, errors.New("ORBIT_APP_ID must be the exact 10-character Team ID followed by a bundle identifier")
 	}
+	if len(c.recoveryPepper) < 32 { return c, errors.New("ORBIT_RECOVERY_PEPPER must contain at least 32 characters of random secret material") }
 	if !filepath.IsAbs(c.dbPath) {
 		return c, errors.New("ORBIT_DB_PATH must be an absolute path")
 	}
@@ -90,9 +93,27 @@ CREATE TABLE IF NOT EXISTS installations (
   revision BLOB NOT NULL,
   head_digest BLOB NOT NULL,
   tombstone INTEGER NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  recovery_verifier BLOB
+);
+CREATE TABLE IF NOT EXISTS recovery_challenges (
+  digest BLOB PRIMARY KEY NOT NULL,
+  old_key_id TEXT NOT NULL,
+  new_key_id TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  consumed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS key_recovery_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  old_key_id TEXT NOT NULL,
+  new_key_id TEXT NOT NULL UNIQUE,
+  recovered_at INTEGER NOT NULL,
+  prior_revision BLOB NOT NULL,
+  prior_head_digest BLOB NOT NULL,
+  prior_tombstone INTEGER NOT NULL
 );`
 	if _, err = db.Exec(schema); err != nil { db.Close(); return nil, err }
+	if _, err = db.Exec("ALTER TABLE installations ADD COLUMN recovery_verifier BLOB"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") { db.Close(); return nil, err }
 	if err = os.Chmod(path, 0600); err != nil { db.Close(); return nil, err }
 	return db, nil
 }
@@ -124,7 +145,7 @@ func main() {
 	defer db.Close()
 
 	s := &service{db: db, appID: cfg.appID, environment: cfg.environment,
-		roots: roots, now: time.Now}
+		roots: roots, now: time.Now, recoveryPepper: []byte(cfg.recoveryPepper)}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(); err != nil {
@@ -135,6 +156,8 @@ func main() {
 	})
 	mux.HandleFunc("GET /v1/orbit/journal/attestation-challenge", s.challenge)
 	mux.HandleFunc("POST /v1/orbit/journal/register", s.register)
+	mux.HandleFunc("POST /v1/orbit/journal/recovery-challenge", s.recoveryChallenge)
+	mux.HandleFunc("POST /v1/orbit/journal/recover", s.recoverKey)
 	mux.HandleFunc("POST /v1/orbit/journal/head", s.head)
 	mux.HandleFunc("POST /v1/orbit/journal/compare-and-swap", s.compareAndSwap)
 	server := &http.Server{Addr: cfg.listen, Handler: securityHeaders(mux),

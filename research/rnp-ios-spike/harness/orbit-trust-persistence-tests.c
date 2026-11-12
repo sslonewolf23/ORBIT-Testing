@@ -116,13 +116,13 @@ int main(int argc,char **argv) {
     if(!time_end||*time_end!='\0'||emergency_now==0U)return 2;
 
     const char *repo="orbit-official";
-    const char *pin="0123456789ABCDEF0123456789ABCDEF01234567";
+    const char *pin="0123456789ABCDEF0123456789ABCDEF01234567";\n    const char *recovery_pin="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     memory_store storage;memset(&storage,0,sizeof(storage));
     orbit_trust_store_backend backend=backend_for(&storage);
     orbit_repository_trust_state state,loaded;
     storage.fail_read=true;
     expect("storage-read-error-is-not-missing-record",orbit_repository_trust_load_or_initialize(
-        &state,repo,pin,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
+        &state,repo,pin,recovery_pin,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
     storage.fail_read=false;
     expect("missing-record-bootstraps-and-persists",orbit_repository_trust_load_or_initialize(
         &state,repo,pin,&backend)==ORBIT_TRUST_STORE_OK,true);
@@ -162,7 +162,7 @@ int main(int argc,char **argv) {
         loaded.current_fingerprint[0]=='\0',true);
     expect("corruption-never-reinitializes-from-bootstrap-pin",
         orbit_repository_trust_load_or_initialize(&loaded,repo,
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",&backend)
+            "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",recovery_pin,&backend)
             ==ORBIT_TRUST_STORE_AUTHENTICATION_FAILED,true);
     memcpy(storage.record,newer_record,newer_length);memcpy(storage.mac,newer_mac,sizeof(newer_mac));
 
@@ -203,7 +203,7 @@ int main(int argc,char **argv) {
     orbit_repository_trust_state lifecycle_state;
     orbit_trust_store_code lifecycle_store_result=ORBIT_TRUST_STORE_OK;
     expect("lifecycle-bootstrap",orbit_repository_trust_load_or_initialize(
-        &lifecycle_state,repo,pin,&lifecycle_backend)==ORBIT_TRUST_STORE_OK,true);
+        &lifecycle_state,repo,pin,recovery_pin,&lifecycle_backend)==ORBIT_TRUST_STORE_OK,true);
     expect("clock-floor-persisted-before-signer-authorization",
         orbit_repository_trust_fingerprint_allowed_and_store(&lifecycle_state,repo,pin,50U,
             &lifecycle_backend,&lifecycle_store_result),true);
@@ -281,7 +281,7 @@ int main(int argc,char **argv) {
     orbit_trust_store_backend normal_backend=backend_for(&normal_storage);
     orbit_repository_trust_state normal_state,normal_reloaded;
     expect("normal-rotation-bootstrap",orbit_repository_trust_load_or_initialize(
-        &normal_state,repo,trusted_fpr,&normal_backend)==ORBIT_TRUST_STORE_OK,true);
+        &normal_state,repo,trusted_fpr,recovery_fpr,&normal_backend)==ORBIT_TRUST_STORE_OK,true);
     orbit_trust_code normal_decision=ORBIT_TRUST_INVALID_ARGUMENT;
     expect("normal-signed-rotation-and-persistence-commit",
         orbit_repository_trust_authorize_rotation_and_store(
@@ -310,12 +310,12 @@ int main(int argc,char **argv) {
     orbit_trust_store_backend recovery_backend=backend_for(&recovery_storage);
     orbit_repository_trust_state persisted_recovery_state,reloaded_recovery_state;
     expect("persisted-recovery-bootstrap",orbit_repository_trust_load_or_initialize(
-        &persisted_recovery_state,repo,trusted_fpr,&recovery_backend)==ORBIT_TRUST_STORE_OK,true);
+        &persisted_recovery_state,repo,trusted_fpr,recovery_fpr,&recovery_backend)==ORBIT_TRUST_STORE_OK,true);
     orbit_trust_code recovery_decision=ORBIT_TRUST_INVALID_ARGUMENT;
     expect("emergency-recovery-and-persistence-commit",
         orbit_repository_trust_authorize_recovery_rotation_and_store(
             &persisted_recovery_state,repo,repo,emergency,emergency_len,
-            recovery,recovery_len,recovery_fpr,candidate,candidate_len,
+            recovery,recovery_len,candidate,candidate_len,
             recovery_now,&recovery_backend,&recovery_decision)==ORBIT_TRUST_STORE_OK &&
         recovery_decision==ORBIT_TRUST_ACCEPTED &&
         strcmp(persisted_recovery_state.current_fingerprint,candidate_fpr)==0 &&
@@ -337,7 +337,7 @@ int main(int argc,char **argv) {
     orbit_trust_store_backend failed_recovery_backend=backend_for(&failed_recovery_storage);
     orbit_repository_trust_state failed_recovery_state;
     expect("failed-recovery-bootstrap",orbit_repository_trust_load_or_initialize(
-        &failed_recovery_state,repo,trusted_fpr,&failed_recovery_backend)==ORBIT_TRUST_STORE_OK,true);
+        &failed_recovery_state,repo,trusted_fpr,recovery_fpr,&failed_recovery_backend)==ORBIT_TRUST_STORE_OK,true);
     failed_recovery_storage.fail_write_on_call=true;
     failed_recovery_storage.writes_until_failure=0U;
     orbit_trust_code failed_recovery_decision=ORBIT_TRUST_INVALID_ARGUMENT;
@@ -357,7 +357,7 @@ int main(int argc,char **argv) {
     orbit_trust_store_backend verify_backend=backend_for(&verify_storage);
     orbit_repository_trust_state verify_state;
     expect("repository-verification-bootstrap",
-        orbit_repository_trust_load_or_initialize(&verify_state,repo,trusted_fpr,
+        orbit_repository_trust_load_or_initialize(&verify_state,repo,trusted_fpr,recovery_fpr,
             &verify_backend)==ORBIT_TRUST_STORE_OK,true);
     orbit_repository_verify_result verify_result;
     uint64_t verify_now=(uint64_t)time(NULL);

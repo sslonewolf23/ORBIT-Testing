@@ -106,7 +106,7 @@ static bool append_description(char *description,const char *value,size_t length
 static bool commit_stanza(package_stanza *stanza,orbit_packages_index *index) {
     const unsigned required=SEEN_PACKAGE|SEEN_VERSION|SEEN_ARCH|
         SEEN_FILENAME|SEEN_SIZE|SEEN_SHA256;
-    if(stanza->seen==0U)return true;
+    if(stanza->field_count==0U)return true;
     if((stanza->seen&required)!=required||
        !valid_token(stanza->record.name,true)||
        !valid_version(stanza->record.version)||

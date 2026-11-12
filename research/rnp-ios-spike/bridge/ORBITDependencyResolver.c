@@ -145,7 +145,7 @@ static bool relation_atom_valid(const char *expression) {
         if(!*space||!orbit_debian_version_compare(space,space,&comparison))return false;
     } else if(strchr(copy,')'))return false;
     trim(copy);
-    if(!*copy)return false;
+    if(!*copy||!isalnum((unsigned char)copy[0]))return false;
     for(const unsigned char *p=(const unsigned char*)copy;*p;++p)
         if(!((*p>='a'&&*p<='z')||(*p>='0'&&*p<='9')||*p=='-'||*p=='+'||*p=='.'))return false;
     return true;
@@ -202,11 +202,13 @@ static bool resolve_relation(resolver *r,const char *relation) {
             trim(alt);
             if(!relation_atom_valid(alt)){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
             if(installed_satisfies(r,alt)){satisfied=true;break;}
+            if(r->error!=ORBIT_DEPENDENCY_OK)return false;
             size_t candidate=0;
             if(available_candidate_satisfies(r,alt,&candidate)) {
                 if(!resolve_index(r,candidate))return false;
                 satisfied=true;break;
             }
+            if(r->error!=ORBIT_DEPENDENCY_OK)return false;
             /* Only simple package/version relations are supported for now. */
             if(strchr(alt,'[')||strchr(alt,']')||strchr(alt,':')||
                (strchr(alt,'<')==NULL&&strchr(alt,'>')==NULL&&strchr(alt,'(')!=NULL)) {

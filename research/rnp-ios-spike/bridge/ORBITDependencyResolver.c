@@ -263,6 +263,19 @@ static bool relation_atom_valid(const char *expression) {
 /* Resolve dependency architecture qualifiers without treating them as package names.
  * :native is the target architecture; :any requires Multi-Arch: allowed.
  * Unqualified dependencies retain the existing same-architecture policy. */
+/* Debian Multi-Arch rules do not alter Conflicts/Breaks matching.
+ * Architecture qualifiers in those fields are not implemented here, so reject
+ * them rather than silently applying dependency semantics. */
+static bool conflict_relation_atom_valid(const char *expression) {
+    if (!relation_atom_valid(expression)) return false;
+    char copy[RELATION_MAX];
+    strcpy(copy, expression);
+    trim(copy);
+    char *end = copy;
+    while (*end && !isspace((unsigned char)*end) && *end != '(') ++end;
+    for (char *p = copy; p < end; ++p) if (*p == ':') return false;
+    return true;
+}
 static bool package_satisfies_dependency(const orbit_package_record *package,
                                          const char *expression,
                                          const char *architecture,
@@ -381,27 +394,27 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
         char *validation_save=NULL;
         for(char *atom=strtok_r(validation,"|",&validation_save);atom;atom=strtok_r(NULL,"|",&validation_save)) {
             trim(atom);
-            if(!relation_atom_valid(atom)){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
+            if(!conflict_relation_atom_valid(atom)){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
         for(size_t i=0;i<r->installed_count;++i) {
             const orbit_package_record *q=r->installed[i];
             if(!q)continue;
             char copy[RELATION_MAX];strcpy(copy,item);
             bool malformed=false;
-            if(package_satisfies_dependency(q,copy,r->architecture,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            if(package_satisfies_relation(q,copy,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
             if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
         for(size_t i=0;i<r->available->count;++i) {
             if(r->state[i]!=1U)continue;
             char copy[RELATION_MAX];strcpy(copy,item);
             bool malformed=false;
-            if(package_satisfies_dependency(&r->available->packages[i],copy,r->architecture,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            if(package_satisfies_relation(&r->available->packages[i],copy,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
             if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
         for(size_t i=0;i<r->count;++i) {
             char copy[RELATION_MAX];strcpy(copy,item);
             bool malformed=false;
-            if(package_satisfies_dependency(r->ordered[i],copy,r->architecture,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            if(package_satisfies_relation(r->ordered[i],copy,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
             if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
     }
@@ -425,14 +438,14 @@ static bool record_rejects_candidate(resolver *r,
             char *validation_save=NULL;
             for(char *atom=strtok_r(validation,"|",&validation_save);atom;atom=strtok_r(NULL,"|",&validation_save)) {
                 trim(atom);
-                if(!relation_atom_valid(atom)){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return true;}
+                if(!conflict_relation_atom_valid(atom)){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return true;}
             }
             char *alt_save=NULL;
             for(char *alt=strtok_r(item,"|",&alt_save);alt;alt=strtok_r(NULL,"|",&alt_save)) {
                 trim(alt);
                 char copy[RELATION_MAX];strcpy(copy,alt);
                 bool malformed=false;
-                if(package_satisfies_dependency(candidate,copy,r->architecture,&malformed)) {
+                if(package_satisfies_relation(candidate,copy,&malformed)) {
                     r->error=ORBIT_DEPENDENCY_CONFLICT;return true;
                 }
                 if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return true;}

@@ -1,4 +1,5 @@
 #include "ORBITPackageArchive.h"
+#include "ORBITPackageDecompress.h"
 
 #include <stdio.h>
 #include <stdlib.h>

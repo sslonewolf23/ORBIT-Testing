@@ -209,10 +209,8 @@ static orbit_filesystem_code execute_change(
 }
 
 static bool decode_memory(memory_envelope *memory,
-                          orbit_package_ownership_record *unused_records,
                           orbit_package_transaction_envelope *envelope,
                           uint8_t *journal, uint8_t *committed, uint8_t *pending) {
-    (void)unused_records;
     return orbit_package_transaction_envelope_decode(
         memory->payload, memory->length, journal,
         ORBIT_TRANSACTION_ENVELOPE_MAX_JOURNAL,
@@ -291,7 +289,7 @@ int main(void) {
     orbit_package_transaction_envelope decoded;
     EXPECT("successful transaction envelope decoded",
         journal_buffer && committed_buffer && pending_buffer &&
-        decode_memory(&memory, NULL, &decoded, journal_buffer,
+        decode_memory(&memory, &decoded, journal_buffer,
                       committed_buffer, pending_buffer));
     EXPECT("successful transaction promoted ownership and cleared journal",
         decoded.state == ORBIT_TRANSACTION_ENVELOPE_EMPTY &&

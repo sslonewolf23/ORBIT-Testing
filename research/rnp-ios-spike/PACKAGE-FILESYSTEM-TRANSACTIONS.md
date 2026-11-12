@@ -41,7 +41,7 @@ The version-2 fixed-size change record includes target/stage relative parent loc
 
 The record carries each target/stage parent path relative to trusted install/staging roots, plus the exact file identities. The executor resolves those paths with no-follow descriptor traversal and derives the private backup root from the transaction ID. The journal rejects duplicate targets, including ASCII case-folded duplicates.
 
-The backend contract requires authenticated loads, atomic stores, a monotonic revision retained even after clear, and compare-by-revision clearing. It must encode fields canonically; raw C struct persistence is not acceptable. The host harness uses an in-memory backend only. No production iOS persistence adapter is connected yet. The caller must hold the package-wide exclusive transaction lock across journal execution or recovery, backup-directory creation, and cleanup.
+The backend contract requires authenticated loads, atomic stores, a monotonic revision retained even after clear, and compare-by-revision clearing. It must encode fields canonically; raw C struct persistence is not acceptable. The host harness uses an in-memory backend only. No production iOS persistence adapter is connected yet. The caller must hold the package-wide exclusive transaction lock across preparation, journal execution or recovery, backup-directory creation, and cleanup. `ORBITPackageFilesystem` provides a nonblocking advisory lock file helper that rejects symlinks, non-regular files, unexpected ownership/modes, and lock-file replacement during acquisition. This coordinates ORBIT instances only; it does not replace any lock required by the target package manager or prevent non-cooperating privileged processes from modifying the root.
 
 ## Limitations
 

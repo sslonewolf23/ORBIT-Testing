@@ -225,6 +225,38 @@ int main(void) {
             ORBIT_FILESYSTEM_CONFLICT);
     EXPECT("private transaction root permissions restored",
         fchmod(base_fd, 0700) == 0);
+    EXPECT("lock symlink fixture created",
+        symlinkat("missing-lock-target", base_fd,
+                  ORBIT_FILESYSTEM_LOCK_NAME) == 0);
+    EXPECT("lock acquisition refuses a symlink entry",
+        orbit_package_filesystem_lock_acquire(base_fd, &lock_one) !=
+            ORBIT_FILESYSTEM_OK);
+    EXPECT("lock symlink fixture removed",
+        unlinkat(base_fd, ORBIT_FILESYSTEM_LOCK_NAME, 0) == 0);
+    int lock_fixture_fd = openat(base_fd, ORBIT_FILESYSTEM_LOCK_NAME,
+        O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    EXPECT("lock hardlink fixture created", lock_fixture_fd >= 0);
+    if (lock_fixture_fd >= 0) close(lock_fixture_fd);
+    EXPECT("lock hardlink fixture linked",
+        linkat(base_fd, ORBIT_FILESYSTEM_LOCK_NAME,
+               base_fd, "lock-hardlink", 0) == 0);
+    EXPECT("lock acquisition rejects multiply-linked lock inode",
+        orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
+            ORBIT_FILESYSTEM_CONFLICT);
+    EXPECT("lock hardlink fixtures removed",
+        unlinkat(base_fd, "lock-hardlink", 0) == 0 &&
+        unlinkat(base_fd, ORBIT_FILESYSTEM_LOCK_NAME, 0) == 0);
+    lock_fixture_fd = openat(base_fd, ORBIT_FILESYSTEM_LOCK_NAME,
+        O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    EXPECT("permissive lock fixture created", lock_fixture_fd >= 0);
+    EXPECT("permissive lock mode applied",
+        lock_fixture_fd >= 0 && fchmod(lock_fixture_fd, 0644) == 0);
+    if (lock_fixture_fd >= 0) close(lock_fixture_fd);
+    EXPECT("lock acquisition rejects permissive lock mode",
+        orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
+            ORBIT_FILESYSTEM_CONFLICT);
+    EXPECT("permissive lock fixture removed",
+        unlinkat(base_fd, ORBIT_FILESYSTEM_LOCK_NAME, 0) == 0);
     EXPECT("exclusive package lock acquired",
         orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
             ORBIT_FILESYSTEM_OK);

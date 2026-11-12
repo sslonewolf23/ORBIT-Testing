@@ -231,6 +231,48 @@ int main(void) {
     expect("multiarch-none-rejected-for-any-dependency",
         code==ORBIT_DEPENDENCY_UNSATISFIED);
 
+    /* :any requires Multi-Arch: allowed even for a native-architecture provider. */
+    package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",
+            "foreign-lib:any",NULL,NULL);
+    package(&arch_records[1],"foreign-lib","1.0","iphoneos-arm64",NULL,NULL,NULL);
+    snprintf(arch_records[1].multi_arch,sizeof(arch_records[1].multi_arch),"no");
+    code=orbit_dependency_plan_build(&arch_catalog,NULL,0U,"arch-app",
+                                     "iphoneos-arm64",&plan);
+    expect("any-requires-allowed-even-for-native-provider",
+        code==ORBIT_DEPENDENCY_UNSATISFIED);
+
+    /* Unqualified relations may use a foreign Multi-Arch provider. */
+    package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",
+            "foreign-lib",NULL,NULL);
+    package(&arch_records[1],"foreign-lib","1.0","iphoneos-arm64e",NULL,NULL,NULL);
+    snprintf(arch_records[1].multi_arch,sizeof(arch_records[1].multi_arch),"foreign");
+    code=orbit_dependency_plan_build(&arch_catalog,NULL,0U,"arch-app",
+                                     "iphoneos-arm64",&plan);
+    expect("unqualified-dependency-accepts-multiarch-foreign",
+        code==ORBIT_DEPENDENCY_OK&&plan.count==2U&&
+        strcmp(plan.ordered[0]->name,"foreign-lib")==0);
+    orbit_dependency_plan_destroy(&plan);
+
+    /* Dependencies of a foreign selected package use that package's architecture. */
+    package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",
+            "foreign-lib:any",NULL,NULL);
+    package(&arch_records[1],"foreign-lib","1.0","iphoneos-arm64e",
+            "foreign-helper",NULL,NULL);
+    snprintf(arch_records[1].multi_arch,sizeof(arch_records[1].multi_arch),"allowed");
+    /* Replace the two-record catalog with a third package for the foreign dependency. */
+    orbit_package_record foreign_helper;
+    package(&foreign_helper,"foreign-helper","1.0","iphoneos-arm64e",NULL,NULL,NULL);
+    orbit_package_record foreign_records[3]={arch_records[0],arch_records[1],foreign_helper};
+    orbit_packages_index foreign_catalog={foreign_records,3U,3U};
+    code=orbit_dependency_plan_build(&foreign_catalog,NULL,0U,"arch-app",
+                                     "iphoneos-arm64",&plan);
+    expect("foreign-package-dependencies-use-foreign-architecture",
+        code==ORBIT_DEPENDENCY_OK&&plan.count==3U&&
+        strcmp(plan.ordered[0]->name,"foreign-helper")==0);
+    orbit_dependency_plan_destroy(&plan);
+
+    package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",NULL,NULL,NULL);
+    package(&arch_records[1],"foreign-lib","1.0","iphoneos-arm64e",NULL,NULL,NULL);
     snprintf(arch_records[0].depends,sizeof(arch_records[0].depends),
              "foreign-lib:native");
     code=orbit_dependency_plan_build(&arch_catalog,NULL,0U,"arch-app",

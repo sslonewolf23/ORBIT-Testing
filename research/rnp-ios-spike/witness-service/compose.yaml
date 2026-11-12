@@ -22,6 +22,7 @@ services:
       ORBIT_LISTEN: 0.0.0.0:8443
       ORBIT_TLS_CERT: /run/secrets/tls.crt
       ORBIT_TLS_KEY: /run/secrets/tls.key
+      ORBIT_RECOVERY_PEPPER: "${ORBIT_RECOVERY_PEPPER:?set a random recovery pepper}"
     volumes:
       - ./data:/var/lib/orbit
       - ./secrets/apple-app-attest-root.pem:/run/secrets/apple-app-attest-root.pem:ro

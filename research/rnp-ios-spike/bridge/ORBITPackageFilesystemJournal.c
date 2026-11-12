@@ -644,9 +644,14 @@ orbit_filesystem_code orbit_package_filesystem_journal_cleanup_orphan_backup_dir
 
     orbit_filesystem_code result = ORBIT_FILESYSTEM_OK;
     size_t inspected = 0U;
-    errno = 0;
     struct dirent *entry;
-    while ((entry = readdir(directory)) != NULL) {
+    for (;;) {
+        errno = 0;
+        entry = readdir(directory);
+        if (!entry) {
+            if (errno != 0) result = ORBIT_FILESYSTEM_IO_ERROR;
+            break;
+        }
         if (strcmp(entry->d_name, ".") == 0 ||
             strcmp(entry->d_name, "..") == 0)
             continue;
@@ -703,10 +708,7 @@ orbit_filesystem_code orbit_package_filesystem_journal_cleanup_orphan_backup_dir
             result = ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
             break;
         }
-        errno = 0;
     }
-    if (result == ORBIT_FILESYSTEM_OK && errno != 0)
-        result = ORBIT_FILESYSTEM_IO_ERROR;
     if (closedir(directory) != 0 && result == ORBIT_FILESYSTEM_OK)
         result = ORBIT_FILESYSTEM_IO_ERROR;
     return result;

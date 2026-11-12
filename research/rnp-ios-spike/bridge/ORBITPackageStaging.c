@@ -5,7 +5,6 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -209,7 +208,8 @@ bool orbit_package_staging_entry_callback(
         mark_failed(staging);
         return false;
     }
-    if (!orbit_package_archive_path_is_safe(entry->path) ||
+    if (!memchr(entry->path, '\\0', sizeof(entry->path)) ||
+        !orbit_package_archive_path_is_safe(entry->path) ||
         (entry->mode & ~0777U) != 0U ||
         (entry->directory && (entry->mode & 0100U) == 0U)) {
         mark_failed(staging);
@@ -271,6 +271,7 @@ bool orbit_package_staging_data_callback(
         strcmp(path, staging->active_file_path) != 0 ||
         offset != staging->active_file_written ||
         (length != 0U && !bytes) ||
+        staging->active_file_written > staging->active_file_size ||
         (uint64_t)length > staging->active_file_size - staging->active_file_written) {
         mark_failed(staging);
         return false;

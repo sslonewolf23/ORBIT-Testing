@@ -570,6 +570,7 @@ jobs:
             -o "$RUNNER_TEMP/ORBITRepositoryVerifier-tests.o"
           clang -std=c11 -Wall -Wextra -Werror \
             -Iresearch/rnp-ios-spike/bridge \
+            -I"$VCPKG_INSTALLED_DIR/x64-linux/include" \
             -c research/rnp-ios-spike/bridge/ORBITPackagesIndex.c \
             -o "$RUNNER_TEMP/ORBITPackagesIndex-tests.o"
           clang -std=c11 -Wall -Wextra -Werror \

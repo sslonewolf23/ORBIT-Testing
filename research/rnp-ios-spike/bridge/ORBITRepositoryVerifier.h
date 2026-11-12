@@ -2,6 +2,7 @@
 #define ORBIT_REPOSITORY_VERIFIER_H
 
 #include "ORBITReleaseMetadata.h"
+#include "ORBITPackagesIndex.h"
 #include "ORBITTrustPersistence.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -22,7 +23,8 @@ typedef enum {
     ORBIT_REPOSITORY_VERIFY_REPOSITORY_POLICY_REJECTED = 6,
     ORBIT_REPOSITORY_VERIFY_FRESHNESS_REJECTED = 7,
     ORBIT_REPOSITORY_VERIFY_INDEX_REJECTED = 8,
-    ORBIT_REPOSITORY_VERIFY_RESOURCE_LIMIT = 9
+    ORBIT_REPOSITORY_VERIFY_RESOURCE_LIMIT = 9,
+    ORBIT_REPOSITORY_VERIFY_PACKAGE_INDEX_MALFORMED = 10
 } orbit_repository_verify_code;
 
 typedef struct {
@@ -33,6 +35,7 @@ typedef struct {
     uint64_t valid_until;
     size_t authenticated_release_bytes;
     size_t verified_index_bytes;
+    size_t package_count;
 } orbit_repository_verify_result;
 
 /*

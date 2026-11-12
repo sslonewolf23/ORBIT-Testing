@@ -420,12 +420,20 @@ int main(void) {
         orbit_package_filesystem_journal_cleanup_backup_directory(
             &backend, base_fd, guarded_cleanup_id) ==
             ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("orphan sweep is blocked while any journal is active",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
     EXPECT("committed recovery completes remaining backup cleanup",
         orbit_package_filesystem_journal_recover(
             &backend, execute_change, &executor) == ORBIT_FILESYSTEM_OK);
     EXPECT("empty journal permits guarded empty backup cleanup",
         orbit_package_filesystem_journal_cleanup_backup_directory(
             &backend, base_fd, guarded_cleanup_id) == ORBIT_FILESYSTEM_OK);
+    EXPECT("post-tombstone orphan sweep removes empty backup directories",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("post-tombstone crash-window directory is gone",
+        !exists_at(base_fd, "e1000000000000000000000000000000"));
     EXPECT("partial-finalization recovery preserves committed package state",
         file_equals_at(target_fd, "pf-a", "new-a") &&
         !exists_at(target_fd, "pf-b") &&
@@ -493,6 +501,18 @@ int main(void) {
         file_equals_at(target_fd, "std-target", "new-standard"));
     EXPECT("standard executor consumed staged path",
         !exists_at(stage_fd, "std-stage"));
+    uint8_t tombstone_window_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xE2U };
+    int tombstone_window_fd = -1;
+    EXPECT("simulated tombstone-to-cleanup crash leaves empty transaction directory",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, tombstone_window_id, true, &tombstone_window_fd) ==
+            ORBIT_FILESYSTEM_OK);
+    if (tombstone_window_fd >= 0) close(tombstone_window_fd);
+    EXPECT("orphan sweep recovers tombstone-to-cleanup crash window",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("orphan transaction directory removed after durable empty journal",
+        !exists_at(base_fd, "e2000000000000000000000000000000"));
     standard_backup_fd = -1;
     EXPECT("standard executor backup directory reopens",
         orbit_package_filesystem_open_backup_directory(

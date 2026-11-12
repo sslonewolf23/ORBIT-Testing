@@ -476,14 +476,19 @@ int main(void) {
         ORBIT_PACKAGE_FILE_PLAN_INVALID_ARGUMENT;
     orbit_filesystem_code install_journal_result =
         ORBIT_FILESYSTEM_INVALID_ARGUMENT;
-    EXPECT("complete package install orchestration succeeds",
+    orbit_package_install_transaction_code install_result =
         orbit_package_install_transaction_execute_enveloped(
             &installed_snapshot, &candidate, manifest, 2U,
             ownership_old, sizeof(ownership_old), install_transaction_id,
             install_fd, stage_fd, backup_install_fd, &install_backend,
             execute_change, &install_executor,
-            &install_plan_result, &install_journal_result) ==
-                ORBIT_PACKAGE_INSTALL_TRANSACTION_OK);
+            &install_plan_result, &install_journal_result);
+    fprintf(stderr, "DEBUG install_result=%d plan=%d journal=%d apply=%zu rollback=%zu finalize=%zu\\n",
+        (int)install_result, (int)install_plan_result,
+        (int)install_journal_result, install_executor.apply_calls,
+        install_executor.rollback_calls, install_executor.finalize_calls);
+    EXPECT("complete package install orchestration succeeds",
+        install_result == ORBIT_PACKAGE_INSTALL_TRANSACTION_OK);
     EXPECT("orchestration reports successful plan and journal",
         install_plan_result == ORBIT_PACKAGE_FILE_PLAN_OK &&
         install_journal_result == ORBIT_FILESYSTEM_OK);
@@ -613,8 +618,6 @@ int main(void) {
     EXPECT("end-to-end rollback staged fixtures cleaned",
         unlinkat(stage_library, "orbit-first.dylib", 0) == 0 &&
         unlinkat(stage_library, "orbit-second.dylib", 0) == 0);
-    close(stage_library);
-    close(install_library);
     close(stage_library);
     close(install_library);
     EXPECT("end-to-end package directories removed",

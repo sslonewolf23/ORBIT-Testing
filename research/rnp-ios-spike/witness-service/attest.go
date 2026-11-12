@@ -57,18 +57,31 @@ func cborInteger(m map[any]any, key int64) (uint64, bool) {
 	return n, ok
 }
 
+func cborSignedInteger(m map[any]any, key int64) (int64, bool) {
+	value, ok := m[key]
+	if !ok { value, ok = m[uint64(key)] }
+	if !ok { return 0, false }
+	switch n := value.(type) {
+	case int64:
+		return n, true
+	case uint64:
+		if n <= uint64(^uint64(0)>>1) { return int64(n), true }
+	}
+	return 0, false
+}
+
 func parseCOSEPublicKey(data []byte) (*ecdsa.PublicKey, []byte, error) {
 	var raw map[any]any
 	rest, err := cbor.UnmarshalFirst(data, &raw)
 	if err != nil { return nil, nil, errors.New("malformed COSE credential key") }
 	kty, ok1 := cborInteger(raw, 1)
 	crv, ok2 := cborInteger(raw, -1)
-	alg, ok3 := cborInteger(raw, 3)
+	alg, ok3 := cborSignedInteger(raw, 3)
 	xRaw, ok4 := raw[int64(-2)].([]byte)
 	yRaw, ok5 := raw[int64(-3)].([]byte)
 	if !ok4 { xRaw, ok4 = raw[uint64(2)].([]byte) }
 	if !ok5 { yRaw, ok5 = raw[uint64(3)].([]byte) }
-	if !ok1 || !ok2 || !ok3 || kty != 2 || crv != 1 || alg != 0xFFFFFFFFFFFFFFF9 ||
+	if !ok1 || !ok2 || !ok3 || kty != 2 || crv != 1 || alg != -7 ||
 		!ok4 || !ok5 || len(xRaw) != 32 || len(yRaw) != 32 {
 		return nil, nil, errors.New("unsupported COSE credential key")
 	}

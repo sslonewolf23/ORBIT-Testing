@@ -23,13 +23,14 @@ rate limits, audit logging, and strict JSON parsing.
 
 ## App Attest registration
 
-1. `GET /v1/orbit/journal/attestation-challenge` returns a cryptographically
+1. The client generates a uniformly random 32-byte recovery credential and
+   stores it in device-only Keychain storage before network registration.
+2. `GET /v1/orbit/journal/attestation-challenge` returns a cryptographically
    random, single-use challenge (base64). Challenge expiry and consumption
    are enforced server-side.
-2. The client calls `generateKey`, then `attestKey` with
-   SHA-256(`ORBIT-JOURNAL-ATTEST-V1` || rawChallenge).
-3. `POST /v1/orbit/journal/register` receives `keyID`, `challenge`, and
-   `attestation` as base64/UTF-8 JSON fields.
+3. The client calls `generateKey`, then `attestKey` with SHA-256(rawChallenge),
+   and submits `keyID`, `challenge`, `attestation`, and base64
+   `recoveryCredential` to `POST /v1/orbit/journal/register`.
 4. The service verifies Apple's App Attest certificate chain against Apple's
    published trust root, validates the nonce extension against the exact
    client-data hash, checks the expected app identifier/team bundle identity,
@@ -46,7 +47,7 @@ current.
 
 At first enrollment the client generates a uniformly random 32-byte recovery credential. It must be displayed/exported once with clear instructions to store it offline; it must not be silently recoverable from server storage. The registration JSON includes `recoveryCredential` as base64. The server stores only HMAC-SHA-256(server pepper, domain || credential); the pepper is a separate deployment secret and must not be stored beside the database.
 
-For replacement, the client generates a new App Attest key and requests a five-minute, single-use recovery challenge bound server-side to the old and new key IDs. The client submits the recovery credential, challenge, and new-key attestation over TLS. The server verifies the credential in constant time, verifies Apple's attestation for the replacement key, consumes the challenge, and atomically replaces the key binding while preserving the existing revision, digest, tombstone, and recovery history. A replacement key cannot create a new initial journal head. The old key is retired by the same transaction. Recovery credentials must never be logged.
+For replacement, the client generates a new App Attest key and submits the recovery credential plus new key ID to POST /v1/orbit/journal/recovery-challenge. The server derives the verifier, locates the existing installation, and returns a five-minute, single-use challenge bound server-side to the old and new key IDs. The client submits the recovery credential, challenge, and new-key attestation to POST /v1/orbit/journal/recover over TLS. The server verifies the credential in constant time, verifies Apple's attestation for the replacement key, consumes the challenge, and atomically replaces the key binding while preserving the existing revision, digest, tombstone, recovery verifier, and recovery history. The client does not need the old key ID or old Keychain record. A replacement key cannot create a new initial journal head. The old key is retired by the same transaction. Recovery credentials must never be logged.
 
 A database migration does not silently invent credentials for existing installations: records without a verifier are ineligible for self-service recovery. They require an explicit, separately reviewed migration path.
 
@@ -183,7 +184,7 @@ deploy it as the production trust anchor until those items are reviewed.
 ## Important gap in the current reference implementation
 
 The protocol contract above requires an authenticated account/installation
-binding that survives App Attest key replacement. The Go reference now binds initial enrollment to a client-held recovery credential and includes an atomic key-replacement path that preserves the existing head. The iOS client still needs to generate, securely preserve, and present that credential; the recovery path also needs live-device and service tests before it can be relied upon.
+binding that survives App Attest key replacement. The Go reference now binds initial enrollment to a client-held recovery credential and includes an atomic key-replacement path that preserves the existing head. The private iOS client now generates, stores, and submits the credential and can request recovery without the old key ID. The device validation host displays the credential once after first enrollment. The complete flow still needs service and physical-device testing before it can be relied upon.
 
 Likewise, the SQLite database is crash-durable but can be rolled back by
 restoring an older database snapshot. Production requires an independent

@@ -4,22 +4,34 @@
 
 The archive inspector is a research-stage, read-only preflight component. It does not extract files, create directories, invoke package scripts, change ownership or permissions, or mutate an installed package database.
 
-It parses the Debian ar container and validates the data archive's ustar manifest. The first implementation intentionally accepts only uncompressed `control.tar` and `data.tar`. Common compressed variants (`.gz`, `.xz`, `.bz2`, `.zst`) return `ORBIT_ARCHIVE_UNSUPPORTED_COMPRESSION`; they are not guessed, partially decoded, or passed through to an extractor.
+It accepts uncompressed `control.tar` and `data.tar`, plus gzip (`.gz`), xz (`.xz`), bzip2 (`.bz2`), and zstd (`.zst`) variants. Both control and data members are inspected. Unsupported suffixes fail closed.
+
+## Decompression policy
+
+- Compressed input: 512 MiB maximum.
+- Expanded tar member: 256 MiB maximum.
+- Expansion ratio: 200:1 maximum.
+- Decoder output chunk: 64 KiB.
+- XZ decoder memory: 64 MiB maximum.
+- Zstandard decoder window: 64 MiB maximum.
+- Exactly one compressed stream is accepted; truncated streams, concatenated streams, and trailing bytes are rejected.
+
+The codec adapters decode incrementally into fixed-size output chunks. The current archive adapter collects each expanded member in bounded memory before parsing its tar manifest. It is not yet a zero-copy incremental tar parser or an extractor.
 
 ## Accepted tar entries
 
 - Regular files (type NUL or `0`).
 - Directories (type `5`) with zero payload size.
 - Strict ustar header and checksum.
-- Printable ASCII relative paths with no empty, `.`, or `..` components.
+- Printable ASCII relative paths with no empty or `..` components. Standard leading `./` and root directory entries are normalized safely.
 
 ## Rejected entries and formats
 
 - Absolute paths, backslashes, colon characters, control/non-ASCII bytes, and traversal.
-- Duplicate manifest paths.
+- Duplicate manifest paths and file-versus-directory ancestor collisions.
 - Symbolic links, hard links, devices, FIFOs, sparse files, PAX, GNU long-name records, and unknown entry types.
 - Non-ustar headers, malformed octal fields/checksums, truncated members, missing end blocks, and nonzero trailing data.
-- Compressed tar members until a bounded streaming decompressor is implemented.
+- Unsupported compression suffixes and malformed compressed streams.
 
 ## Resource limits
 
@@ -29,16 +41,16 @@ It parses the Debian ar container and validates the data archive's ustar manifes
 - path length: 1,024 bytes.
 - one regular file: 256 MiB.
 - aggregate regular-file payload: 1 GiB.
+- expanded compressed tar member: 256 MiB.
 
-These are policy ceilings, not a promise that the current implementation can hold or extract an archive of those sizes. Both control and data tar manifests are inspected. Each manifest path table is bounded and allocated for inspection only; directory parents are permitted, but a regular file cannot be an ancestor of another entry.
+The manifest path table is bounded and allocated for inspection only. Parent directories are permitted, but a regular file cannot be an ancestor of another entry.
 
 ## Important remaining work
 
-1. Add bounded streaming decoders for gzip, xz, bzip2, and zstd with strict output, memory, CPU, and trailing-data limits.
-2. Inspect both control and data tar manifests and validate their relationship.
-3. Add parent/child path collision checks and package ownership collision policy.
+1. Move the tar parser onto a true incremental decoder sink to avoid retaining the complete expanded member in memory.
+2. Add package ownership collision policy across already-installed packages.
+3. Add CPU/time budgets and fuzz the ar, decompressor, and ustar parsers.
 4. Build a staging/extraction backend with descriptor-relative path operations, no-follow semantics, same-filesystem staging, fsync, and atomic replacement.
 5. Capture exact preimages for rollback and integrate the result with the durable transaction journal.
-6. Run the full host suite and fuzz the ar/ustar parser before any device integration.
 
 Installation must remain disabled. This component is not a production extractor.

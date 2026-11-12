@@ -786,6 +786,7 @@ jobs:
             -Iresearch/rnp-ios-spike/bridge \
             research/rnp-ios-spike/bridge/ORBITPackageTransaction.c \
             research/rnp-ios-spike/bridge/ORBITPackageTransactionCoordinator.c \
+            research/rnp-ios-spike/bridge/ORBITAPTConfigResolver.c \
             research/rnp-ios-spike/bridge/ORBITPackageNativeLock.c \
             research/rnp-ios-spike/bridge/ORBITPackageBootstrapProfile.c \
             research/rnp-ios-spike/bridge/ORBITPackageBootstrapLockset.c \
@@ -794,6 +795,20 @@ jobs:
           "$RUNNER_TEMP/orbit-package-transaction-coordinator-tests" \
             | tee "$RUNNER_TEMP/package-transaction-coordinator.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction-coordinator.out"
+
+      - name: Compile and run effective APT status path resolver tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITAPTConfigResolver.c \
+            research/rnp-ios-spike/harness/orbit-apt-config-resolver-tests.c \
+            -o "$RUNNER_TEMP/orbit-apt-config-resolver-tests"
+          "$RUNNER_TEMP/orbit-apt-config-resolver-tests" \
+            | tee "$RUNNER_TEMP/apt-config-resolver.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/apt-config-resolver.out"
 
       - name: Compile and run canonical filesystem journal codec tests
         shell: bash

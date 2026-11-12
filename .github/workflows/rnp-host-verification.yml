@@ -810,6 +810,26 @@ jobs:
             | tee "$RUNNER_TEMP/apt-config-resolver.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/apt-config-resolver.out"
 
+      - name: Verify native locks against real APT and dpkg binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v apt-get
+          command -v dpkg-deb
+          apt-get --version | head -n 1
+          dpkg-deb --version | head -n 1
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageNativeLock.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapProfile.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapLockset.c \
+            research/rnp-ios-spike/harness/orbit-procursus-apt-interoperability-tests.c \
+            -o "$RUNNER_TEMP/orbit-procursus-apt-interoperability-tests"
+          sudo "$RUNNER_TEMP/orbit-procursus-apt-interoperability-tests" \
+            | tee "$RUNNER_TEMP/procursus-apt-interop.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/procursus-apt-interop.out"
+
       - name: Compile and run canonical filesystem journal codec tests
         shell: bash
         run: |

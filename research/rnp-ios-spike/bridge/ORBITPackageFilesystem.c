@@ -29,8 +29,17 @@ static bool valid_stored_component(const char *name, size_t capacity) {
     const char *terminator = (const char *)memchr(name, '\0', capacity);
     if (!terminator || terminator == name) return false;
     size_t length = (size_t)(terminator - name);
+    for (size_t i = length + 1U; i < capacity; ++i)
+        if (name[i] != '\0') return false;
     return memchr(name, '/', length) == NULL &&
            orbit_package_archive_path_is_safe(name);
+}
+
+static bool stored_string_is_empty(const char *value, size_t capacity) {
+    if (!value || value[0] != '\0') return false;
+    for (size_t i = 1U; i < capacity; ++i)
+        if (value[i] != '\0') return false;
+    return true;
 }
 
 static bool valid_parent_path(const char *path, size_t capacity) {
@@ -45,6 +54,8 @@ static bool valid_stored_parent_path(const char *path, size_t capacity) {
     const char *terminator = (const char *)memchr(path, '\\0', capacity);
     if (!terminator) return false;
     size_t length = (size_t)(terminator - path);
+    for (size_t i = length + 1U; i < capacity; ++i)
+        if (path[i] != '\0') return false;
     return length == 0U || orbit_package_archive_path_is_safe(path);
 }
 
@@ -133,7 +144,10 @@ static orbit_filesystem_code verify_change(
             change->staged_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
-        if (change->staged_name[0] != '\0' ||
+        if (!stored_string_is_empty(change->staged_name,
+                                    sizeof(change->staged_name)) ||
+            !valid_stored_parent_path(change->staged_parent_path,
+                                      sizeof(change->staged_parent_path)) ||
             change->staged_parent_path[0] != '\0' ||
             !change->preimage_exists || change->preimage_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
@@ -275,6 +289,8 @@ orbit_filesystem_code orbit_package_filesystem_set_parent_paths(
                staged_parent_relative_path[0] != '\0') {
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     }
+    memset(change->target_parent_path, 0, sizeof(change->target_parent_path));
+    memset(change->staged_parent_path, 0, sizeof(change->staged_parent_path));
     memcpy(change->target_parent_path, target_parent_relative_path,
            strlen(target_parent_relative_path) + 1U);
     if (change->operation == ORBIT_FILESYSTEM_REPLACE) {

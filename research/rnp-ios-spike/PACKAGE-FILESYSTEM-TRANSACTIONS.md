@@ -93,3 +93,28 @@ changes, and trailing bytes. The outer authenticated envelope supplies the
 revision to the decoder. The codec is wired into host verification but has
 not been run yet. It is not yet connected to the Swift persistence actor or
 the production transaction executor.
+
+
+## Ownership state must share the journal's commit boundary
+
+The ownership planner now exposes complete replacement-snapshot builders for install/upgrade and removal. The canonical ownership codec can encode/decode that snapshot, and both are covered by host CI. They are still in-memory planning/codec components; they are not a persistent ownership database.
+
+The next transaction-layer change must make the **active file journal, pending ownership snapshot, and committed ownership snapshot one authenticated durable state envelope**. Do not implement ownership persistence as a second independent file or a second callback that can commit separately from the file journal.
+
+Required backend semantics:
+
+1. The envelope carries the monotonic revision, active file-journal record (when present), the currently committed ownership payload, and the pending replacement ownership payload for the active transaction.
+2. Storing an APPLYING or ROLLING_BACK journal atomically updates the active journal and pending payload while preserving the previous committed ownership payload.
+3. A rollback completion atomically clears the active transaction and discards its pending ownership payload. The prior committed ownership payload remains authoritative.
+4. A COMMITTED journal is durable before backup finalization. Recovery retries finalization while the pending ownership payload remains in the same envelope.
+5. Only the atomic transition that clears a successfully finalized COMMITTED journal may promote the pending ownership payload to committed ownership. That transition must also advance/preserve the same monotonic freshness anchor; there must be no crash window where files are committed but ownership can silently revert.
+6. Loading an active COMMITTED transaction must expose its pending ownership snapshot as the transaction's intended post-commit state, but ordinary package operations remain blocked until finalization and promotion complete.
+7. Authentication, revision compare-and-swap, and the independent anti-rollback freshness anchor cover the entire envelope—not separate journal and ownership records. Key loss, MAC failure, stale revision, or ambiguous state fails closed and preserves backups.
+
+The backend API should express this as one atomic envelope operation with explicit active/pending/committed state. Avoid adding a raw struct pointer to the journal record or relying on a process-local callback to remember the pending snapshot; recovery must reconstruct all required state after process death. The implementation must define ownership of allocated buffers and enforce the existing ownership codec payload bound before writing.
+
+This is a design requirement, not an implemented feature. The current file-journal backend contract and in-memory test backend do not yet persist ownership state. Production installation remains disabled.
+
+## Verification status update
+
+The canonical file-journal codec and filesystem-journal host tests are now wired into the host verification workflow and have passed on the feature branch. The earlier statements that these tests had not run are superseded by the successful CI run. This does not mean a production persistence adapter or device crash-recovery path exists.

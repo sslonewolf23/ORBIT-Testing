@@ -18,8 +18,12 @@ typedef enum {
 } file_identity_result;
 
 static bool valid_component(const char *name, size_t capacity) {
-    return name && name[0] != '\0' && strlen(name) < capacity &&
-           strchr(name, '/') == NULL && orbit_package_archive_path_is_safe(name);
+    if (!name) return false;
+    const char *terminator = (const char *)memchr(name, '\0', capacity);
+    if (!terminator || terminator == name) return false;
+    size_t length = (size_t)(terminator - name);
+    return length < capacity && memchr(name, '/', length) == NULL &&
+           orbit_package_archive_path_is_safe(name);
 }
 
 static bool same_volume_directories(int first_fd, int second_fd) {
@@ -78,17 +82,21 @@ static orbit_filesystem_code verify_change(
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
         if (!valid_component(change->staged_name, sizeof(change->staged_name)) ||
-            change->staged_device == 0U || change->staged_inode == 0U)
+            strcmp(change->target_name, change->staged_name) == 0 ||
+            strcmp(change->target_name, change->backup_name) == 0 ||
+            strcmp(change->staged_name, change->backup_name) == 0 ||
+            change->staged_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
+        if (strcmp(change->target_name, change->backup_name) == 0)
+            return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
         if (change->staged_name[0] != '\0' || !change->preimage_exists ||
             change->preimage_device == 0U || change->preimage_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else {
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     }
-    if (change->preimage_exists &&
-        (change->preimage_device == 0U || change->preimage_inode == 0U))
+    if (change->preimage_exists && change->preimage_inode == 0U)
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     return ORBIT_FILESYSTEM_OK;
 }
@@ -104,23 +112,29 @@ static orbit_filesystem_code ensure_backup_link(
         return backup == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
                ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
 
+    nlink_t target_links = 0;
     file_identity_result target = file_identity_at(
         target_parent_fd, change->target_name,
-        change->preimage_device, change->preimage_inode, NULL, NULL, NULL);
+        change->preimage_device, change->preimage_inode,
+        NULL, NULL, &target_links);
     if (target != FILE_ID_MATCH)
         return target == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
                ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    if (target_links != 1) return ORBIT_FILESYSTEM_CONFLICT;
 
     if (linkat(target_parent_fd, change->target_name,
                backup_parent_fd, change->backup_name, 0) < 0) {
         if (errno != EEXIST) return ORBIT_FILESYSTEM_IO_ERROR;
     }
+    nlink_t backup_links = 0;
     backup = file_identity_at(
         backup_parent_fd, change->backup_name,
-        change->preimage_device, change->preimage_inode, NULL, NULL, NULL);
+        change->preimage_device, change->preimage_inode,
+        NULL, NULL, &backup_links);
     if (backup != FILE_ID_MATCH)
         return backup == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
                ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    if (backup_links != 2) return ORBIT_FILESYSTEM_CONFLICT;
     if (fsync(backup_parent_fd) < 0) return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     return ORBIT_FILESYSTEM_OK;
 }
@@ -132,6 +146,9 @@ static orbit_filesystem_code remove_if_identity(
     if (identity == FILE_ID_MISSING) return ORBIT_FILESYSTEM_OK;
     if (identity == FILE_ID_ERROR) return ORBIT_FILESYSTEM_IO_ERROR;
     if (identity != FILE_ID_MATCH) return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    nlink_t links = 0;
+    (void)file_identity_at(directory_fd, name, device, inode, NULL, NULL, &links);
+    if (links != 1) return ORBIT_FILESYSTEM_CONFLICT;
     if (unlinkat(directory_fd, name, 0) < 0)
         return ORBIT_FILESYSTEM_IO_ERROR;
     return fsync(directory_fd) == 0 ? ORBIT_FILESYSTEM_OK :
@@ -141,12 +158,15 @@ static orbit_filesystem_code remove_if_identity(
 static orbit_filesystem_code restore_backup(
     int target_parent_fd, int backup_parent_fd,
     const orbit_package_file_change *change) {
+    nlink_t backup_links = 0;
     file_identity_result backup = file_identity_at(
         backup_parent_fd, change->backup_name,
-        change->preimage_device, change->preimage_inode, NULL, NULL, NULL);
+        change->preimage_device, change->preimage_inode,
+        NULL, NULL, &backup_links);
     if (backup != FILE_ID_MATCH)
         return backup == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
                ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    if (backup_links != 1) return ORBIT_FILESYSTEM_CONFLICT;
     if (renameat(backup_parent_fd, change->backup_name,
                  target_parent_fd, change->target_name) < 0)
         return ORBIT_FILESYSTEM_IO_ERROR;

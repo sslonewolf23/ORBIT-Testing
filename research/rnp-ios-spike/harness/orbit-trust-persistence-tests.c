@@ -256,6 +256,35 @@ int main(int argc,char **argv) {
         !orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,199U),true);
 
 
+    uint64_t normal_now=(uint64_t)time(NULL);
+    memory_store normal_storage;memset(&normal_storage,0,sizeof(normal_storage));
+    orbit_trust_store_backend normal_backend=backend_for(&normal_storage);
+    orbit_repository_trust_state normal_state,normal_reloaded;
+    expect("normal-rotation-bootstrap",orbit_repository_trust_load_or_initialize(
+        &normal_state,repo,trusted_fpr,&normal_backend)==ORBIT_TRUST_STORE_OK,true);
+    orbit_trust_code normal_decision=ORBIT_TRUST_INVALID_ARGUMENT;
+    expect("normal-signed-rotation-and-persistence-commit",
+        orbit_repository_trust_authorize_rotation_and_store(
+            &normal_state,repo,repo,normal_rotation,normal_rotation_len,
+            trusted,trusted_len,candidate,candidate_len,normal_now,
+            &normal_backend,&normal_decision)==ORBIT_TRUST_STORE_OK &&
+        normal_decision==ORBIT_TRUST_ACCEPTED &&
+        strcmp(normal_state.current_fingerprint,trusted_fpr)==0 &&
+        strcmp(normal_state.pending_fingerprint,candidate_fpr)==0 &&
+        normal_state.pending_activation>normal_now,true);
+    expect("normal-pending-rotation-survives-reload",
+        orbit_repository_trust_store_load(&normal_reloaded,repo,&normal_backend)==ORBIT_TRUST_STORE_OK &&
+        strcmp(normal_reloaded.pending_fingerprint,candidate_fpr)==0 &&
+        normal_reloaded.last_observed_time==normal_now,true);
+    expect("normal-new-key-not-accepted-before-activation",
+        !orbit_repository_trust_fingerprint_allowed_and_store(
+            &normal_state,repo,candidate_fpr,normal_now,&normal_backend,
+            &lifecycle_store_result),true);
+    expect("normal-old-key-remains-accepted-before-activation",
+        orbit_repository_trust_fingerprint_allowed_and_store(
+            &normal_state,repo,trusted_fpr,normal_now,&normal_backend,
+            &lifecycle_store_result),true);
+
     uint64_t recovery_now=emergency_now+30U;
     memory_store recovery_storage;memset(&recovery_storage,0,sizeof(recovery_storage));
     orbit_trust_store_backend recovery_backend=backend_for(&recovery_storage);

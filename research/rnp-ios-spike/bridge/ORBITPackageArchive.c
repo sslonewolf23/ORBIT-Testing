@@ -65,6 +65,10 @@ static bool field_string(const uint8_t *p, size_t n, char *out, size_t cap) {
     size_t length = 0U;
     while (length < n && p[length] != ' ' && p[length] != '/') ++length;
     if (length == 0U || length >= cap) return false;
+    size_t padding = length;
+    if (padding < n && p[padding] == '/') ++padding;
+    for (size_t i = padding; i < n; ++i)
+        if (p[i] != ' ') return false;
     for (size_t i = 0U; i < length; ++i) {
         unsigned char c = p[i];
         if (c < 0x21U || c > 0x7eU) return false;

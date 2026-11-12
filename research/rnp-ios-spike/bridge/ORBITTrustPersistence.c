@@ -249,125 +249,80 @@ static void reload_or_invalidate_state(
 }
 
 orbit_trust_store_code orbit_repository_trust_load_or_initialize(
-    orbit_repository_trust_state *state,const char *repository_id,
-    const char *bootstrap_primary_fingerprint,
-    const orbit_trust_store_backend *backend) {
-    if(!state||!bootstrap_primary_fingerprint)
-        return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
-    orbit_trust_store_code loaded=orbit_repository_trust_store_load(
-        state,repository_id,backend);
-    if(loaded!=ORBIT_TRUST_STORE_NOT_FOUND)return loaded;
-    orbit_repository_trust_state initial;
-    memset(&initial,0,sizeof(initial));
-    if(!orbit_repository_trust_init(&initial,bootstrap_primary_fingerprint))
-        return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
-    orbit_trust_store_code saved=orbit_repository_trust_store_save(
-        &initial,repository_id,backend);
-    if(saved!=ORBIT_TRUST_STORE_OK) {
-        memset(state,0,sizeof(*state));
-        memset(&initial,0,sizeof(initial));
-        return saved;
-    }
-    *state=initial;
-    memset(&initial,0,sizeof(initial));
-    return ORBIT_TRUST_STORE_OK;
+ orbit_repository_trust_state *state,const char *repository_id,const char *bootstrap_primary_fingerprint,const orbit_trust_store_backend *backend) {
+ if(!state||!bootstrap_primary_fingerprint||!valid_repo(repository_id)||!backend_valid(backend))return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+ memset(state,0,sizeof(*state));
+ if(!backend->begin_transaction(backend->context,repository_id))return ORBIT_TRUST_STORE_IO_ERROR;
+ orbit_repository_trust_state current;memset(&current,0,sizeof(current));
+ orbit_trust_store_code status=store_load_locked(&current,repository_id,backend);
+ if(status==ORBIT_TRUST_STORE_NOT_FOUND){
+  orbit_repository_trust_state initial;memset(&initial,0,sizeof(initial));
+  if(!orbit_repository_trust_init(&initial,bootstrap_primary_fingerprint))status=ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+  else{status=store_save_locked(&initial,repository_id,backend);if(status==ORBIT_TRUST_STORE_OK)*state=initial;}
+  memset(&initial,0,sizeof(initial));
+ }else if(status==ORBIT_TRUST_STORE_OK)*state=current;
+ memset(&current,0,sizeof(current));if(status!=ORBIT_TRUST_STORE_OK)memset(state,0,sizeof(*state));
+ backend->end_transaction(backend->context,repository_id);return status;
 }
-
 orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
-    orbit_repository_trust_state *state,const char *repository_id,
-    const char *expected_repository,const uint8_t *rotation_inrelease,
-    size_t rotation_inrelease_length,const uint8_t *current_public_key_bundle,
-    size_t current_bundle_length,const uint8_t *candidate_public_key_bundle,
-    size_t candidate_bundle_length,uint64_t now_seconds,
-    const orbit_trust_store_backend *backend,orbit_trust_code *trust_result) {
-    if(!state||!trust_result)return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
-    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
-    if(loaded!=ORBIT_TRUST_STORE_OK)return loaded;
-    if(!orbit_repository_trust_observe_time(state,now_seconds)) {
-        *trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;
-        return ORBIT_TRUST_STORE_OK;
-    }
-    orbit_trust_store_code time_saved=orbit_repository_trust_store_save(
-        state,repository_id,backend);
-    if(time_saved!=ORBIT_TRUST_STORE_OK) {
-        reload_or_invalidate_state(state,repository_id,backend);
-        return time_saved;
-    }
-    *trust_result=orbit_repository_trust_authorize_rotation(
-        state,expected_repository,rotation_inrelease,rotation_inrelease_length,
-        current_public_key_bundle,current_bundle_length,candidate_public_key_bundle,
-        candidate_bundle_length,now_seconds);
-    if(*trust_result==ORBIT_TRUST_ACCEPTED) {
-        orbit_trust_store_code saved=orbit_repository_trust_store_save(
-            state,repository_id,backend);
-        if(saved!=ORBIT_TRUST_STORE_OK)
-            reload_or_invalidate_state(state,repository_id,backend);
-        return saved;
-    }
-    return ORBIT_TRUST_STORE_OK;
+ orbit_repository_trust_state *state,const char *repository_id,const char *expected_repository,
+ const uint8_t *rotation_inrelease,size_t rotation_inrelease_length,const uint8_t *current_public_key_bundle,
+ size_t current_bundle_length,const uint8_t *candidate_public_key_bundle,size_t candidate_bundle_length,
+ uint64_t now_seconds,const orbit_trust_store_backend *backend,orbit_trust_code *trust_result) {
+ if(!state||!trust_result||!valid_repo(repository_id)||!backend_valid(backend))return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+ if(!backend->begin_transaction(backend->context,repository_id)){memset(state,0,sizeof(*state));return ORBIT_TRUST_STORE_IO_ERROR;}
+ orbit_repository_trust_state current;memset(&current,0,sizeof(current));
+ orbit_trust_store_code status=store_load_locked(&current,repository_id,backend);
+ if(status!=ORBIT_TRUST_STORE_OK)goto normal_done;
+ if(!orbit_repository_trust_observe_time(&current,now_seconds)){*trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;status=ORBIT_TRUST_STORE_OK;goto normal_done;}
+ status=store_save_locked(&current,repository_id,backend);if(status!=ORBIT_TRUST_STORE_OK)goto normal_recover;
+ *trust_result=orbit_repository_trust_authorize_rotation(&current,expected_repository,rotation_inrelease,rotation_inrelease_length,current_public_key_bundle,current_bundle_length,candidate_public_key_bundle,candidate_bundle_length,now_seconds);
+ if(*trust_result==ORBIT_TRUST_ACCEPTED){status=store_save_locked(&current,repository_id,backend);if(status!=ORBIT_TRUST_STORE_OK)goto normal_recover;}
+ *state=current;goto normal_done;
+normal_recover:
+ memset(&current,0,sizeof(current));if(store_load_locked(&current,repository_id,backend)==ORBIT_TRUST_STORE_OK)*state=current;else memset(state,0,sizeof(*state));
+normal_done:
+ if(status!=ORBIT_TRUST_STORE_OK)memset(state,0,sizeof(*state));
+ memset(&current,0,sizeof(current));backend->end_transaction(backend->context,repository_id);return status;
 }
-
 bool orbit_repository_trust_observe_time_and_store(
-    orbit_repository_trust_state *state,const char *repository_id,
-    uint64_t now_seconds,const orbit_trust_store_backend *backend,
-    orbit_trust_store_code *store_result) {
-    if(!state||!store_result)return false;
-    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
-    if(loaded!=ORBIT_TRUST_STORE_OK) {
-        *store_result=loaded;
-        return false;
-    }
-    if(!orbit_repository_trust_observe_time(state,now_seconds)) {
-        *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
-        return false;
-    }
-    *store_result=orbit_repository_trust_store_save(state,repository_id,backend);
-    if(*store_result!=ORBIT_TRUST_STORE_OK) {
-        reload_or_invalidate_state(state,repository_id,backend);
-        return false;
-    }
-    return true;
+ orbit_repository_trust_state *state,const char *repository_id,uint64_t now_seconds,
+ const orbit_trust_store_backend *backend,orbit_trust_store_code *store_result) {
+ if(!state||!store_result||!valid_repo(repository_id)||!backend_valid(backend)){if(store_result)*store_result=ORBIT_TRUST_STORE_INVALID_ARGUMENT;return false;}
+ if(!backend->begin_transaction(backend->context,repository_id)){memset(state,0,sizeof(*state));*store_result=ORBIT_TRUST_STORE_IO_ERROR;return false;}
+ orbit_repository_trust_state current;memset(&current,0,sizeof(current));
+ *store_result=store_load_locked(&current,repository_id,backend);
+ if(*store_result==ORBIT_TRUST_STORE_OK){
+  if(!orbit_repository_trust_observe_time(&current,now_seconds))*store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+  else *store_result=store_save_locked(&current,repository_id,backend);
+ }
+ if(*store_result==ORBIT_TRUST_STORE_OK||*store_result==ORBIT_TRUST_STORE_ROLLBACK_DETECTED)*state=current;
+ else{memset(&current,0,sizeof(current));if(store_load_locked(&current,repository_id,backend)==ORBIT_TRUST_STORE_OK)*state=current;else memset(state,0,sizeof(*state));}
+ bool success=*store_result==ORBIT_TRUST_STORE_OK;memset(&current,0,sizeof(current));backend->end_transaction(backend->context,repository_id);return success;
 }
-
-
 orbit_trust_store_code orbit_repository_trust_authorize_recovery_rotation_and_store(
-    orbit_repository_trust_state *state,const char *repository_id,
-    const char *expected_repository,const uint8_t *recovery_inrelease,
-    size_t recovery_inrelease_length,const uint8_t *recovery_public_key_bundle,
-    size_t recovery_bundle_length,const char *pinned_recovery_primary_fingerprint,
-    const uint8_t *candidate_public_key_bundle,size_t candidate_bundle_length,
-    uint64_t now_seconds,const orbit_trust_store_backend *backend,
-    orbit_trust_code *trust_result) {
-    if(!state||!trust_result)return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
-    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
-    if(loaded!=ORBIT_TRUST_STORE_OK)return loaded;
-    if(now_seconds<state->last_observed_time) {
-        *trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;
-        return ORBIT_TRUST_STORE_OK;
-    }
-    *trust_result=orbit_repository_trust_authorize_recovery_rotation(
-        state,expected_repository,recovery_inrelease,recovery_inrelease_length,
-        recovery_public_key_bundle,recovery_bundle_length,
-        pinned_recovery_primary_fingerprint,candidate_public_key_bundle,
-        candidate_bundle_length,now_seconds);
-    if(*trust_result==ORBIT_TRUST_ACCEPTED) {
-        orbit_trust_store_code saved=orbit_repository_trust_store_save(
-            state,repository_id,backend);
-        if(saved!=ORBIT_TRUST_STORE_OK)
-            reload_or_invalidate_state(state,repository_id,backend);
-        return saved;
-    }
-    if(!orbit_repository_trust_observe_time(state,now_seconds)) {
-        *trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;
-        return ORBIT_TRUST_STORE_OK;
-    }
-    orbit_trust_store_code time_saved=orbit_repository_trust_store_save(
-        state,repository_id,backend);
-    if(time_saved!=ORBIT_TRUST_STORE_OK)
-        reload_or_invalidate_state(state,repository_id,backend);
-    return time_saved;
+ orbit_repository_trust_state *state,const char *repository_id,const char *expected_repository,
+ const uint8_t *recovery_inrelease,size_t recovery_inrelease_length,const uint8_t *recovery_public_key_bundle,
+ size_t recovery_bundle_length,const char *pinned_recovery_primary_fingerprint,const uint8_t *candidate_public_key_bundle,
+ size_t candidate_bundle_length,uint64_t now_seconds,const orbit_trust_store_backend *backend,orbit_trust_code *trust_result) {
+ if(!state||!trust_result||!valid_repo(repository_id)||!backend_valid(backend))return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+ if(!backend->begin_transaction(backend->context,repository_id)){memset(state,0,sizeof(*state));return ORBIT_TRUST_STORE_IO_ERROR;}
+ orbit_repository_trust_state current;memset(&current,0,sizeof(current));
+ orbit_trust_store_code status=store_load_locked(&current,repository_id,backend);
+ if(status!=ORBIT_TRUST_STORE_OK)goto emergency_done;
+ if(now_seconds<current.last_observed_time){*trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;status=ORBIT_TRUST_STORE_OK;goto emergency_done;}
+ *trust_result=orbit_repository_trust_authorize_recovery_rotation(&current,expected_repository,recovery_inrelease,recovery_inrelease_length,recovery_public_key_bundle,recovery_bundle_length,pinned_recovery_primary_fingerprint,candidate_public_key_bundle,candidate_bundle_length,now_seconds);
+ if(*trust_result==ORBIT_TRUST_ACCEPTED)status=store_save_locked(&current,repository_id,backend);
+ else if(!orbit_repository_trust_observe_time(&current,now_seconds)){*trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;status=ORBIT_TRUST_STORE_OK;goto emergency_done;}
+ else status=store_save_locked(&current,repository_id,backend);
+ if(status!=ORBIT_TRUST_STORE_OK)goto emergency_recover;
+ *state=current;goto emergency_done;
+emergency_recover:
+ memset(&current,0,sizeof(current));if(store_load_locked(&current,repository_id,backend)==ORBIT_TRUST_STORE_OK)*state=current;else memset(state,0,sizeof(*state));
+emergency_done:
+ if(status!=ORBIT_TRUST_STORE_OK)memset(state,0,sizeof(*state));
+ memset(&current,0,sizeof(current));backend->end_transaction(backend->context,repository_id);return status;
 }
-
 bool orbit_repository_trust_fingerprint_allowed_and_store(
     orbit_repository_trust_state *state,const char *repository_id,
     const char *primary_fingerprint,uint64_t now_seconds,
@@ -430,61 +385,34 @@ bool orbit_repository_trust_fingerprint_allowed_and_store(
 }
 
 bool orbit_repository_trust_advance_and_store(
-    orbit_repository_trust_state *state,const char *repository_id,
-    uint64_t now_seconds,const orbit_trust_store_backend *backend,
-    orbit_trust_store_code *store_result) {
-    if(!state||!store_result){return false;}
-    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
-    if(loaded!=ORBIT_TRUST_STORE_OK) {
-        *store_result=loaded;
-        return false;
-    }
-    if(now_seconds<state->last_observed_time) {
-        *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
-        return false;
-    }
-    if(state->revision==UINT64_MAX || state->generation==UINT32_MAX) {
-        *store_result=ORBIT_TRUST_STORE_REVISION_EXHAUSTED;
-        return false;
-    }
-    if(!orbit_repository_trust_advance(state,now_seconds)) {
-        *store_result=ORBIT_TRUST_STORE_OK;
-        return false;
-    }
-    *store_result=orbit_repository_trust_store_save(state,repository_id,backend);
-    if(*store_result!=ORBIT_TRUST_STORE_OK) {
-        reload_or_invalidate_state(state,repository_id,backend);
-        return false;
-    }
-    return true;
+ orbit_repository_trust_state *state,const char *repository_id,uint64_t now_seconds,
+ const orbit_trust_store_backend *backend,orbit_trust_store_code *store_result) {
+ if(!state||!store_result||!valid_repo(repository_id)||!backend_valid(backend)){if(store_result)*store_result=ORBIT_TRUST_STORE_INVALID_ARGUMENT;return false;}
+ if(!backend->begin_transaction(backend->context,repository_id)){memset(state,0,sizeof(*state));*store_result=ORBIT_TRUST_STORE_IO_ERROR;return false;}
+ orbit_repository_trust_state current;memset(&current,0,sizeof(current));*store_result=store_load_locked(&current,repository_id,backend);bool changed=false;
+ if(*store_result==ORBIT_TRUST_STORE_OK){
+  if(now_seconds<current.last_observed_time)*store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+  else if(current.revision==UINT64_MAX||current.generation==UINT32_MAX)*store_result=ORBIT_TRUST_STORE_REVISION_EXHAUSTED;
+  else if(orbit_repository_trust_advance(&current,now_seconds)){changed=true;*store_result=store_save_locked(&current,repository_id,backend);}
+ }
+ if(*store_result==ORBIT_TRUST_STORE_OK&&changed)*state=current;
+ else if(*store_result==ORBIT_TRUST_STORE_ROLLBACK_DETECTED)*state=current;
+ else if(*store_result!=ORBIT_TRUST_STORE_OK){memset(&current,0,sizeof(current));if(store_load_locked(&current,repository_id,backend)==ORBIT_TRUST_STORE_OK)*state=current;else memset(state,0,sizeof(*state));}
+ bool success=changed&&*store_result==ORBIT_TRUST_STORE_OK;memset(&current,0,sizeof(current));backend->end_transaction(backend->context,repository_id);return success;
 }
-
 bool orbit_repository_trust_prune_previous_and_store(
-    orbit_repository_trust_state *state,const char *repository_id,
-    uint64_t now_seconds,const orbit_trust_store_backend *backend,
-    orbit_trust_store_code *store_result) {
-    if(!state||!store_result)return false;
-    orbit_trust_store_code loaded=orbit_repository_trust_store_load(state,repository_id,backend);
-    if(loaded!=ORBIT_TRUST_STORE_OK) {
-        *store_result=loaded;
-        return false;
-    }
-    if(now_seconds<state->last_observed_time) {
-        *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
-        return false;
-    }
-    if(state->revision==UINT64_MAX) {
-        *store_result=ORBIT_TRUST_STORE_REVISION_EXHAUSTED;
-        return false;
-    }
-    if(!orbit_repository_trust_prune_previous(state,now_seconds)) {
-        *store_result=ORBIT_TRUST_STORE_OK;
-        return false;
-    }
-    *store_result=orbit_repository_trust_store_save(state,repository_id,backend);
-    if(*store_result!=ORBIT_TRUST_STORE_OK) {
-        reload_or_invalidate_state(state,repository_id,backend);
-        return false;
-    }
-    return true;
+ orbit_repository_trust_state *state,const char *repository_id,uint64_t now_seconds,
+ const orbit_trust_store_backend *backend,orbit_trust_store_code *store_result) {
+ if(!state||!store_result||!valid_repo(repository_id)||!backend_valid(backend)){if(store_result)*store_result=ORBIT_TRUST_STORE_INVALID_ARGUMENT;return false;}
+ if(!backend->begin_transaction(backend->context,repository_id)){memset(state,0,sizeof(*state));*store_result=ORBIT_TRUST_STORE_IO_ERROR;return false;}
+ orbit_repository_trust_state current;memset(&current,0,sizeof(current));*store_result=store_load_locked(&current,repository_id,backend);bool changed=false;
+ if(*store_result==ORBIT_TRUST_STORE_OK){
+  if(now_seconds<current.last_observed_time)*store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+  else if(current.revision==UINT64_MAX)*store_result=ORBIT_TRUST_STORE_REVISION_EXHAUSTED;
+  else if(orbit_repository_trust_prune_previous(&current,now_seconds)){changed=true;*store_result=store_save_locked(&current,repository_id,backend);}
+ }
+ if(*store_result==ORBIT_TRUST_STORE_OK&&changed)*state=current;
+ else if(*store_result==ORBIT_TRUST_STORE_ROLLBACK_DETECTED)*state=current;
+ else if(*store_result!=ORBIT_TRUST_STORE_OK){memset(&current,0,sizeof(current));if(store_load_locked(&current,repository_id,backend)==ORBIT_TRUST_STORE_OK)*state=current;else memset(state,0,sizeof(*state));}
+ bool success=changed&&*store_result==ORBIT_TRUST_STORE_OK;memset(&current,0,sizeof(current));backend->end_transaction(backend->context,repository_id);return success;
 }

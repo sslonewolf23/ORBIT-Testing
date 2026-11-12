@@ -618,6 +618,18 @@ jobs:
           "$RUNNER_TEMP/orbit-dependency-resolver-tests" | tee "$RUNNER_TEMP/dependency-resolver.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/dependency-resolver.out"
 
+      - name: Compile and run package transaction recovery tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageTransaction.c \
+            research/rnp-ios-spike/harness/orbit-package-transaction-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-transaction-tests"
+          "$RUNNER_TEMP/orbit-package-transaction-tests" | tee "$RUNNER_TEMP/package-transaction.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction.out"
+
       - name: Upload host verification evidence
         if: always()
         uses: actions/upload-artifact@v4

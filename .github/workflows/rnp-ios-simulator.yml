@@ -260,18 +260,24 @@ jobs:
           </plist>
           PLIST
           swiftc -parse-as-library -target "$TARGET" -sdk "$SDK" \
-            -import-objc-header research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.h \
+            -import-objc-header research/rnp-ios-spike/bridge/ORBITSwiftBridging.h \
             -Iresearch/rnp-ios-spike/bridge \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-ios.o" \
             "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o" \
             "$RUNNER_TEMP/ORBITPackageTransactionEnvelope-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageArchive-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageDecompress-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageFilesystem-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageFilesystemJournalCodec-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageFilesystemJournalEnvelope-ios.o" \
             $(pkg-config --static --libs librnp | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             $(pkg-config --static --libs botan-3 | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \
             $(pkg-config --static --libs json-c | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \
-            -L"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/lib" -lbz2 -lz -lc++ \
+            -L"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/lib" -lbz2 -lz -llzma -lzstd -lc++ \
             -framework UIKit -framework Foundation -framework DeviceCheck -framework Security \
             research/rnp-ios-spike/harness/ORBITTransactionEnvelopeStore.swift \
+            research/rnp-ios-spike/harness/ORBITTransactionEnvelopeBackendBridge.swift \
             research/rnp-ios-spike/harness/ORBITRNPsimulatorApp.swift \
             -o "$APP/ORBITRNPsimulator"
           plutil -lint "$APP/Info.plist"

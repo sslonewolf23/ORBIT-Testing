@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
@@ -12,6 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 
 	_ "modernc.org/sqlite"
 )
@@ -25,6 +29,8 @@ type config struct {
 	tlsCert    string
 	tlsKey     string
 	recoveryPepper string
+	awsRegion string
+	anchorTable string
 }
 
 func loadConfig() (config, error) {
@@ -37,10 +43,12 @@ func loadConfig() (config, error) {
 		tlsCert: strings.TrimSpace(os.Getenv("ORBIT_TLS_CERT")),
 		tlsKey: strings.TrimSpace(os.Getenv("ORBIT_TLS_KEY")),
 		recoveryPepper: strings.TrimSpace(os.Getenv("ORBIT_RECOVERY_PEPPER")),
+		awsRegion: strings.TrimSpace(os.Getenv("AWS_REGION")),
+		anchorTable: strings.TrimSpace(os.Getenv("ORBIT_ANCHOR_TABLE")),
 	}
 	if c.appID == "" || c.rootPEM == "" || c.dbPath == "" ||
-		c.tlsCert == "" || c.tlsKey == "" || c.recoveryPepper == "" {
-		return c, errors.New("ORBIT_APP_ID, ORBIT_APP_ATTEST_ROOT_PEM, ORBIT_DB_PATH, ORBIT_TLS_CERT, ORBIT_TLS_KEY and ORBIT_RECOVERY_PEPPER are required")
+		c.tlsCert == "" || c.tlsKey == "" || c.recoveryPepper == "" || c.awsRegion == "" || c.anchorTable == "" {
+		return c, errors.New("ORBIT_APP_ID, ORBIT_APP_ATTEST_ROOT_PEM, ORBIT_DB_PATH, ORBIT_TLS_CERT, ORBIT_TLS_KEY, ORBIT_RECOVERY_PEPPER, AWS_REGION and ORBIT_ANCHOR_TABLE are required")
 	}
 	appParts := strings.SplitN(c.appID, ".", 2)
 	if len(appParts) != 2 || len(appParts[0]) != 10 || appParts[1] == "" ||
@@ -118,9 +126,28 @@ CREATE TRIGGER IF NOT EXISTS key_recovery_history_no_delete
 BEFORE DELETE ON key_recovery_history BEGIN SELECT RAISE(ABORT, 'recovery history is immutable'); END;`
 	if _, err = db.Exec(schema); err != nil { db.Close(); return nil, err }
 	if err = ensureRecoveryVerifierColumn(db); err != nil { db.Close(); return nil, err }
+	if err = ensureAnchorSequenceColumn(db); err != nil { db.Close(); return nil, err }
 	if _, err = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS installations_recovery_verifier_unique ON installations(recovery_verifier) WHERE recovery_verifier IS NOT NULL"); err != nil { db.Close(); return nil, err }
 	if err = os.Chmod(path, 0600); err != nil { db.Close(); return nil, err }
 	return db, nil
+}
+
+func ensureAnchorSequenceColumn(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(installations)")
+	if err != nil { return err }
+	found := false
+	for rows.Next() {
+		var cid, notNull, primary int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &kind, &notNull, &defaultValue, &primary); err != nil { rows.Close(); return err }
+		if name == "anchor_sequence" { found = true }
+	}
+	if err := rows.Err(); err != nil { rows.Close(); return err }
+	if err := rows.Close(); err != nil { return err }
+	if found { return nil }
+	_, err = db.Exec("ALTER TABLE installations ADD COLUMN anchor_sequence INTEGER NOT NULL DEFAULT 0")
+	return err
 }
 
 func ensureRecoveryVerifierColumn(db *sql.DB) error {
@@ -170,8 +197,12 @@ func main() {
 	if err != nil { log.Fatal(err) }
 	defer db.Close()
 
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(cfg.awsRegion))
+	if err != nil { log.Fatal(err) }
+	anchor, err := newDynamoAnchor(dynamodb.NewFromConfig(awsCfg), cfg.anchorTable)
+	if err != nil { log.Fatal(err) }
 	s := &service{db: db, appID: cfg.appID, environment: cfg.environment,
-		roots: roots, now: time.Now, recoveryPepper: []byte(cfg.recoveryPepper)}
+		roots: roots, now: time.Now, recoveryPepper: []byte(cfg.recoveryPepper), anchor: anchor}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(); err != nil {

@@ -209,6 +209,10 @@ func main() {
 			http.Error(w, "unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		if err := anchor.Health(r.Context()); err != nil {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("GET /v1/orbit/journal/attestation-challenge", s.challenge)

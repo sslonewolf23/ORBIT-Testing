@@ -11,7 +11,8 @@ until the security review and device integration checklist are complete.
   developer documentation / certificate publication
 - A registered Apple App ID in the form `TEAM_ID.bundle.identifier`
 - A production HTTPS certificate and private key
-- Durable storage with backups and operational monitoring
+- AWS account with a DynamoDB table dedicated to the ORBIT monotonic anchor
+- Durable SQLite storage with backups and operational monitoring
 
 ## Configuration
 
@@ -25,6 +26,8 @@ Required environment variables:
 - `ORBIT_TLS_CERT`: HTTPS certificate chain
 - `ORBIT_TLS_KEY`: matching private key
 - `ORBIT_RECOVERY_PEPPER`: at least 32 characters of independently generated random server secret; keep it outside the database, back it up separately, and retain the same value across restarts and restores
+- `AWS_REGION`: AWS region containing the independent anchor table
+- `ORBIT_ANCHOR_TABLE`: DynamoDB table with partition key `installation_id` (String) and sort key `sequence` (Number)
 - `ORBIT_LISTEN`: optional bind address; defaults to `127.0.0.1:8443`
 
 The service refuses to start without TLS credentials and the trust root. Place
@@ -47,12 +50,9 @@ origin and the same App ID/environment as the server.
 
 ## Data durability
 
-SQLite is configured for WAL mode, `synchronous=FULL`, foreign keys, a
-single connection, and a busy timeout. Keep the database, WAL, and shared
-memory files on a local filesystem with reliable fsync semantics. Backups
-must preserve transaction consistency. A restored old database is a security
-incident: stop serving requests and restore from a verified current backup;
-never start with an empty database for an existing App Attest installation.
+SQLite is configured for WAL mode, `synchronous=FULL`, foreign keys, a single connection, and a busy timeout. It is now a rebuildable local cache, not the freshness authority. Every registered installation has an independent append-only DynamoDB checkpoint chain. Each accepted assertion advances the chain, including read-only head requests; every checkpoint binds the App Attest key ID/public key, assertion counter, journal revision/digest/tombstone, and previous checkpoint hash. DynamoDB reads are strongly consistent and each append uses a conditional insert at the next sequence. The runtime role needs only `dynamodb:Query` and `dynamodb:PutItem` on this table. It must not have UpdateItem, DeleteItem, DeleteTable, RestoreTableToPointInTime, or table-administration permissions. Use a separate tightly controlled operator role for table lifecycle.
+
+If SQLite is restored behind the external anchor, the service advances its local row to the latest checkpoint before accepting another assertion. If SQLite claims a state ahead of the anchor, the anchor is missing, the anchor is unavailable, or the chain is inconsistent, the service fails closed. A DynamoDB point-in-time restore creates a separate table; never repoint a running deployment to a restored/older table. Preserve the original table as the independent monotonic authority. Keep SQLite/WAL files on local storage with reliable fsync semantics and back them up consistently.
 
 The service currently has no multi-node replication, account authentication,
 operator recovery workflow, certificate pinning, or automated backup
@@ -81,10 +81,7 @@ and state transitions but cannot establish Apple's trust chain.
 - Validate the App Attest validation-category and bundle-version extensions.
 - Recovery credentials are now part of enrollment. The client generates and securely preserves a uniformly random 32-byte secret and the device validation host shows it once. The server stores only a domain-separated HMAC verifier using `ORBIT_RECOVERY_PEPPER`; the raw credential is sent only over TLS during enrollment or recovery. Recovery challenges are located by the credential and bind the old and replacement key IDs server-side, expire after five minutes, and are single-use. A successful recovery replaces the App Attest key while preserving the exact journal revision, digest, tombstone, and an append-only key-recovery history row. Existing installations created before this migration have no verifier and cannot self-recover; they require a separately reviewed migration/re-enrollment process.
 - The iOS client now generates the credential, stores it in device-only Keychain storage, and sends it during enrollment and recovery. The device validation host displays it once after first enrollment. The user must save it offline: losing both the device-only Keychain copy and the offline credential makes recovery impossible. The server pepper is part of the verifier derivation and must remain stable; changing it without a controlled migration invalidates every stored recovery verifier. Rate limits, production recovery UX, and abuse monitoring remain to be implemented and tested.
-- SQLite is durable for process/device crashes but can itself be rolled back
-  by restoring an older host/database snapshot. A production deployment needs
-  an independently protected monotonic witness or strongly consistent
-  externally anchored store; ordinary SQLite backups alone are insufficient.
+- The DynamoDB anchor is a reference implementation of the independent monotonic witness. Production still requires an AWS account/table, least-privilege task role, table deletion/restore protections, independent account-level administration, monitoring, and a tested disaster-recovery plan. The service fails closed if the anchor is unavailable.
 - The service checks the App Attest validation-category and bundle-version
   extension structure, but does not yet enforce an operator-configured
   allowlist or bind later assertions to the exact enrolled bundle version.
@@ -118,9 +115,13 @@ Place the TLS certificate at `secrets/tls.crt`, the private key at
 `secrets/apple-app-attest-root.pem`. Do not download a trust root from an
 unverified mirror.
 
-Then configure `ORBIT_APP_ID`, `ORBIT_APP_ATTEST_ENV`, and a stable random
-`ORBIT_RECOVERY_PEPPER` (at least 32 random bytes encoded as text) in the
-deployment environment and run:
+Create the DynamoDB table (partition key `installation_id` String, sort key
+`sequence` Number) before starting the service. Grant the container an AWS task
+role with only `dynamodb:Query` and `dynamodb:PutItem` on that table; do not
+inject long-lived AWS access keys into the container. Then configure
+`ORBIT_APP_ID`, `ORBIT_APP_ATTEST_ENV`, `AWS_REGION`, `ORBIT_ANCHOR_TABLE`, and a
+stable random `ORBIT_RECOVERY_PEPPER` (at least 32 random bytes encoded as
+text) in the deployment environment and run:
 
 ```sh
 docker compose up --build -d

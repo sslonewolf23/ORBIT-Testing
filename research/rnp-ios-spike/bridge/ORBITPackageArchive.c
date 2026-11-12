@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #define AR_HEADER_BYTES 60U
@@ -279,6 +280,14 @@ static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length,
         }
         char type = (char)h[156U];
         bool directory = type == '5';
+        if (directory && (strcmp(path, ".") == 0 || strcmp(path, "./") == 0)) {
+            uint64_t root_size = 0U;
+            if (!parse_octal(h + 124U, 12U, &root_size) || root_size != 0U) {
+                result = ORBIT_ARCHIVE_MALFORMED_TAR; break;
+            }
+            offset += TAR_BLOCK_BYTES;
+            continue;
+        }
         while (strncmp(path, "./", 2U) == 0)
             memmove(path, path + 2U, strlen(path + 2U) + 1U);
         size_t path_length = strlen(path);

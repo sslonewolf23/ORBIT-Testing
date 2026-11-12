@@ -53,6 +53,9 @@ Architecture: iphoneos-arm64
 Filename: pool/main/o/orbit-fixture/orbit-fixture_1.0_iphoneos-arm64.deb
 Size: $DEB_SIZE
 SHA256: $DEB_SHA
+Depends: libsubstrate (>= 0.9), firmware (>= 1.0)
+Pre-Depends: dpkg (>= 1.19),
+ libsystem (>= 1.0)
 Description: ORBIT repository verification integration fixture
  This package record is a disposable parser fixture.
 

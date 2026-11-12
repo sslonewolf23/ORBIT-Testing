@@ -96,8 +96,9 @@ and state transitions but cannot establish Apple's trust chain.
 - Add challenge and installation rate limits and expired-challenge cleanup.
 - Add durable audit logs, database backup/restore drills, and operational
   alerting.
-- Add account/device recovery without allowing key replacement to reset a
-  journal head.
+- Add account authentication and a reviewed operator recovery workflow.
+  App Attest key replacement is implemented, but it is not account authentication
+  and possession of the recovery credential alone authorizes key replacement.
 - Add independent service security review and production monitoring.
 
 
@@ -127,9 +128,13 @@ Create the DynamoDB table (partition key `installation_id` String, sort key
 `sequence` Number) before starting the service. Grant the container an AWS task
 role with only `dynamodb:Query` and `dynamodb:PutItem` on that table; do not
 inject long-lived AWS access keys into the container. Then configure
-`ORBIT_APP_ID`, `ORBIT_APP_ATTEST_ENV`, `AWS_REGION`, `ORBIT_ANCHOR_TABLE`, and a
-stable random `ORBIT_RECOVERY_PEPPER` (at least 32 random bytes encoded as
-text) in the deployment environment and run:
+`ORBIT_APP_ID`, `ORBIT_APP_ATTEST_ENV`, `ORBIT_APP_ATTEST_ALLOWED_CATEGORIES`,
+`ORBIT_APP_ATTEST_ALLOWED_BUNDLE_VERSIONS` (exactly one active version),
+`AWS_REGION`, `ORBIT_ANCHOR_TABLE`, and a stable random
+`ORBIT_RECOVERY_PEPPER` (at least 32 random bytes encoded as text) in the
+deployment environment. The App Attest allowlist values must be grounded in
+the Apple App Attest environment and the exact signed app build; do not guess
+them. Then run:
 
 ```sh
 docker compose up --build -d

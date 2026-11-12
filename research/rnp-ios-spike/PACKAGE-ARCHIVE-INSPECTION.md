@@ -16,7 +16,7 @@ It accepts uncompressed `control.tar` and `data.tar`, plus gzip (`.gz`), xz (`.x
 - Zstandard decoder window: 64 MiB maximum.
 - Exactly one compressed stream is accepted; truncated streams, concatenated streams, and trailing bytes are rejected.
 
-The codec adapters decode incrementally into fixed-size output chunks. The current archive adapter collects each expanded member in bounded memory before parsing its tar manifest. It is not yet a zero-copy incremental tar parser or an extractor.
+The codec adapters decode incrementally into fixed-size output chunks and feed a stateful ustar parser directly. The parser retains only a 512-byte header buffer, bounded path manifest, and counters; it skips regular-file payload bytes without collecting the expanded tar member. Header parsing, payload skipping, padding, and end-marker validation continue correctly across arbitrary sink chunk boundaries. This is an incremental read-only manifest parser, not an extractor.
 
 ## Accepted tar entries
 
@@ -47,10 +47,9 @@ The manifest path table is bounded and allocated for inspection only. Parent dir
 
 ## Important remaining work
 
-1. Move the tar parser onto a true incremental decoder sink to avoid retaining the complete expanded member in memory.
-2. Add package ownership collision policy across already-installed packages.
-3. Add CPU/time budgets and fuzz the ar, decompressor, and ustar parsers.
-4. Build a staging/extraction backend with descriptor-relative path operations, no-follow semantics, same-filesystem staging, fsync, and atomic replacement.
-5. Capture exact preimages for rollback and integrate the result with the durable transaction journal.
+1. Add package ownership collision policy across already-installed packages.
+2. Add CPU/time budgets and fuzz the ar, decompressor, and ustar parsers.
+3. Build a staging/extraction backend with descriptor-relative path operations, no-follow semantics, same-filesystem staging, fsync, and atomic replacement.
+4. Capture exact preimages for rollback and integrate the result with the durable transaction journal.
 
 Installation must remain disabled. This component is not a production extractor.

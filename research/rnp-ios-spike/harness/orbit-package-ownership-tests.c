@@ -30,12 +30,12 @@ static size_t append_member(unsigned char *deb,size_t off,const char *name,
                             const unsigned char *body,size_t n){
  unsigned char *h=deb+off;memset(h,' ',60U);memcpy(h,name,strlen(name));
  char size[16];snprintf(size,sizeof(size),"%-10zu",n);memcpy(h+48U,size,10U);
- memcpy(h+58U,"`\\n",2U);memcpy(h+60U,body,n);
- size_t next=off+60U+n;if(((60U+n)&1U)!=0U)deb[next++]='\\n';return next;
+ memcpy(h+58U,"`\n",2U);memcpy(h+60U,body,n);
+ size_t next=off+60U+n;if(((60U+n)&1U)!=0U)deb[next++]='\n';return next;
 }
 static size_t make_deb(unsigned char *deb,const char *path){
- unsigned char tar[1536];size_t n=make_tar(tar,path);memcpy(deb,"!<arch>\\n",8U);
- size_t off=8U;static const unsigned char ver[]="2.0\\n";
+ unsigned char tar[1536];size_t n=make_tar(tar,path);memcpy(deb,"!<arch>\n",8U);
+ size_t off=8U;static const unsigned char ver[]="2.0\n";
  off=append_member(deb,off,"debian-binary",ver,4U);
  off=append_member(deb,off,"control.tar",tar,n);
  off=append_member(deb,off,"data.tar",tar,n);return off;

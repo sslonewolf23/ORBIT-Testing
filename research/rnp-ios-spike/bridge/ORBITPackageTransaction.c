@@ -19,13 +19,25 @@ static bool journal_valid(const orbit_transaction_journal *j) {
        j->operation_count>ORBIT_TRANSACTION_MAX_OPERATIONS||
        j->revision==0U||j->rollback_cursor>j->operation_count)return false;
     for(uint32_t i=0;i<j->operation_count;++i) {
+        const uint32_t state=j->operations[i].state;
         if((j->operations[i].action!=ORBIT_TRANSACTION_INSTALL&&
             j->operations[i].action!=ORBIT_TRANSACTION_REMOVE)||
-           j->operations[i].state>ORBIT_TRANSACTION_STEP_ROLLED_BACK||
+           state>ORBIT_TRANSACTION_STEP_ROLLED_BACK||
            !bounded_string(j->operations[i].name,sizeof(j->operations[i].name))||
            !bounded_string(j->operations[i].version_string,sizeof(j->operations[i].version_string))||
            !bounded_string(j->operations[i].architecture,sizeof(j->operations[i].architecture)))return false;
+        if(j->phase==ORBIT_TRANSACTION_PHASE_APPLYING&&
+           state==ORBIT_TRANSACTION_STEP_ROLLED_BACK)return false;
+        if(j->phase==ORBIT_TRANSACTION_PHASE_COMMITTED&&
+           state!=ORBIT_TRANSACTION_STEP_COMPLETE)return false;
+        for(uint32_t k=0;k<i;++k)
+            if(strcmp(j->operations[i].name,j->operations[k].name)==0&&
+               strcmp(j->operations[i].version_string,j->operations[k].version_string)==0&&
+               strcmp(j->operations[i].architecture,j->operations[k].architecture)==0)
+                return false;
     }
+    if(j->phase==ORBIT_TRANSACTION_PHASE_APPLYING&&j->rollback_cursor!=0U)return false;
+    if(j->phase==ORBIT_TRANSACTION_PHASE_COMMITTED&&j->rollback_cursor!=0U)return false;
     return true;
 }
 static bool persist(orbit_transaction_journal *j,

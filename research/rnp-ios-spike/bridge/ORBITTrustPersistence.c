@@ -168,6 +168,56 @@ static orbit_trust_store_code store_load_locked(
     *state=decoded;return ORBIT_TRUST_STORE_OK;
 }
 
+static orbit_trust_store_code verify_recovery_pin_continuity(
+    const orbit_repository_trust_state *next_state,const char *repository_id,
+    const orbit_trust_store_backend *backend,uint64_t counter) {
+    uint8_t record[ORBIT_TRUST_STORE_RECORD_MAX];
+    uint8_t stored_mac[ORBIT_TRUST_STORE_MAC_BYTES];
+    uint8_t computed_mac[ORBIT_TRUST_STORE_MAC_BYTES];
+    size_t length=0U;
+    memset(record,0,sizeof(record));
+    memset(stored_mac,0,sizeof(stored_mac));
+    memset(computed_mac,0,sizeof(computed_mac));
+    orbit_trust_store_read_result read_status=backend->read_record(
+        backend->context,repository_id,record,sizeof(record),&length,stored_mac);
+    if(counter==0U&&read_status==ORBIT_TRUST_BACKEND_NOT_FOUND) {
+        return ORBIT_TRUST_STORE_OK;
+    }
+    if(read_status!=ORBIT_TRUST_BACKEND_OK) {
+        memset(record,0,sizeof(record));
+        memset(stored_mac,0,sizeof(stored_mac));
+        return read_status==ORBIT_TRUST_BACKEND_ERROR?
+            ORBIT_TRUST_STORE_IO_ERROR:ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+    }
+    if(length==0U||length>sizeof(record)||
+       !backend->mac_record(backend->context,repository_id,record,length,computed_mac)||
+       !constant_time_equal(stored_mac,computed_mac,sizeof(stored_mac))) {
+        memset(record,0,sizeof(record));
+        memset(stored_mac,0,sizeof(stored_mac));
+        memset(computed_mac,0,sizeof(computed_mac));
+        return ORBIT_TRUST_STORE_AUTHENTICATION_FAILED;
+    }
+    orbit_repository_trust_state existing;
+    memset(&existing,0,sizeof(existing));
+    bool decoded=decode_record(record,length,repository_id,&existing);
+    memset(record,0,sizeof(record));
+    memset(stored_mac,0,sizeof(stored_mac));
+    memset(computed_mac,0,sizeof(computed_mac));
+    if(!decoded) {
+        memset(&existing,0,sizeof(existing));
+        return ORBIT_TRUST_STORE_FORMAT_REJECTED;
+    }
+    if(existing.revision!=counter) {
+        memset(&existing,0,sizeof(existing));
+        return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+    }
+    bool same_root=strcmp(existing.recovery_fingerprint,
+                          next_state->recovery_fingerprint)==0;
+    memset(&existing,0,sizeof(existing));
+    return same_root?ORBIT_TRUST_STORE_OK:
+        ORBIT_TRUST_STORE_RECOVERY_PIN_MISMATCH;
+}
+
 static orbit_trust_store_code store_save_locked(
     const orbit_repository_trust_state *state,const char *repository_id,
     const orbit_trust_store_backend *backend) {
@@ -179,6 +229,11 @@ static orbit_trust_store_code store_save_locked(
        (counter==UINT64_MAX && state->revision!=counter) ||
        (counter!=UINT64_MAX && state->revision>counter+1U))
         return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+    if(state->revision>counter) {
+        orbit_trust_store_code continuity=verify_recovery_pin_continuity(
+            state,repository_id,backend,counter);
+        if(continuity!=ORBIT_TRUST_STORE_OK)return continuity;
+    }
     uint8_t record[ORBIT_TRUST_STORE_RECORD_MAX],mac[ORBIT_TRUST_STORE_MAC_BYTES];
     memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));
     size_t length=encode_record(state,repository_id,record);

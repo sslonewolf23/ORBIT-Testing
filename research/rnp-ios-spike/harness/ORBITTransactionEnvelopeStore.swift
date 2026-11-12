@@ -105,10 +105,8 @@ actor ORBITTransactionEnvelopeStore {
         }
         let directoryFD = try openPrivateDirectory(directoryURL)
         defer { close(directoryFD) }
-        if Self.fileExists(directoryFD, "orbit-transaction-envelope.bin") ||
-           Self.fileExists(directoryFD, "orbit-transaction-envelope.pending") {
-            throw ORBITEnvelopeStoreError.identityAlreadyExists
-        }
+        try Self.requireAbsent(directoryFD, "orbit-transaction-envelope.bin")
+        try Self.requireAbsent(directoryFD, "orbit-transaction-envelope.pending")
 
         var macBytes = Data(count: 32)
         let randomStatus = macBytes.withUnsafeMutableBytes {
@@ -436,10 +434,10 @@ actor ORBITTransactionEnvelopeStore {
 
     private func writeAtomically(_ data: Data, name: String,
                                  directoryFD: Int32) throws {
-        guard data.count <= maxFileBytes,
-              !Self.fileExists(directoryFD, name) else {
+        guard data.count <= maxFileBytes else {
             throw ORBITEnvelopeStoreError.ioFailure
         }
+        try Self.requireAbsent(directoryFD, name)
         let temporary = ".orbit-envelope-\(UUID().uuidString).tmp"
         let descriptor = openat(directoryFD, temporary,
                                 O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW,
@@ -527,9 +525,15 @@ actor ORBITTransactionEnvelopeStore {
                              macKey: SymmetricKey(data: macKey))
     }
 
-    private static func fileExists(_ directoryFD: Int32, _ name: String) -> Bool {
+    private static func requireAbsent(_ directoryFD: Int32,
+                                      _ name: String) throws {
         var status = stat()
-        return fstatat(directoryFD, name, &status, AT_SYMLINK_NOFOLLOW) == 0
+        if fstatat(directoryFD, name, &status, AT_SYMLINK_NOFOLLOW) == 0 {
+            throw ORBITEnvelopeStoreError.identityAlreadyExists
+        }
+        if errno != ENOENT {
+            throw ORBITEnvelopeStoreError.ioFailure
+        }
     }
 
     private func encodeHead(_ head: ORBITWitnessHead) -> Data {

@@ -74,10 +74,8 @@ func TestCOSECredentialKeyAndAttestationExtensions(t *testing.T) {
 }
 
 func TestCOSERejectsWrongCurveAndAlgorithm(t *testing.T) {
-	x, y, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
+	_, pubX, pubY, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil { t.Fatal(err) }
-	pubX, pubY := elliptic.P256().ScalarBaseMult(x)
-	_ = y
 	for _, test := range []map[int64]any{
 		{1:uint64(2), 3:int64(-7), -1:uint64(2), -2:pubX.FillBytes(make([]byte,32)), -3:pubY.FillBytes(make([]byte,32))},
 		{1:uint64(2), 3:int64(-257), -1:uint64(1), -2:pubX.FillBytes(make([]byte,32)), -3:pubY.FillBytes(make([]byte,32))},

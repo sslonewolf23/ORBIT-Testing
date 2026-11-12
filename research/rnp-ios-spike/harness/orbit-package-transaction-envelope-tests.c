@@ -69,6 +69,32 @@ int main(void) {
         orbit_package_transaction_envelope_validate_transition(
             &empty, &applying) == ORBIT_TRANSACTION_ENVELOPE_OK);
 
+    EXPECT("encode active envelope with all three durable payloads",
+        orbit_package_transaction_envelope_encode(
+            &applying, encoded, sizeof(encoded), &encoded_length) ==
+            ORBIT_TRANSACTION_ENVELOPE_OK);
+    EXPECT("decode active envelope into caller-owned buffers",
+        orbit_package_transaction_envelope_decode(
+            encoded, encoded_length, journal_out, sizeof(journal_out),
+            committed_out, sizeof(committed_out), pending_out,
+            sizeof(pending_out), &decoded) == ORBIT_TRANSACTION_ENVELOPE_OK);
+    EXPECT("active decode preserves transaction and ownership payloads",
+        decoded.state == ORBIT_TRANSACTION_ENVELOPE_ACTIVE &&
+        decoded.phase == ORBIT_TRANSACTION_ENVELOPE_APPLYING &&
+        memcmp(decoded.transaction_id, applying.transaction_id,
+               sizeof(applying.transaction_id)) == 0 &&
+        decoded.journal_length == sizeof(journal_payload) &&
+        memcmp(decoded.journal_payload, journal_payload,
+               sizeof(journal_payload)) == 0 &&
+        decoded.pending_ownership_length == sizeof(ownership_new) &&
+        memcmp(decoded.pending_ownership, ownership_new,
+               sizeof(ownership_new)) == 0);
+    EXPECT("decode rejects insufficient pending snapshot capacity",
+        orbit_package_transaction_envelope_decode(
+            encoded, encoded_length, journal_out, sizeof(journal_out),
+            committed_out, sizeof(committed_out), pending_out, 1U,
+            &decoded) == ORBIT_TRANSACTION_ENVELOPE_BUFFER_TOO_SMALL);
+
     orbit_package_transaction_envelope rolling = applying;
     rolling.revision = 12U;
     rolling.phase = ORBIT_TRANSACTION_ENVELOPE_ROLLING_BACK;

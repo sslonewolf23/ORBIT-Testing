@@ -1,0 +1,295 @@
+#include "ORBITPackageFilesystemJournal.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+static bool transaction_id_is_valid(
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES]) {
+    if (!transaction_id) return false;
+    uint8_t combined = 0U;
+    for (size_t i = 0U; i < ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES; ++i)
+        combined |= transaction_id[i];
+    return combined != 0U;
+}
+
+static int compare_change_targets(
+    const orbit_package_filesystem_journal_record *record,
+    size_t left, size_t right) {
+    int parent_order = strcmp(
+        record->changes[left].target_parent_path,
+        record->changes[right].target_parent_path);
+    if (parent_order != 0) return parent_order;
+    return strcmp(record->changes[left].target_name,
+                  record->changes[right].target_name);
+}
+
+static void swap_indices(size_t *left, size_t *right) {
+    size_t temporary = *left;
+    *left = *right;
+    *right = temporary;
+}
+
+static void sift_index_heap(
+    size_t *indices, size_t root, size_t count,
+    const orbit_package_filesystem_journal_record *record) {
+    while (count > 1U && root <= (count - 2U) / 2U) {
+        size_t child = root * 2U + 1U;
+        if (child + 1U < count &&
+            compare_change_targets(record, indices[child],
+                                   indices[child + 1U]) < 0)
+            ++child;
+        if (compare_change_targets(record, indices[root],
+                                   indices[child]) >= 0)
+            return;
+        swap_indices(&indices[root], &indices[child]);
+        root = child;
+    }
+}
+
+static void sort_change_indices(
+    size_t *indices, size_t count,
+    const orbit_package_filesystem_journal_record *record) {
+    if (count < 2U) return;
+    for (size_t start = count / 2U; start > 0U; --start)
+        sift_index_heap(indices, start - 1U, count, record);
+    for (size_t end = count; end > 1U; --end) {
+        swap_indices(&indices[0], &indices[end - 1U]);
+        sift_index_heap(indices, 0U, end - 1U, record);
+    }
+}
+
+static bool record_is_valid(
+    const orbit_package_filesystem_journal_record *record) {
+    if (!record || record->version != ORBIT_FILESYSTEM_JOURNAL_VERSION ||
+        record->revision == 0U ||
+        record->phase < ORBIT_FILE_JOURNAL_APPLYING ||
+        record->phase > ORBIT_FILE_JOURNAL_COMMITTED ||
+        record->change_count == 0U ||
+        record->change_count > ORBIT_FILESYSTEM_JOURNAL_MAX_CHANGES ||
+        !transaction_id_is_valid(record->transaction_id))
+        return false;
+
+    for (size_t i = 0U; i < record->change_count; ++i) {
+        if (orbit_package_filesystem_validate_change(
+                &record->changes[i]) != ORBIT_FILESYSTEM_OK)
+            return false;
+    }
+
+    size_t *indices = (size_t *)malloc(record->change_count * sizeof(*indices));
+    if (!indices) return false;
+    for (size_t i = 0U; i < record->change_count; ++i) indices[i] = i;
+    sort_change_indices(indices, record->change_count, record);
+    bool unique = true;
+    for (size_t i = 1U; i < record->change_count; ++i) {
+        if (compare_change_targets(record, indices[i - 1U], indices[i]) == 0) {
+            unique = false;
+            break;
+        }
+    }
+    free(indices);
+    return unique;
+}
+
+static bool backend_is_valid(
+    const orbit_package_filesystem_journal_backend *backend) {
+    return backend && backend->load && backend->store_atomic &&
+           backend->clear_atomic;
+}
+
+static orbit_file_journal_load_result load_record(
+    const orbit_package_filesystem_journal_backend *backend,
+    orbit_package_filesystem_journal_record *record,
+    uint64_t *last_revision) {
+    if (!backend_is_valid(backend) || !record || !last_revision)
+        return ORBIT_FILE_JOURNAL_LOAD_ERROR;
+    memset(record, 0, sizeof(*record));
+    *last_revision = 0U;
+    orbit_file_journal_load_result result =
+        backend->load(backend->context, record, last_revision);
+    if (result == ORBIT_FILE_JOURNAL_LOAD_PRESENT) {
+        if (!record_is_valid(record) || record->revision != *last_revision)
+            return ORBIT_FILE_JOURNAL_LOAD_ERROR;
+    } else if (result == ORBIT_FILE_JOURNAL_LOAD_EMPTY) {
+        if (record->change_count != 0U) return ORBIT_FILE_JOURNAL_LOAD_ERROR;
+    } else {
+        return ORBIT_FILE_JOURNAL_LOAD_ERROR;
+    }
+    return result;
+}
+
+static bool advance_revision(
+    orbit_package_filesystem_journal_record *record) {
+    if (!record || record->revision == UINT64_MAX) return false;
+    ++record->revision;
+    return true;
+}
+
+static orbit_filesystem_code rollback_all(
+    const orbit_package_filesystem_journal_record *record,
+    orbit_package_filesystem_journal_executor executor,
+    void *executor_context) {
+    for (size_t i = record->change_count; i > 0U; --i) {
+        orbit_filesystem_code result = executor(
+            executor_context, record->transaction_id,
+            ORBIT_FILE_JOURNAL_ROLLBACK, &record->changes[i - 1U]);
+        if (result != ORBIT_FILESYSTEM_OK)
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+    return ORBIT_FILESYSTEM_OK;
+}
+
+static orbit_filesystem_code finalize_all(
+    const orbit_package_filesystem_journal_record *record,
+    orbit_package_filesystem_journal_executor executor,
+    void *executor_context) {
+    for (size_t i = 0U; i < record->change_count; ++i) {
+        orbit_filesystem_code result = executor(
+            executor_context, record->transaction_id,
+            ORBIT_FILE_JOURNAL_FINALIZE, &record->changes[i]);
+        if (result != ORBIT_FILESYSTEM_OK)
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+    return ORBIT_FILESYSTEM_OK;
+}
+
+orbit_filesystem_code orbit_package_filesystem_journal_execute(
+    const orbit_package_filesystem_journal_backend *backend,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
+    const orbit_package_file_change *changes, size_t change_count,
+    orbit_package_filesystem_journal_executor executor,
+    void *executor_context) {
+    if (!backend_is_valid(backend) || !transaction_id_is_valid(transaction_id) ||
+        !changes || change_count == 0U ||
+        change_count > ORBIT_FILESYSTEM_JOURNAL_MAX_CHANGES || !executor)
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    orbit_package_filesystem_journal_record *record =
+        (orbit_package_filesystem_journal_record *)calloc(1U, sizeof(*record));
+    if (!record) return ORBIT_FILESYSTEM_LIMIT;
+
+    uint64_t last_revision = 0U;
+    orbit_file_journal_load_result loaded =
+        load_record(backend, record, &last_revision);
+    if (loaded != ORBIT_FILE_JOURNAL_LOAD_EMPTY) {
+        free(record);
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+    if (last_revision == UINT64_MAX) {
+        free(record);
+        return ORBIT_FILESYSTEM_LIMIT;
+    }
+
+    record->version = ORBIT_FILESYSTEM_JOURNAL_VERSION;
+    record->phase = ORBIT_FILE_JOURNAL_APPLYING;
+    record->revision = last_revision + 1U;
+    memcpy(record->transaction_id, transaction_id,
+           ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES);
+    record->change_count = change_count;
+    memcpy(record->changes, changes, change_count * sizeof(*changes));
+    if (!record_is_valid(record)) {
+        free(record);
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    }
+    if (!backend->store_atomic(backend->context, record)) {
+        free(record);
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+
+    orbit_filesystem_code apply_result = ORBIT_FILESYSTEM_OK;
+    for (size_t i = 0U; i < record->change_count; ++i) {
+        apply_result = executor(
+            executor_context, record->transaction_id,
+            ORBIT_FILE_JOURNAL_APPLY, &record->changes[i]);
+        if (apply_result != ORBIT_FILESYSTEM_OK) break;
+    }
+
+    if (apply_result != ORBIT_FILESYSTEM_OK) {
+        if (!advance_revision(record)) {
+            free(record);
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        }
+        record->phase = ORBIT_FILE_JOURNAL_ROLLING_BACK;
+        if (!backend->store_atomic(backend->context, record)) {
+            free(record);
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        }
+        orbit_filesystem_code rollback_result =
+            rollback_all(record, executor, executor_context);
+        if (rollback_result != ORBIT_FILESYSTEM_OK ||
+            !backend->clear_atomic(backend->context, record->revision)) {
+            free(record);
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        }
+        free(record);
+        return apply_result;
+    }
+
+    if (!advance_revision(record)) {
+        free(record);
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+    record->phase = ORBIT_FILE_JOURNAL_COMMITTED;
+    if (!backend->store_atomic(backend->context, record)) {
+        free(record);
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+
+    orbit_filesystem_code finalize_result =
+        finalize_all(record, executor, executor_context);
+    if (finalize_result != ORBIT_FILESYSTEM_OK ||
+        !backend->clear_atomic(backend->context, record->revision)) {
+        free(record);
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+    free(record);
+    return ORBIT_FILESYSTEM_OK;
+}
+
+orbit_filesystem_code orbit_package_filesystem_journal_recover(
+    const orbit_package_filesystem_journal_backend *backend,
+    orbit_package_filesystem_journal_executor executor,
+    void *executor_context) {
+    if (!backend_is_valid(backend) || !executor)
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    orbit_package_filesystem_journal_record *record =
+        (orbit_package_filesystem_journal_record *)calloc(1U, sizeof(*record));
+    if (!record) return ORBIT_FILESYSTEM_LIMIT;
+    uint64_t last_revision = 0U;
+    orbit_file_journal_load_result loaded =
+        load_record(backend, record, &last_revision);
+    if (loaded == ORBIT_FILE_JOURNAL_LOAD_EMPTY) {
+        free(record);
+        return ORBIT_FILESYSTEM_OK;
+    }
+    if (loaded != ORBIT_FILE_JOURNAL_LOAD_PRESENT) {
+        free(record);
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+
+    if (record->phase == ORBIT_FILE_JOURNAL_APPLYING) {
+        if (!advance_revision(record)) {
+            free(record);
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        }
+        record->phase = ORBIT_FILE_JOURNAL_ROLLING_BACK;
+        if (!backend->store_atomic(backend->context, record)) {
+            free(record);
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        }
+    }
+
+    orbit_filesystem_code result;
+    if (record->phase == ORBIT_FILE_JOURNAL_ROLLING_BACK)
+        result = rollback_all(record, executor, executor_context);
+    else if (record->phase == ORBIT_FILE_JOURNAL_COMMITTED)
+        result = finalize_all(record, executor, executor_context);
+    else
+        result = ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+
+    if (result == ORBIT_FILESYSTEM_OK &&
+        !backend->clear_atomic(backend->context, record->revision))
+        result = ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    free(record);
+    return result;
+}

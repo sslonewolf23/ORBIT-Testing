@@ -200,16 +200,39 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
     }
     (void)p;return true;
 }
+static bool record_rejects_candidate(resolver *r,
+                                     const orbit_package_record *existing,
+                                     const orbit_package_record *candidate) {
+    const char *fields[2]={existing->conflicts,existing->breaks};
+    for(size_t f=0;f<2U;++f) {
+        if(!fields[f][0])continue;
+        if(strlen(fields[f])>=RELATION_MAX) {
+            r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return true;
+        }
+        char buffer[RELATION_MAX];strcpy(buffer,fields[f]);
+        char *save=NULL;
+        for(char *item=strtok_r(buffer,",",&save);item;item=strtok_r(NULL,",",&save)) {
+            trim(item);
+            char *alt_save=NULL;
+            for(char *alt=strtok_r(item,"|",&alt_save);alt;alt=strtok_r(NULL,"|",&alt_save)) {
+                trim(alt);
+                char copy[RELATION_MAX];strcpy(copy,alt);
+                if(relation_satisfied(candidate,copy)) {
+                    r->error=ORBIT_DEPENDENCY_CONFLICT;return true;
+                }
+            }
+        }
+    }
+    return false;
+}
 static bool reverse_conflict(resolver *r,const orbit_package_record *candidate) {
     for(size_t i=0;i<r->installed_count;++i) {
         const orbit_package_record *existing=r->installed[i];
-        if(!existing)continue;
-        if(!check_conflict_relation(r,existing,candidate->name))return false;
+        if(existing&&record_rejects_candidate(r,existing,candidate))return false;
     }
     for(size_t i=0;i<r->available->count;++i) {
         if(r->state[i]!=1U)continue;
-        const orbit_package_record *existing=&r->available->packages[i];
-        if(!check_conflict_relation(r,existing,candidate->name))return false;
+        if(record_rejects_candidate(r,&r->available->packages[i],candidate))return false;
     }
     return true;
 }

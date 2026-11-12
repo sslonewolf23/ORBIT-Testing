@@ -11,6 +11,7 @@ typedef struct {
     unsigned applies;
     unsigned rollbacks;
     unsigned fail_apply_number;
+    unsigned fail_rollback_number;
     bool corrupt_load;
 } fixture;
 static unsigned checks=0,failures=0;
@@ -56,7 +57,8 @@ static bool apply_package(void *ctx,orbit_transaction_action action,
 }
 static bool rollback_package(void *ctx,orbit_transaction_action action,
                              const orbit_package_record *p) {
-    fixture *f=ctx;(void)action;(void)p;++f->rollbacks;return true;
+    fixture *f=ctx;(void)action;(void)p;++f->rollbacks;
+    return !f->fail_rollback_number||f->rollbacks!=f->fail_rollback_number;
 }
 static void make_package(orbit_package_record *p,const char *name) {
     memset(p,0,sizeof(*p));
@@ -101,6 +103,16 @@ int main(void) {
     code=orbit_package_transaction_recover(&jb,&pb);
     expect("crash-recovery-rolls-back-inflight",code==ORBIT_TRANSACTION_OK);
     expect("crash-recovery-restores-operation",f.rollbacks==1U&&!f.present);
+
+    memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
+    f.fail_apply_number=2U;f.fail_rollback_number=1U;
+    code=orbit_package_transaction_execute(id,packages,actions,2U,&jb,&pb);
+    expect("rollback-failure-retains-recovery-journal",
+        code==ORBIT_TRANSACTION_ROLLBACK_REQUIRED&&f.present);
+    f.fail_apply_number=0U;f.fail_rollback_number=0U;
+    code=orbit_package_transaction_recover(&jb,&pb);
+    expect("retry-recovers-after-rollback-backend-failure",
+        code==ORBIT_TRANSACTION_OK&&!f.present);
 
     memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
     code=orbit_package_transaction_recover(&jb,&pb);

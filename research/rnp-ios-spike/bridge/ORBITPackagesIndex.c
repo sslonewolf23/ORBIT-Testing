@@ -282,8 +282,8 @@ bool orbit_package_artifact_verifier_init(
     if(!verifier)return false;
     memset(verifier,0,sizeof(*verifier));
     if(!package||package->size==0U||
-       !memchr(package->filename,'\\0',sizeof(package->filename))||
-       !memchr(package->sha256,'\\0',sizeof(package->sha256))||
+       !memchr(package->filename,'\0',sizeof(package->filename))||
+       !memchr(package->sha256,'\0',sizeof(package->sha256))||
        !valid_relative_path(package->filename)||
        !package_sha256_decode(package->sha256,verifier->expected_digest)) {
         (void)botan_scrub_mem(verifier->expected_digest,

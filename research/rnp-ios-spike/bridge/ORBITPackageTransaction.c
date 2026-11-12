@@ -4,7 +4,18 @@
 #include <string.h>
 
 static bool bounded_string(const char *value,size_t capacity) {
-    return value&&value[0]!='\0'&&memchr(value,'\0',capacity)!=NULL;
+    return value&&value[0]!='\\0'&&memchr(value,'\\0',capacity)!=NULL;
+}
+static bool package_identity_matches(const orbit_package_record *package,
+                                     const char *name,const char *version,
+                                     const char *architecture) {
+    return package&&
+        bounded_string(package->name,sizeof(package->name))&&
+        bounded_string(package->version,sizeof(package->version))&&
+        bounded_string(package->architecture,sizeof(package->architecture))&&
+        strcmp(package->name,name)==0&&
+        strcmp(package->version,version)==0&&
+        strcmp(package->architecture,architecture)==0;
 }
 static bool backend_valid(const orbit_transaction_journal_backend *j,
                           const orbit_transaction_package_backend *p) {
@@ -56,10 +67,11 @@ static bool rollback_journal(orbit_transaction_journal *j,
         uint32_t state=j->operations[i].state;
         if(state==ORBIT_TRANSACTION_STEP_PENDING||
            state==ORBIT_TRANSACTION_STEP_ROLLED_BACK)continue;
-        const orbit_package_record *p=pb->resolve(pb->context,
-            j->operations[i].name,j->operations[i].version_string,
-            j->operations[i].architecture);
-        if(!p)return false;
+        const char *name=j->operations[i].name;
+        const char *version=j->operations[i].version_string;
+        const char *architecture=j->operations[i].architecture;
+        const orbit_package_record *p=pb->resolve(pb->context,name,version,architecture);
+        if(!package_identity_matches(p,name,version,architecture))return false;
         orbit_transaction_action action=(orbit_transaction_action)j->operations[i].action;
         if(!pb->rollback(pb->context,action,p))return false;
         j->operations[i].state=ORBIT_TRANSACTION_STEP_ROLLED_BACK;
@@ -120,10 +132,12 @@ orbit_transaction_code orbit_package_transaction_execute(
         free(j);return ORBIT_TRANSACTION_JOURNAL_ERROR;
     }
     for(uint32_t i=0;i<j->operation_count;++i) {
-        const orbit_package_record *p=pb->resolve(pb->context,
-            j->operations[i].name,j->operations[i].version_string,
-            j->operations[i].architecture);
-        if(!p)return finish_rollback(j,jb,pb,ORBIT_TRANSACTION_RESOLUTION_ERROR);
+        const char *name=j->operations[i].name;
+        const char *version=j->operations[i].version_string;
+        const char *architecture=j->operations[i].architecture;
+        const orbit_package_record *p=pb->resolve(pb->context,name,version,architecture);
+        if(!package_identity_matches(p,name,version,architecture))
+            return finish_rollback(j,jb,pb,ORBIT_TRANSACTION_RESOLUTION_ERROR);
         j->operations[i].state=ORBIT_TRANSACTION_STEP_IN_FLIGHT;
         if(!persist(j,jb)) {free(j);return ORBIT_TRANSACTION_RECOVERY_REQUIRED;}
         if(!pb->apply(pb->context,(orbit_transaction_action)j->operations[i].action,p))

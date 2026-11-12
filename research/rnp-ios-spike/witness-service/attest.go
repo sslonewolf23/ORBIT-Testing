@@ -171,6 +171,9 @@ func (s *service) verifyAttestation(keyID string, challenge, object []byte) ([]b
 		CurrentTime:s.now(), KeyUsages:[]x509.ExtKeyUsage{x509.ExtKeyUsageAny}}); err != nil {
 		return nil, fmt.Errorf("App Attest certificate chain: %w", err)
 	}
+	if certs[0].IsCA || certs[0].KeyUsage&x509.KeyUsageDigitalSignature == 0 {
+		return nil, errors.New("invalid App Attest credential certificate usage")
+	}
 	pub, ok := certs[0].PublicKey.(*ecdsa.PublicKey)
 	if !ok || pub.Curve != elliptic.P256() { return nil, errors.New("attested key is not P-256") }
 	uncompressed := elliptic.Marshal(elliptic.P256(), pub.X, pub.Y)

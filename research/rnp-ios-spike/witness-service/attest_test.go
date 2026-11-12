@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
@@ -85,5 +86,27 @@ func TestCOSERejectsWrongCurveAndAlgorithm(t *testing.T) {
 		if _, _, err := parseCOSEPublicKey(encoded); err == nil {
 			t.Fatal("unsupported COSE credential key accepted")
 		}
+	}
+}
+
+
+func TestRecoveryVerifierIsPepperedAndCredentialSpecific(t *testing.T) {
+	service := &service{recoveryPepper: []byte("test-only-server-pepper-material-32-bytes")}
+	credential := bytes.Repeat([]byte{0xA5}, 32)
+	first, err := service.recoveryVerifier(credential)
+	if err != nil { t.Fatal(err) }
+	second, err := service.recoveryVerifier(credential)
+	if err != nil { t.Fatal(err) }
+	if !bytes.Equal(first, second) { t.Fatal("same recovery credential produced different verifier") }
+	other := bytes.Repeat([]byte{0x5A}, 32)
+	third, err := service.recoveryVerifier(other)
+	if err != nil { t.Fatal(err) }
+	if bytes.Equal(first, third) { t.Fatal("different recovery credential produced same verifier") }
+	service.recoveryPepper = []byte("different-server-pepper-material-32bytes")
+	fourth, err := service.recoveryVerifier(credential)
+	if err != nil { t.Fatal(err) }
+	if bytes.Equal(first, fourth) { t.Fatal("server pepper did not affect verifier") }
+	if _, err := service.recoveryVerifier([]byte("short")); err == nil {
+		t.Fatal("short recovery credential accepted")
 	}
 }

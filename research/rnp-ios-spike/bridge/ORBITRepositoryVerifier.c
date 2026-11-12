@@ -1,5 +1,6 @@
 #include "ORBITRepositoryVerifier.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -69,6 +70,14 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
         public_key_bundle_length > 4U * 1024U * 1024U ||
         index_length > ORBIT_RELEASE_MAX_BYTES) {
         return finish(result, ORBIT_REPOSITORY_VERIFY_RESOURCE_LIMIT);
+    }
+    char expected_index_path[ORBIT_RELEASE_PATH_CAPACITY];
+    int expected_path_length=snprintf(expected_index_path,sizeof(expected_index_path),
+        "%s/binary-%s/Packages",required_component,required_architecture);
+    if(expected_path_length<0||
+       (size_t)expected_path_length>=sizeof(expected_index_path)||
+       strcmp(expected_index_path,relative_index_path)!=0) {
+        return finish(result,ORBIT_REPOSITORY_VERIFY_REPOSITORY_POLICY_REJECTED);
     }
 
     bool signer_allowed = orbit_repository_trust_fingerprint_allowed_and_store(

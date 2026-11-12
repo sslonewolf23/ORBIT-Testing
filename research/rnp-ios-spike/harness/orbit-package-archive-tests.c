@@ -134,6 +134,16 @@ static size_t make_deb_compressed(uint8_t *out, const char *path,
     return offset;
 }
 
+static size_t make_tar_with_payload(uint8_t *out, const char *path,
+                                     const uint8_t *payload, size_t payload_length) {
+    size_t padded = ((payload_length + 511U) / 512U) * 512U;
+    size_t total = 512U + padded + 1024U;
+    memset(out, 0, total);
+    make_tar_header(out, path, payload_length, '0');
+    if (payload_length != 0U) memcpy(out + 512U, payload, payload_length);
+    return total;
+}
+
 int main(void) {
     EXPECT("normal package path accepted",
            orbit_package_archive_path_is_safe("usr/lib/orbit/example.dylib"));
@@ -147,6 +157,36 @@ int main(void) {
            !orbit_package_archive_path_is_safe("usr//lib/file"));
     EXPECT("dot segment rejected",
            !orbit_package_archive_path_is_safe("usr/./lib/file"));
+
+    uint8_t stream_tar[4096];
+    size_t stream_tar_length = make_tar(stream_tar, "Library/ORBIT/stream.dylib", '0');
+    const size_t chunk_sizes[] = { 1U, 511U, 512U, 513U, 65519U };
+    for (size_t i = 0U; i < sizeof(chunk_sizes) / sizeof(chunk_sizes[0]); ++i) {
+        EXPECT("incremental tar parser accepts arbitrary chunk boundary",
+            orbit_package_archive_test_inspect_tar_chunks(
+                stream_tar, stream_tar_length, chunk_sizes[i], &report) == ORBIT_ARCHIVE_OK);
+    }
+    EXPECT("incremental parser rejects truncated header",
+        orbit_package_archive_test_inspect_tar_chunks(
+            stream_tar, stream_tar_length - 1U, 511U, &report) == ORBIT_ARCHIVE_MALFORMED_TAR);
+    EXPECT("incremental parser rejects missing end blocks",
+        orbit_package_archive_test_inspect_tar_chunks(
+            stream_tar, 512U, 37U, &report) == ORBIT_ARCHIVE_MALFORMED_TAR);
+    stream_tar[1535U] = 1U;
+    EXPECT("incremental parser rejects nonzero trailing data",
+        orbit_package_archive_test_inspect_tar_chunks(
+            stream_tar, stream_tar_length, 513U, &report) == ORBIT_ARCHIVE_MALFORMED_TAR);
+    stream_tar[1535U] = 0U;
+
+    uint8_t payload[70001U];
+    memset(payload, 0xA5, sizeof(payload));
+    stream_tar_length = make_tar_with_payload(
+        stream_tar, "Library/ORBIT/payload.bin", payload, sizeof(payload));
+    EXPECT("incremental parser skips payload and padding across chunks",
+        orbit_package_archive_test_inspect_tar_chunks(
+            stream_tar, stream_tar_length, 65519U, &report) == ORBIT_ARCHIVE_OK);
+    EXPECT("incremental parser records exact payload length",
+        report.regular_file_bytes == sizeof(payload));
 
     uint8_t deb[8192];
     orbit_archive_report report;

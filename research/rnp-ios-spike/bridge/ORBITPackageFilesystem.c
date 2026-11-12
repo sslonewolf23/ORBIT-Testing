@@ -443,9 +443,11 @@ orbit_filesystem_code orbit_package_filesystem_rollback(
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
     if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
+        nlink_t target_old_links = 0;
         file_identity_result target_old = file_identity_at(
             target_parent_fd, change->target_name,
-            change->preimage_device, change->preimage_inode, NULL, NULL, NULL);
+            change->preimage_device, change->preimage_inode,
+            NULL, NULL, &target_old_links);
         file_identity_result backup = file_identity_at(
             backup_parent_fd, change->backup_name,
             change->preimage_device, change->preimage_inode, NULL, NULL, NULL);
@@ -453,8 +455,9 @@ orbit_filesystem_code orbit_package_filesystem_rollback(
             if (backup == FILE_ID_MATCH)
                 return unlink_backup_while_preimage_remains(
                     backup_parent_fd, change);
-            return backup == FILE_ID_MISSING ? ORBIT_FILESYSTEM_OK :
-                   backup == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
+            if (backup == FILE_ID_MISSING && target_old_links == 1)
+                return ORBIT_FILESYSTEM_OK;
+            return backup == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
                    ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
         }
         if (target_old == FILE_ID_MISSING && backup == FILE_ID_MATCH)
@@ -475,9 +478,11 @@ orbit_filesystem_code orbit_package_filesystem_rollback(
                                   change->staged_device, change->staged_inode);
     }
 
+    nlink_t target_old_links = 0;
     file_identity_result target_old = file_identity_at(
         target_parent_fd, change->target_name,
-        change->preimage_device, change->preimage_inode, NULL, NULL, NULL);
+        change->preimage_device, change->preimage_inode,
+        NULL, NULL, &target_old_links);
     file_identity_result backup = file_identity_at(
         backup_parent_fd, change->backup_name,
         change->preimage_device, change->preimage_inode, NULL, NULL, NULL);
@@ -495,8 +500,9 @@ orbit_filesystem_code orbit_package_filesystem_rollback(
         if (backup == FILE_ID_MATCH)
             return unlink_backup_while_preimage_remains(
                 backup_parent_fd, change);
-        return backup == FILE_ID_MISSING ? ORBIT_FILESYSTEM_OK :
-               ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        if (backup == FILE_ID_MISSING && target_old_links == 1)
+            return ORBIT_FILESYSTEM_OK;
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
     if (target_new == FILE_ID_MISSING && backup == FILE_ID_MATCH)
         return restore_backup(target_parent_fd, backup_parent_fd, change);
@@ -533,9 +539,11 @@ orbit_filesystem_code orbit_package_filesystem_finalize(
         return ORBIT_FILESYSTEM_INVALID_STATE;
     }
 
+    nlink_t target_new_links = 0;
     file_identity_result target_new = file_identity_at(
         target_parent_fd, change->target_name,
-        change->staged_device, change->staged_inode, NULL, NULL, NULL);
+        change->staged_device, change->staged_inode,
+        NULL, NULL, &target_new_links);
     file_identity_result staged = file_identity_at(
         staged_parent_fd, change->staged_name,
         change->staged_device, change->staged_inode, NULL, NULL, NULL);
@@ -548,6 +556,7 @@ orbit_filesystem_code orbit_package_filesystem_finalize(
         backup == FILE_ID_ERROR) return ORBIT_FILESYSTEM_IO_ERROR;
     if (target_new != FILE_ID_MATCH || staged != FILE_ID_MISSING)
         return ORBIT_FILESYSTEM_INVALID_STATE;
+    if (target_new_links != 1) return ORBIT_FILESYSTEM_CONFLICT;
     if (!change->preimage_exists)
         return backup == FILE_ID_MISSING ? ORBIT_FILESYSTEM_OK :
                ORBIT_FILESYSTEM_RECOVERY_REQUIRED;

@@ -9,6 +9,31 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+static bool executor_roots_are_valid(
+    const orbit_package_filesystem_executor_context *executor,
+    bool needs_staging) {
+    struct stat install_status, backup_status, staging_status;
+    if (fstat(executor->install_root_fd, &install_status) < 0 ||
+        fstat(executor->backup_base_directory_fd, &backup_status) < 0)
+        return false;
+    if (!S_ISDIR(install_status.st_mode) ||
+        !S_ISDIR(backup_status.st_mode) ||
+        install_status.st_dev != backup_status.st_dev ||
+        (install_status.st_dev == backup_status.st_dev &&
+         install_status.st_ino == backup_status.st_ino))
+        return false;
+    if (!needs_staging) return true;
+    if (executor->staging_root_fd < 0 ||
+        fstat(executor->staging_root_fd, &staging_status) < 0)
+        return false;
+    return S_ISDIR(staging_status.st_mode) &&
+        staging_status.st_dev == install_status.st_dev &&
+        !(staging_status.st_dev == install_status.st_dev &&
+          staging_status.st_ino == install_status.st_ino) &&
+        !(staging_status.st_dev == backup_status.st_dev &&
+          staging_status.st_ino == backup_status.st_ino);
+}
+
 orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     void *context,
     const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
@@ -25,8 +50,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     orbit_filesystem_code valid =
         orbit_package_filesystem_validate_change(change);
     if (valid != ORBIT_FILESYSTEM_OK) return valid;
-    if (change->operation == ORBIT_FILESYSTEM_REPLACE &&
-        executor->staging_root_fd < 0)
+    if (!executor_roots_are_valid(
+            executor, change->operation == ORBIT_FILESYSTEM_REPLACE))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
     int backup_parent_fd = -1;

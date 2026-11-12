@@ -42,6 +42,14 @@ Never accept a client-provided public key or app identity as a substitute for
 the attestation evidence. Keep Apple's trust roots and verification rules
 current.
 
+## Recovery credential and App Attest key replacement
+
+At first enrollment the client generates a uniformly random 32-byte recovery credential. It must be displayed/exported once with clear instructions to store it offline; it must not be silently recoverable from server storage. The registration JSON includes `recoveryCredential` as base64. The server stores only HMAC-SHA-256(server pepper, domain || credential); the pepper is a separate deployment secret and must not be stored beside the database.
+
+For replacement, the client generates a new App Attest key and requests a five-minute, single-use recovery challenge bound server-side to the old and new key IDs. The client submits the recovery credential, challenge, and new-key attestation over TLS. The server verifies the credential in constant time, verifies Apple's attestation for the replacement key, consumes the challenge, and atomically replaces the key binding while preserving the existing revision, digest, tombstone, and recovery history. A replacement key cannot create a new initial journal head. The old key is retired by the same transaction. Recovery credentials must never be logged.
+
+A database migration does not silently invent credentials for existing installations: records without a verifier are ineligible for self-service recovery. They require an explicit, separately reviewed migration path.
+
 ## Assertion verification
 
 For every `head` and `compare-and-swap` request:
@@ -175,11 +183,7 @@ deploy it as the production trust anchor until those items are reviewed.
 ## Important gap in the current reference implementation
 
 The protocol contract above requires an authenticated account/installation
-binding that survives App Attest key replacement. The current Go reference
-implementation stores one row per `keyID` and does not yet implement that
-account/installation identity. A fresh App Attest key can therefore register
-as a new row with an initial revision-zero head. This is **not sufficient**
-for production rollback resistance across reinstall or key loss.
+binding that survives App Attest key replacement. The Go reference now binds initial enrollment to a client-held recovery credential and includes an atomic key-replacement path that preserves the existing head. The iOS client still needs to generate, securely preserve, and present that credential; the recovery path also needs live-device and service tests before it can be relied upon.
 
 Likewise, the SQLite database is crash-durable but can be rolled back by
 restoring an older database snapshot. Production requires an independent

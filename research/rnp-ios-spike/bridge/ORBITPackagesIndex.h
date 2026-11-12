@@ -26,6 +26,7 @@ typedef struct {
 typedef struct {
     orbit_package_record *packages;
     size_t count;
+    size_t capacity;
 } orbit_packages_index;
 
 /* Parse a bounded Debian Packages control index. The caller must first verify

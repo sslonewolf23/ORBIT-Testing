@@ -78,16 +78,9 @@ orbit_transaction_envelope_code orbit_package_transaction_envelope_encode(
     if (!envelope_valid(e))
         return ORBIT_TRANSACTION_ENVELOPE_INVALID_STATE;
 
-    size_t required = ORBIT_TRANSACTION_ENVELOPE_HEADER_SIZE;
-    if (e->journal_length > SIZE_MAX - required)
-        return ORBIT_TRANSACTION_ENVELOPE_LIMIT;
-    required += e->journal_length;
-    if (e->committed_ownership_length > SIZE_MAX - required)
-        return ORBIT_TRANSACTION_ENVELOPE_LIMIT;
-    required += e->committed_ownership_length;
-    if (e->pending_ownership_length > SIZE_MAX - required)
-        return ORBIT_TRANSACTION_ENVELOPE_LIMIT;
-    required += e->pending_ownership_length;
+    size_t required = ORBIT_TRANSACTION_ENVELOPE_HEADER_SIZE +
+        e->journal_length + e->committed_ownership_length +
+        e->pending_ownership_length;
     if (required > ORBIT_TRANSACTION_ENVELOPE_MAX_PAYLOAD)
         return ORBIT_TRANSACTION_ENVELOPE_LIMIT;
 
@@ -141,16 +134,20 @@ orbit_transaction_envelope_code orbit_package_transaction_envelope_decode(
     uint32_t journal_length = read_u32(payload + 32U);
     uint32_t committed_length = read_u32(payload + 36U);
     uint32_t pending_length = read_u32(payload + 40U);
+    if (journal_length > ORBIT_TRANSACTION_ENVELOPE_MAX_JOURNAL ||
+        committed_length > ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP ||
+        pending_length > ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP)
+        return ORBIT_TRANSACTION_ENVELOPE_MALFORMED;
     size_t expected = ORBIT_TRANSACTION_ENVELOPE_HEADER_SIZE;
-    if ((size_t)journal_length > SIZE_MAX - expected)
+    if ((size_t)journal_length > length - expected)
         return ORBIT_TRANSACTION_ENVELOPE_MALFORMED;
-    expected += journal_length;
-    if ((size_t)committed_length > SIZE_MAX - expected)
+    expected += (size_t)journal_length;
+    if ((size_t)committed_length > length - expected)
         return ORBIT_TRANSACTION_ENVELOPE_MALFORMED;
-    expected += committed_length;
-    if ((size_t)pending_length > SIZE_MAX - expected)
+    expected += (size_t)committed_length;
+    if ((size_t)pending_length > length - expected)
         return ORBIT_TRANSACTION_ENVELOPE_MALFORMED;
-    expected += pending_length;
+    expected += (size_t)pending_length;
     if (expected != length)
         return ORBIT_TRANSACTION_ENVELOPE_MALFORMED;
     if (journal_length > journal_capacity ||

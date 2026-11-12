@@ -194,6 +194,41 @@ int main(void) {
         code==ORBIT_DEPENDENCY_CONFLICT);
 
     orbit_dependency_plan_destroy(&plan);
+
+    orbit_package_record arch_records[2];
+    package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",
+            "foreign-lib:any",NULL,NULL);
+    package(&arch_records[1],"foreign-lib","1.0","iphoneos-arm64e",NULL,NULL,NULL);
+    snprintf(arch_records[1].multi_arch,sizeof(arch_records[1].multi_arch),"allowed");
+    orbit_packages_index arch_catalog={arch_records,2U,2U};
+    code=orbit_dependency_plan_build(&arch_catalog,NULL,0U,"arch-app",
+                                     "iphoneos-arm64",&plan);
+    expect("multiarch-allowed-satisfies-any-dependency",
+        code==ORBIT_DEPENDENCY_OK&&plan.count==2U&&
+        strcmp(plan.ordered[0]->name,"foreign-lib")==0);
+    orbit_dependency_plan_destroy(&plan);
+
+    snprintf(arch_records[1].multi_arch,sizeof(arch_records[1].multi_arch),"no");
+    code=orbit_dependency_plan_build(&arch_catalog,NULL,0U,"arch-app",
+                                     "iphoneos-arm64",&plan);
+    expect("multiarch-none-rejected-for-any-dependency",
+        code==ORBIT_DEPENDENCY_UNSATISFIED);
+
+    snprintf(arch_records[0].depends,sizeof(arch_records[0].depends),
+             "foreign-lib:native");
+    code=orbit_dependency_plan_build(&arch_catalog,NULL,0U,"arch-app",
+                                     "iphoneos-arm64",&plan);
+    expect("native-dependency-rejects-foreign-architecture",
+        code==ORBIT_DEPENDENCY_UNSATISFIED);
+
+    snprintf(arch_records[0].depends,sizeof(arch_records[0].depends),
+             "foreign-lib:unsupported");
+    code=orbit_dependency_plan_build(&arch_catalog,NULL,0U,"arch-app",
+                                     "iphoneos-arm64",&plan);
+    expect("unsupported-architecture-qualifier-fails-closed",
+        code==ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION);
+
+    orbit_dependency_plan_destroy(&plan);
     printf("decision=%s checks=%u failures=%u\n",
            failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;

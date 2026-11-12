@@ -28,8 +28,8 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y expect liblzma-dev libzstd-dev libbz2-dev zlib1g-dev
-          required_tools=(clang clang++ cmake ninja pkg-config gpg git expect)
+          sudo apt-get install -y expect liblzma-dev libzstd-dev libbz2-dev zlib1g-dev zstd
+          required_tools=(clang clang++ cmake ninja pkg-config gpg git expect ar tar gzip xz bzip2 zstd)
           for tool in "${required_tools[@]}"; do
             if ! command -v "$tool" >/dev/null 2>&1; then
               echo "::error::Required tool '$tool' is not preinstalled on this runner."
@@ -678,6 +678,20 @@ jobs:
           mkdir -p "$RUNNER_TEMP/orbit-parser-corpus" "$RUNNER_TEMP/orbit-parser-fuzz-artifacts"
           printf '!<arch>\n' > "$RUNNER_TEMP/orbit-parser-corpus/ar-magic"
           printf 'ustar' > "$RUNNER_TEMP/orbit-parser-corpus/ustar-marker"
+          printf 'ORBIT decompression fuzz seed' | gzip -c > "$RUNNER_TEMP/orbit-parser-corpus/gzip-seed"
+          printf 'ORBIT decompression fuzz seed' | xz -c > "$RUNNER_TEMP/orbit-parser-corpus/xz-seed"
+          printf 'ORBIT decompression fuzz seed' | bzip2 -c > "$RUNNER_TEMP/orbit-parser-corpus/bzip2-seed"
+          printf 'ORBIT decompression fuzz seed' | zstd -q -c > "$RUNNER_TEMP/orbit-parser-corpus/zstd-seed"
+          mkdir -p "$RUNNER_TEMP/orbit-parser-fixture/control" "$RUNNER_TEMP/orbit-parser-fixture/data/Library/ORBIT"
+          printf 'Package: orbit-fuzz\nVersion: 1\nArchitecture: iphoneos-arm64\n' \
+            > "$RUNNER_TEMP/orbit-parser-fixture/control/control"
+          printf 'fixture' > "$RUNNER_TEMP/orbit-parser-fixture/data/Library/ORBIT/fuzz.dylib"
+          tar -C "$RUNNER_TEMP/orbit-parser-fixture/control" -czf "$RUNNER_TEMP/orbit-parser-fixture/control.tar.gz" .
+          tar -C "$RUNNER_TEMP/orbit-parser-fixture/data" -czf "$RUNNER_TEMP/orbit-parser-fixture/data.tar.gz" .
+          printf '2.0\n' > "$RUNNER_TEMP/orbit-parser-fixture/debian-binary"
+          (cd "$RUNNER_TEMP/orbit-parser-fixture" && \
+            ar r "$RUNNER_TEMP/orbit-parser-corpus/minimal.deb" \
+              debian-binary control.tar.gz data.tar.gz)
           clang -std=c11 -O1 -g -fsanitize=fuzzer,address,undefined \
             -fno-omit-frame-pointer -DORBIT_PACKAGE_ARCHIVE_TESTING=1 \
             -Iresearch/rnp-ios-spike/bridge \

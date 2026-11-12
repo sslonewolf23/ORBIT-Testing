@@ -29,7 +29,7 @@ static bool path_equal(const char *a,const char *b) {
         if(fold_ascii((unsigned char)*a)!=fold_ascii((unsigned char)*b)) return false;
         ++a; ++b;
     }
-    return *a=='\0' && *b=='\\0';
+    return *a=='\0' && *b=='\0';
 }
 static bool ancestor(const char *a,const char *p) {
     size_t n=strlen(a);

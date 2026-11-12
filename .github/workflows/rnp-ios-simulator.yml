@@ -3,7 +3,7 @@ name: RNP iOS Simulator Cross-Compile
 on:
   workflow_dispatch:
   push:
-    branches: [main, work/atomic-file-replacement, work/dependency-provides-support]
+    branches: [main, work/atomic-file-replacement, work/dependency-provides-support, work/package-file-plan]
 
 permissions:
   contents: read

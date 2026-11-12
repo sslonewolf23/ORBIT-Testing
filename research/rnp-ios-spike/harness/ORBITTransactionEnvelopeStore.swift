@@ -105,8 +105,8 @@ actor ORBITTransactionEnvelopeStore {
         }
         let directoryFD = try openPrivateDirectory(directoryURL)
         defer { close(directoryFD) }
-        if fileExists(directoryFD, "orbit-transaction-envelope.bin") ||
-           fileExists(directoryFD, "orbit-transaction-envelope.pending") {
+        if Self.fileExists(directoryFD, "orbit-transaction-envelope.bin") ||
+           Self.fileExists(directoryFD, "orbit-transaction-envelope.pending") {
             throw ORBITEnvelopeStoreError.identityAlreadyExists
         }
 
@@ -119,7 +119,7 @@ actor ORBITTransactionEnvelopeStore {
         }
 
         var record = Data([1])
-        appendUInt16(UInt16(keyBytes.count), to: &record)
+        Self.appendUInt16(UInt16(keyBytes.count), to: &record)
         record.append(keyBytes)
         record.append(recoveryCredential)
         record.append(macBytes)
@@ -297,7 +297,7 @@ actor ORBITTransactionEnvelopeStore {
 
     private func sendJSON(path: String, body: [String: String],
                           expectedStatus: Int) async throws -> Data {
-        let url = witnessOrigin.appendingPathComponent(path)
+        let url = path.split(separator: "/").reduce(witnessOrigin) { $0.appendingPathComponent(String($1)) }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 10
@@ -341,7 +341,7 @@ actor ORBITTransactionEnvelopeStore {
               status.st_uid == geteuid(),
               (status.st_mode & 0o077) == 0,
               status.st_size >= 32,
-              status.st_size <= maxFileBytes else {
+              status.st_size <= Int64(maxFileBytes) else {
             throw ORBITEnvelopeStoreError.unsafeFile
         }
 
@@ -397,7 +397,7 @@ actor ORBITTransactionEnvelopeStore {
     private func writeAtomically(_ data: Data, name: String,
                                  directoryFD: Int32) throws {
         guard data.count <= maxFileBytes,
-              !fileExists(directoryFD, name) else {
+              !Self.fileExists(directoryFD, name) else {
             throw ORBITEnvelopeStoreError.ioFailure
         }
         let temporary = ".orbit-envelope-\(UUID().uuidString).tmp"
@@ -491,10 +491,6 @@ actor ORBITTransactionEnvelopeStore {
         return fstatat(directoryFD, name, &status, AT_SYMLINK_NOFOLLOW) == 0
     }
 
-    private func fileExists(_ directoryFD: Int32, _ name: String) -> Bool {
-        Self.fileExists(directoryFD, name)
-    }
-
     private func encodeHead(_ head: ORBITWitnessHead) -> Data {
         var data = Data()
         appendUInt64(head.revision, to: &data)
@@ -503,7 +499,7 @@ actor ORBITTransactionEnvelopeStore {
         return data
     }
 
-    private func appendUInt16(_ value: UInt16, to data: inout Data) {
+    private static func appendUInt16(_ value: UInt16, to data: inout Data) {
         data.append(UInt8(value >> 8))
         data.append(UInt8(value))
     }

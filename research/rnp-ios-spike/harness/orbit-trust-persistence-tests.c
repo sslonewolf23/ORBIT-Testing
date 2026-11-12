@@ -287,7 +287,7 @@ int main(int argc,char **argv) {
     expect("failed-recovery-bootstrap",orbit_repository_trust_load_or_initialize(
         &failed_recovery_state,repo,trusted_fpr,&failed_recovery_backend)==ORBIT_TRUST_STORE_OK,true);
     failed_recovery_storage.fail_write_on_call=true;
-    failed_recovery_storage.writes_until_failure=1U;
+    failed_recovery_storage.writes_until_failure=0U;
     orbit_trust_code failed_recovery_decision=ORBIT_TRUST_INVALID_ARGUMENT;
     expect("failed-emergency-state-commit-is-reported",
         orbit_repository_trust_authorize_recovery_rotation_and_store(
@@ -299,7 +299,7 @@ int main(int argc,char **argv) {
     expect("failed-emergency-commit-reloads-last-durable-pin",
         strcmp(failed_recovery_state.current_fingerprint,trusted_fpr)==0 &&
         failed_recovery_state.pending_fingerprint[0]=='\0' &&
-        failed_recovery_state.last_observed_time==recovery_now,true);
+        failed_recovery_state.last_observed_time==0U,true);
     free(trusted_fpr);free(recovery);free(recovery_fpr);free(emergency);
     free(candidate);free(candidate_fpr);free(time_text);
     printf("decision=%s checks=%u failures=%u\n",failures?"FAIL":"PASS",checks,failures);

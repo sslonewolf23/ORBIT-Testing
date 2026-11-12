@@ -530,6 +530,29 @@ int main(void) {
     EXPECT("orphan transaction directory removed after durable empty journal",
         !exists_at(base_fd, "e2000000000000000000000000000000"));
 
+    uint8_t orphan_a_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xA2U };
+    uint8_t orphan_b_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xA3U };
+    int orphan_a_fd = -1, orphan_b_fd = -1;
+    EXPECT("multiple orphan candidate directories created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, orphan_a_id, true, &orphan_a_fd) == ORBIT_FILESYSTEM_OK &&
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, orphan_b_id, true, &orphan_b_fd) == ORBIT_FILESYSTEM_OK);
+    if (orphan_a_fd >= 0) close(orphan_a_fd);
+    if (orphan_b_fd >= 0) close(orphan_b_fd);
+    EXPECT("noncanonical directory fixture created",
+        mkdirat(base_fd, "not-a-transaction-directory", 0700) == 0);
+    EXPECT("orphan sweep removes every collected candidate",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("orphan sweep removes both canonical candidates",
+        !exists_at(base_fd, "a2000000000000000000000000000000") &&
+        !exists_at(base_fd, "a3000000000000000000000000000000"));
+    EXPECT("orphan sweep leaves noncanonical directories untouched",
+        exists_at(base_fd, "not-a-transaction-directory"));
+    EXPECT("noncanonical fixture removed",
+        unlinkat(base_fd, "not-a-transaction-directory", AT_REMOVEDIR) == 0);
+
     EXPECT("case-fold duplicate fixture prepared",
         seed_pair(target_fd, stage_fd, "dup-a", "dup-a-stage", "dup-b") &&
         prepare_pair(target_fd, stage_fd, backup_fd,

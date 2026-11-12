@@ -144,6 +144,15 @@ static size_t make_tar_with_payload(uint8_t *out, const char *path,
     return total;
 }
 
+
+typedef struct { size_t count; char first_path[ORBIT_TAR_MAX_PATH + 1U]; } entry_capture;
+static bool capture_data_entry(void *context,const orbit_archive_entry *entry) {
+    entry_capture *capture=(entry_capture *)context;
+    if(!capture || !entry) return false;
+    if(capture->count==0U) snprintf(capture->first_path,sizeof(capture->first_path),"%s",entry->path);
+    ++capture->count; return true;
+}
+
 int main(void) {
     EXPECT("normal package path accepted",
            orbit_package_archive_path_is_safe("usr/lib/orbit/example.dylib"));
@@ -208,6 +217,13 @@ int main(void) {
            orbit_package_archive_path_is_safe("Library/ORBIT/example.dylib"));
     EXPECT("required deb members present",
            report.saw_debian_binary && report.saw_control_archive && report.saw_data_archive);
+
+    entry_capture capture; memset(&capture,0,sizeof(capture));
+    EXPECT("data manifest callback receives only payload entries",
+        orbit_package_archive_inspect_deb_with_data_entries(
+            deb,length,capture_data_entry,&capture,&report)==ORBIT_ARCHIVE_OK &&
+        capture.count==1U &&
+        strcmp(capture.first_path,"Library/ORBIT/example.dylib")==0);
 
 
     const struct {

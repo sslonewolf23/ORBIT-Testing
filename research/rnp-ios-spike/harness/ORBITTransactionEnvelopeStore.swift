@@ -387,14 +387,51 @@ actor ORBITTransactionEnvelopeStore {
 
     private func envelopeRevision(_ payload: Data) throws -> UInt64 {
         guard payload.count >= 44,
+              payload.count <= 48 * 1024 * 1024,
               payload.prefix(4) == Data("ORBE".utf8),
-              payload[4] == 1 else {
+              payload[4] == 1,
+              payload[7] == 0 else {
             throw ORBITEnvelopeStoreError.malformedEnvelope
         }
         var revision: UInt64 = 0
         for byte in payload[8..<16] { revision = (revision << 8) | UInt64(byte) }
-        guard revision > 0 else { throw ORBITEnvelopeStoreError.malformedEnvelope }
+        let journalLength = Int(readUInt32(payload, at: 32))
+        let committedLength = Int(readUInt32(payload, at: 36))
+        let pendingLength = Int(readUInt32(payload, at: 40))
+        guard revision > 0,
+              journalLength <= 16 * 1024 * 1024,
+              committedLength >= 12,
+              committedLength <= 16 * 1024 * 1024,
+              pendingLength <= 16 * 1024 * 1024,
+              44 + journalLength + committedLength + pendingLength == payload.count else {
+            throw ORBITEnvelopeStoreError.malformedEnvelope
+        }
+
+        let state = payload[5]
+        let phase = payload[6]
+        let transactionID = payload[16..<32]
+        if state == 0 {
+            guard phase == 0, journalLength == 0, pendingLength == 0,
+                  transactionID.allSatisfy({ $0 == 0 }) else {
+                throw ORBITEnvelopeStoreError.malformedEnvelope
+            }
+        } else if state == 1 {
+            guard (1...3).contains(phase),
+                  journalLength >= 29, pendingLength >= 12,
+                  transactionID.contains(where: { $0 != 0 }) else {
+                throw ORBITEnvelopeStoreError.malformedEnvelope
+            }
+        } else {
+            throw ORBITEnvelopeStoreError.malformedEnvelope
+        }
         return revision
+    }
+
+    private func readUInt32(_ data: Data, at offset: Int) -> UInt32 {
+        (UInt32(data[offset]) << 24) |
+        (UInt32(data[offset + 1]) << 16) |
+        (UInt32(data[offset + 2]) << 8) |
+        UInt32(data[offset + 3])
     }
 
     private func writeAtomically(_ data: Data, name: String,

@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define ORBIT_TRUST_STORE_VERSION 1U
+#define ORBIT_TRUST_STORE_VERSION 2U
 #define ORBIT_TRUST_STORE_MAC_BYTES 32U
 #define ORBIT_TRUST_STORE_RECORD_MAX 512U
 
@@ -67,6 +67,7 @@ orbit_trust_store_code orbit_repository_trust_load_or_initialize(
     orbit_repository_trust_state *state,
     const char *repository_id,
     const char *bootstrap_primary_fingerprint,
+    const char *bootstrap_recovery_fingerprint,
     const orbit_trust_store_backend *backend);
 
 /* Transactional wrappers commit trust changes or reload the last durable
@@ -86,8 +87,8 @@ orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
     const orbit_trust_store_backend *backend,
     orbit_trust_code *trust_result);
 
-/* Persisted emergency recovery: validate with the separately pinned offline
- * root and commit the immediate, zero-grace replacement before returning. */
+/* Persisted emergency recovery: validate with the offline root pinned in the
+ * authenticated trust record and commit the zero-grace replacement. */
 orbit_trust_store_code orbit_repository_trust_authorize_recovery_rotation_and_store(
     orbit_repository_trust_state *state,
     const char *repository_id,
@@ -96,7 +97,6 @@ orbit_trust_store_code orbit_repository_trust_authorize_recovery_rotation_and_st
     size_t recovery_inrelease_length,
     const uint8_t *recovery_public_key_bundle,
     size_t recovery_bundle_length,
-    const char *pinned_recovery_primary_fingerprint,
     const uint8_t *candidate_public_key_bundle,
     size_t candidate_bundle_length,
     uint64_t now_seconds,

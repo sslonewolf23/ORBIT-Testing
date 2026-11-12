@@ -146,13 +146,39 @@ actor ORBITTransactionEnvelopeStore {
         return try await recoverUnlocked()
     }
 
-    /*
-     * payload must be a validated canonical ORBE byte string. The caller
-     * validates the C state transition before calling this method. The store
-     * enforces consecutive revisions and independently anchors the digest.
-     */
-    func commit(payload: Data) async throws {
+    func loadForBackend() async throws -> (payload: Data, digest: Data) {
         guard !busy else { throw ORBITEnvelopeStoreError.concurrentAccess }
+        busy = true
+        defer { busy = false }
+        _ = try await recoverUnlocked()
+
+        let directoryFD = try Self.openPrivateDirectory(directoryURL)
+        defer { close(directoryFD) }
+        guard let currentFile = try readAuthenticatedFile(
+            directoryFD, name: currentName) else {
+            throw ORBITEnvelopeStoreError.identityMissing
+        }
+        return (try openEnvelopePayload(currentFile),
+                Data(SHA256.hash(data: currentFile)))
+    }
+
+    func initializeEmptyEnvelope(payload: Data) async throws -> Data {
+        try await commit(payload: payload, expectedRevision: 0,
+                         expectedDigest: Data(repeating: 0, count: 32))
+    }
+
+    /*
+     * payload must be a validated canonical ORBE byte string. The C state
+     * validator checks the transition; this method independently checks the
+     * expected revision and complete-file digest before performing the local
+     * pending-file + App Attest CAS + atomic promotion protocol.
+     */
+    func commit(payload: Data, expectedRevision: UInt64,
+                expectedDigest: Data) async throws -> Data {
+        guard !busy else { throw ORBITEnvelopeStoreError.concurrentAccess }
+        guard expectedDigest.count == 32 else {
+            throw ORBITEnvelopeStoreError.invalidConfiguration
+        }
         busy = true
         defer { busy = false }
 
@@ -167,6 +193,10 @@ actor ORBITTransactionEnvelopeStore {
         } else {
             oldHead = ORBITWitnessHead(revision: 0, tombstone: true,
                                        digest: Data(repeating: 0, count: 32))
+        }
+        guard oldHead.revision == expectedRevision &&
+              oldHead.digest == expectedDigest else {
+            throw ORBITEnvelopeStoreError.witnessConflict
         }
 
         let nextRevision = oldHead.revision.addingReportingOverflow(1)
@@ -191,6 +221,7 @@ actor ORBITTransactionEnvelopeStore {
             guard observed == nextHead else { throw error }
         }
         try promotePending(directoryFD)
+        return nextHead.digest
     }
 
     private func recoverUnlocked() async throws -> Data? {

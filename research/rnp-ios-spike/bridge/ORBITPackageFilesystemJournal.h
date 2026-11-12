@@ -99,4 +99,12 @@ orbit_filesystem_code orbit_package_filesystem_journal_recover(
     orbit_package_filesystem_journal_executor executor,
     void *executor_context);
 
+/* Remove the transaction-scoped backup directory only after the authenticated
+ * journal reports EMPTY and the directory is verified empty. Caller must hold
+ * the package filesystem transaction lock across this check and cleanup. */
+orbit_filesystem_code orbit_package_filesystem_journal_cleanup_backup_directory(
+    const orbit_package_filesystem_journal_backend *backend,
+    int backup_base_directory_fd,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES]);
+
 #endif

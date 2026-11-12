@@ -131,6 +131,9 @@ static bool backup_is_missing(int backup_parent_fd, const char *backup_name) {
     return errno == ENOENT;
 }
 
+static orbit_filesystem_code remove_if_identity(
+    int directory_fd, const char *name, uint64_t device, uint64_t inode);
+
 static bool staged_anchor_name(const orbit_package_file_change *change,
                                char name[ORBIT_FILESYSTEM_COMPONENT_CAPACITY]) {
     int length = snprintf(name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY,

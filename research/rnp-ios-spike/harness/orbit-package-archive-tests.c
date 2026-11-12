@@ -158,7 +158,7 @@ int main(void) {
     EXPECT("dot segment rejected",
            !orbit_package_archive_path_is_safe("usr/./lib/file"));
 
-    uint8_t stream_tar[4096];
+    uint8_t stream_tar[73728];
     size_t stream_tar_length = make_tar(stream_tar, "Library/ORBIT/stream.dylib", '0');
     const size_t chunk_sizes[] = { 1U, 511U, 512U, 513U, 65519U };
     for (size_t i = 0U; i < sizeof(chunk_sizes) / sizeof(chunk_sizes[0]); ++i) {

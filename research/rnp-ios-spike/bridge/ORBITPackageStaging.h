@@ -29,7 +29,8 @@ typedef struct {
     bool failed;
 } orbit_package_staging;
 
-/* base_directory_fd must identify a trusted directory opened by the caller.
+/* staging must be fresh storage or a fully discarded/closed instance.
+ * base_directory_fd must identify a trusted directory opened by the caller.
  * The staging directory is created as a new 0700 child and never follows links. */
 orbit_staging_code orbit_package_staging_begin(
     int base_directory_fd, const char *staging_name,

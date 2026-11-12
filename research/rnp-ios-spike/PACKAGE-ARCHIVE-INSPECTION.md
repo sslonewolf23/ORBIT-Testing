@@ -25,12 +25,12 @@ It parses the Debian ar container and validates the data archive's ustar manifes
 
 - Debian container: 512 MiB.
 - ar members: 16.
-- tar entries: 100,000.
+- tar entries per member: 4,096.
 - path length: 1,024 bytes.
 - one regular file: 256 MiB.
 - aggregate regular-file payload: 1 GiB.
 
-These are policy ceilings, not a promise that the current implementation can hold or extract an archive of those sizes. The manifest path table is bounded and allocated for inspection only.
+These are policy ceilings, not a promise that the current implementation can hold or extract an archive of those sizes. Both control and data tar manifests are inspected. Each manifest path table is bounded and allocated for inspection only; directory parents are permitted, but a regular file cannot be an ancestor of another entry.
 
 ## Important remaining work
 

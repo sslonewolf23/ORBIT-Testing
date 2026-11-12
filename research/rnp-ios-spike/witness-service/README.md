@@ -82,3 +82,45 @@ and state transitions but cannot establish Apple's trust chain.
 - Add account/device recovery without allowing key replacement to reset a
   journal head.
 - Add independent service security review and production monitoring.
+
+
+## Container deployment template
+
+A single-node TLS deployment template is included:
+
+- `Dockerfile`
+- `compose.yaml`
+- `.dockerignore`
+
+Prepare private persistent data and secret files:
+
+```sh
+mkdir -p data secrets
+sudo chown 65532:65532 data
+chmod 0700 data
+chmod 0600 secrets/tls.key secrets/apple-app-attest-root.pem
+```
+
+Place the TLS certificate at `secrets/tls.crt`, the private key at
+`secrets/tls.key`, and Apple's official App Attest root certificate PEM at
+`secrets/apple-app-attest-root.pem`. Do not download a trust root from an
+unverified mirror.
+
+Then configure `ORBIT_APP_ID` and `ORBIT_APP_ATTEST_ENV` in the deployment
+environment and run:
+
+```sh
+docker compose up --build -d
+curl --fail https://YOUR-WITNESS-HOST/healthz
+```
+
+The container runs as UID/GID 65532 with a read-only root filesystem and
+capabilities dropped. The host data directory must remain durable and
+accessible only to the service account. Back up the SQLite database using a
+consistent SQLite backup procedure; never copy only the main database file
+while a WAL is active.
+
+This template is not a substitute for production operations engineering:
+TLS renewal, monitoring, verified backup/restore, rate limiting, account
+authentication, disaster recovery, and a multi-node consistency design are
+still required.

@@ -121,7 +121,7 @@ func TestReconcileRebuildsCompletelyMissingSQLiteInstallation(t *testing.T) {
 		Counter:19,Head:head}
 	c.Hash=checkpointHash(c)
 	anchor.items[installationAnchorID(verifier)]=c
-	s:=&service{db:db,anchor:anchor}
+	s:=&service{db:db,anchor:anchor,now:time.Now}
 	tx,err:=db.Begin(); if err!=nil { t.Fatal(err) }
 	got,err:=s.reconcileAnchoredInstallation(context.Background(),tx,verifier)
 	if err!=nil { _=tx.Rollback(); t.Fatal(err) }

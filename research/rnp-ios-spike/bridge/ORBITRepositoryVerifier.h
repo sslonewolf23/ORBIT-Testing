@@ -36,6 +36,7 @@ typedef struct {
     size_t authenticated_release_bytes;
     size_t verified_index_bytes;
     size_t package_count;
+    orbit_packages_index packages;
 } orbit_repository_verify_result;
 
 /*
@@ -52,6 +53,10 @@ typedef struct {
  * bytes parsed from an unverified cache. This function does not install
  * packages, resolve dependencies, or authorize package execution.
  */
+/* Release the parsed package catalog owned by a verification result. Call after
+ * consuming a successful result and before reusing that result object. */
+void orbit_repository_verify_result_destroy(orbit_repository_verify_result *result);
+
 orbit_repository_verify_code orbit_repository_verify_packages_index(
     orbit_repository_trust_state *trust_state,
     const char *repository_id,

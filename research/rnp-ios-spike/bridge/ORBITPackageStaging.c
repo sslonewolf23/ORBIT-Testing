@@ -325,32 +325,40 @@ orbit_staging_code orbit_package_staging_finish(
 
 orbit_staging_code orbit_package_staging_discard(
     orbit_package_staging *staging) {
-    if (!staging) return ORBIT_STAGING_INVALID_ARGUMENT;
+    if (!staging || staging->base_directory_fd < 0 ||
+        staging->staging_name[0] == '\\0')
+        return ORBIT_STAGING_INVALID_STATE;
     if (staging->active_file_fd >= 0) {
         if (close(staging->active_file_fd) < 0) return ORBIT_STAGING_IO_ERROR;
         staging->active_file_fd = -1;
     }
-    if (staging->staging_directory_fd < 0 ||
-        staging->base_directory_fd < 0 || staging->staging_name[0] == '\0')
-        return ORBIT_STAGING_INVALID_STATE;
 
+    if (staging->staging_directory_fd < 0) {
+        staging->staging_directory_fd = openat(
+            staging->base_directory_fd, staging->staging_name,
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (staging->staging_directory_fd < 0)
+            return ORBIT_STAGING_IO_ERROR;
+    }
     if (!remove_directory_contents(staging->staging_directory_fd))
         return ORBIT_STAGING_IO_ERROR;
-    if (close(staging->staging_directory_fd) < 0)
-        return ORBIT_STAGING_IO_ERROR;
+
+    int root_fd = staging->staging_directory_fd;
     staging->staging_directory_fd = -1;
+    if (close(root_fd) < 0) return ORBIT_STAGING_IO_ERROR;
     if (unlinkat(staging->base_directory_fd, staging->staging_name,
                  AT_REMOVEDIR) < 0)
         return ORBIT_STAGING_IO_ERROR;
-    if (close(staging->base_directory_fd) < 0)
+    if (close(staging->base_directory_fd) < 0) {
+        staging->base_directory_fd = -1;
         return ORBIT_STAGING_IO_ERROR;
+    }
     staging->base_directory_fd = -1;
-    staging->staging_name[0] = '\0';
+    staging->staging_name[0] = '\\0';
     staging->complete = false;
     staging->failed = false;
     return ORBIT_STAGING_OK;
 }
-
 orbit_staging_code orbit_package_staging_close(
     orbit_package_staging *staging) {
     if (!staging || staging->staging_directory_fd < 0 ||

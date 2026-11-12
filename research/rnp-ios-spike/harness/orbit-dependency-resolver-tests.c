@@ -109,6 +109,30 @@ int main(void) {
     expect("dependency-version-minimum-enforced",
         code==ORBIT_DEPENDENCY_UNSATISFIED);
 
+    package(&missing,"missing-root","1.0","iphoneos-arm64",
+            "not-in-catalog (>=)",NULL,NULL);
+    code=orbit_dependency_plan_build(&missing_catalog,NULL,0U,"missing-root",
+                                     "iphoneos-arm64",&plan);
+    expect("malformed-version-relation-fails-closed",
+        code==ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION);
+
+    package(&missing,"missing-root","1.0","iphoneos-arm64",NULL,NULL,
+            "bad | other");
+    code=orbit_dependency_plan_build(&missing_catalog,NULL,0U,"missing-root",
+                                     "iphoneos-arm64",&plan);
+    expect("unsupported-conflict-alternatives-fail-closed",
+        code==ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION);
+
+    orbit_package_record reverse_conflict_package;
+    package(&reverse_conflict_package,"installed-blocker","1.0",
+            "iphoneos-arm64",NULL,NULL,"missing-root");
+    const orbit_package_record *reverse_installed[]={&reverse_conflict_package};
+    package(&missing,"missing-root","1.0","iphoneos-arm64",NULL,NULL,NULL);
+    code=orbit_dependency_plan_build(&missing_catalog,reverse_installed,1U,
+                                     "missing-root","iphoneos-arm64",&plan);
+    expect("installed-package-reverse-conflict-rejected",
+        code==ORBIT_DEPENDENCY_CONFLICT);
+
     orbit_dependency_plan_destroy(&plan);
     printf("decision=%s checks=%u failures=%u\n",
            failures?"FAIL":"PASS",checks,failures);

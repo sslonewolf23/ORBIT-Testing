@@ -8,7 +8,7 @@
 #define STORE_REPOSITORY_BYTES ORBIT_TRUST_REPOSITORY_CAPACITY
 #define STORE_FINGERPRINT_BYTES ORBIT_TRUST_FINGERPRINT_CAPACITY
 #define STORE_FIXED_BYTES (STORE_MAGIC_BYTES + 4U + 8U + 4U + 8U + 8U + 8U + \
-                           STORE_REPOSITORY_BYTES + 3U * STORE_FINGERPRINT_BYTES)
+                           STORE_REPOSITORY_BYTES + 4U * STORE_FINGERPRINT_BYTES)
 
 static void put_u32(uint8_t *out, uint32_t value) {
     out[0]=(uint8_t)(value>>24); out[1]=(uint8_t)(value>>16);
@@ -55,6 +55,7 @@ static bool valid_fingerprint_or_empty(const char *value) {
 }
 static bool valid_state(const orbit_repository_trust_state *s) {
     if(!s || !bounded_string(s->current_fingerprint,STORE_FINGERPRINT_BYTES,false) ||
+       !bounded_string(s->recovery_fingerprint,STORE_FINGERPRINT_BYTES,false) ||
        !valid_fingerprint_or_empty(s->previous_fingerprint) ||
        !valid_fingerprint_or_empty(s->pending_fingerprint)) return false;
     size_t current=strlen(s->current_fingerprint);
@@ -85,6 +86,7 @@ static size_t encode_record(const orbit_repository_trust_state *s,const char *re
     put_u64(out+p,s->last_observed_time);p+=8U;
     memset(out+p,0,STORE_REPOSITORY_BYTES);memcpy(out+p,repo,strlen(repo));p+=STORE_REPOSITORY_BYTES;
     memcpy(out+p,s->current_fingerprint,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
+    memcpy(out+p,s->recovery_fingerprint,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
     memcpy(out+p,s->previous_fingerprint,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
     memcpy(out+p,s->pending_fingerprint,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
     return p;
@@ -101,6 +103,7 @@ static bool decode_record(const uint8_t *in,size_t n,const char *repo,
        strcmp((const char *)(in+p),repo)!=0)return false;
     p+=STORE_REPOSITORY_BYTES;
     memcpy(s.current_fingerprint,in+p,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
+    memcpy(s.recovery_fingerprint,in+p,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
     memcpy(s.previous_fingerprint,in+p,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
     memcpy(s.pending_fingerprint,in+p,STORE_FINGERPRINT_BYTES);
     if(!valid_state(&s))return false;
@@ -239,15 +242,16 @@ orbit_trust_store_code orbit_repository_trust_store_save(
 
 
 orbit_trust_store_code orbit_repository_trust_load_or_initialize(
- orbit_repository_trust_state *state,const char *repository_id,const char *bootstrap_primary_fingerprint,const orbit_trust_store_backend *backend) {
- if(!state||!bootstrap_primary_fingerprint||!valid_repo(repository_id)||!backend_valid(backend))return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+ orbit_repository_trust_state *state,const char *repository_id,const char *bootstrap_primary_fingerprint,
+ const char *bootstrap_recovery_fingerprint,const orbit_trust_store_backend *backend) {
+ if(!state||!bootstrap_primary_fingerprint||!bootstrap_recovery_fingerprint||!valid_repo(repository_id)||!backend_valid(backend))return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
  memset(state,0,sizeof(*state));
  if(!backend->begin_transaction(backend->context,repository_id))return ORBIT_TRUST_STORE_IO_ERROR;
  orbit_repository_trust_state current;memset(&current,0,sizeof(current));
  orbit_trust_store_code status=store_load_locked(&current,repository_id,backend);
  if(status==ORBIT_TRUST_STORE_NOT_FOUND){
   orbit_repository_trust_state initial;memset(&initial,0,sizeof(initial));
-  if(!orbit_repository_trust_init(&initial,bootstrap_primary_fingerprint))status=ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+  if(!orbit_repository_trust_init(&initial,bootstrap_primary_fingerprint,bootstrap_recovery_fingerprint))status=ORBIT_TRUST_STORE_INVALID_ARGUMENT;
   else{status=store_save_locked(&initial,repository_id,backend);if(status==ORBIT_TRUST_STORE_OK)*state=initial;}
   memset(&initial,0,sizeof(initial));
  }else if(status==ORBIT_TRUST_STORE_OK)*state=current;
@@ -296,7 +300,7 @@ bool orbit_repository_trust_observe_time_and_store(
 orbit_trust_store_code orbit_repository_trust_authorize_recovery_rotation_and_store(
  orbit_repository_trust_state *state,const char *repository_id,const char *expected_repository,
  const uint8_t *recovery_inrelease,size_t recovery_inrelease_length,const uint8_t *recovery_public_key_bundle,
- size_t recovery_bundle_length,const char *pinned_recovery_primary_fingerprint,const uint8_t *candidate_public_key_bundle,
+ size_t recovery_bundle_length,const uint8_t *candidate_public_key_bundle,
  size_t candidate_bundle_length,uint64_t now_seconds,const orbit_trust_store_backend *backend,orbit_trust_code *trust_result) {
  if(!state||!trust_result||!valid_repo(repository_id)||!backend_valid(backend))return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
  if(!backend->begin_transaction(backend->context,repository_id)){memset(state,0,sizeof(*state));return ORBIT_TRUST_STORE_IO_ERROR;}
@@ -304,7 +308,7 @@ orbit_trust_store_code orbit_repository_trust_authorize_recovery_rotation_and_st
  orbit_trust_store_code status=store_load_locked(&current,repository_id,backend);
  if(status!=ORBIT_TRUST_STORE_OK)goto emergency_done;
  if(now_seconds<current.last_observed_time){*trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;status=ORBIT_TRUST_STORE_OK;goto emergency_done;}
- *trust_result=orbit_repository_trust_authorize_recovery_rotation(&current,expected_repository,recovery_inrelease,recovery_inrelease_length,recovery_public_key_bundle,recovery_bundle_length,pinned_recovery_primary_fingerprint,candidate_public_key_bundle,candidate_bundle_length,now_seconds);
+ *trust_result=orbit_repository_trust_authorize_recovery_rotation(&current,expected_repository,recovery_inrelease,recovery_inrelease_length,recovery_public_key_bundle,recovery_bundle_length,candidate_public_key_bundle,candidate_bundle_length,now_seconds);
  if(*trust_result==ORBIT_TRUST_ACCEPTED)status=store_save_locked(&current,repository_id,backend);
  else if(!orbit_repository_trust_observe_time(&current,now_seconds)){*trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;status=ORBIT_TRUST_STORE_OK;goto emergency_done;}
  else status=store_save_locked(&current,repository_id,backend);

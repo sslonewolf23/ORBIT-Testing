@@ -365,6 +365,11 @@ orbit_filesystem_code orbit_package_filesystem_lock_acquire(
         return ORBIT_FILESYSTEM_IO_ERROR;
     if (!S_ISDIR(root_status.st_mode))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    /* The advisory lock is only meaningful when an untrusted peer cannot
+     * replace its directory entry. Require a private owner-controlled root. */
+    if (root_status.st_uid != geteuid() ||
+        (root_status.st_mode & 0022) != 0)
+        return ORBIT_FILESYSTEM_CONFLICT;
 
     int fd = openat(trusted_root_fd, ORBIT_FILESYSTEM_LOCK_NAME,
         O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600);

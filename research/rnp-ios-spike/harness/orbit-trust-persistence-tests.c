@@ -87,7 +87,7 @@ static orbit_trust_store_backend backend_for(memory_store *m) {
     orbit_trust_store_backend b={m,begin_transaction,end_transaction,read_counter,advance_counter,read_record,write_record,test_mac};return b;
 }
 int main(int argc,char **argv) {
-    if(argc!=12) {
+    if(argc!=13) {
         fprintf(stderr,"usage: %s trusted-fpr trusted-keyring normal-rotation.InRelease recovery-keyring recovery-fpr emergency.InRelease candidate-keyring candidate-fpr emergency-time valid-trusted.InRelease Packages\n",argv[0]);
         return 2;
     }
@@ -101,10 +101,10 @@ int main(int argc,char **argv) {
     uint8_t *candidate=read_fixture(argv[7],&candidate_len);
     char *candidate_fpr=read_fixture_text(argv[8]);
     char *time_text=read_fixture_text(argv[9]);
-    size_t index_inrelease_len=0U,packages_len=0U;
+    size_t index_inrelease_len=0U,packages_len=0U,artifact_len=0U;
     uint8_t *index_inrelease=read_fixture(argv[10],&index_inrelease_len);
-    uint8_t *packages=read_fixture(argv[11],&packages_len);
-    if(!trusted_fpr||!trusted||!normal_rotation||!recovery||!recovery_fpr||!emergency||!candidate||!candidate_fpr||!time_text||!index_inrelease||!packages) {
+    uint8_t *packages=read_fixture(argv[11],&packages_len);\n    uint8_t *artifact=read_fixture(argv[12],&artifact_len);
+    if(!trusted_fpr||!trusted||!normal_rotation||!recovery||!recovery_fpr||!emergency||!candidate||!candidate_fpr||!time_text||!index_inrelease||!packages||!artifact) {
         fprintf(stderr,"recovery fixture read failed\n");return 2;
     }
     trusted_fpr[strcspn(trusted_fpr,"\r\n")]='\0';
@@ -374,14 +374,31 @@ int main(int argc,char **argv) {
         verify_result.package_count==1U &&
         verify_state.last_observed_time==verify_now,true);
     orbit_packages_index parsed_index;memset(&parsed_index,0,sizeof(parsed_index));
+    bool parsed_ok=orbit_packages_index_parse(packages,packages_len,&parsed_index);
     expect("verified-Packages-index-parses-to-catalog",
-        orbit_packages_index_parse(packages,packages_len,&parsed_index) &&
-        parsed_index.count==1U &&
-        strcmp(parsed_index.packages[0].name,"orbit-fixture")==0 &&
-        strcmp(parsed_index.packages[0].architecture,"iphoneos-arm64")==0 &&
-        parsed_index.packages[0].size>0U &&
-        strlen(parsed_index.packages[0].sha256)==64U &&
+        parsed_ok&&parsed_index.count==1U&&
+        strcmp(parsed_index.packages[0].name,"orbit-fixture")==0&&
+        strcmp(parsed_index.packages[0].architecture,"iphoneos-arm64")==0&&
+        parsed_index.packages[0].size==(uint64_t)artifact_len&&
+        strlen(parsed_index.packages[0].sha256)==64U&&
         strstr(parsed_index.packages[0].description,"disposable parser fixture")!=NULL,true);
+    if(parsed_ok) {
+        expect("downloaded-deb-size-and-SHA256-verified",
+            orbit_package_verify_artifact(&parsed_index.packages[0],artifact,artifact_len),true);
+        uint8_t *tampered_artifact=(uint8_t*)malloc(artifact_len);
+        expect("artifact-tamper-fixture-allocation",tampered_artifact!=NULL,true);
+        if(tampered_artifact!=NULL) {
+            memcpy(tampered_artifact,artifact,artifact_len);
+            tampered_artifact[0]^=0x01U;
+            expect("tampered-deb-artifact-rejected",
+                !orbit_package_verify_artifact(&parsed_index.packages[0],
+                    tampered_artifact,artifact_len),true);
+            free(tampered_artifact);
+        }
+        expect("truncated-deb-artifact-rejected",
+            !orbit_package_verify_artifact(&parsed_index.packages[0],artifact,
+                artifact_len-1U),true);
+    }
     orbit_packages_index_destroy(&parsed_index);
     const char unsafe_package[]=
         "Package: orbit-bad\nVersion: 1.0\nArchitecture: iphoneos-arm64\n"
@@ -468,7 +485,7 @@ int main(int argc,char **argv) {
     expect("expired-Release-valid-until-rejected",
         verify_code==ORBIT_REPOSITORY_VERIFY_FRESHNESS_REJECTED,true);
     free(trusted_fpr);free(recovery);free(recovery_fpr);free(emergency);
-    free(candidate);free(candidate_fpr);free(time_text);free(index_inrelease);free(packages);
+    free(candidate);free(candidate_fpr);free(time_text);free(index_inrelease);free(packages);free(artifact);
     printf("decision=%s checks=%u failures=%u\n",failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;
 }

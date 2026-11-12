@@ -22,7 +22,7 @@ typedef struct {
     uint32_t phase;
     uint64_t revision;
     uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES];
-    size_t change_count;
+    uint32_t change_count;
     orbit_package_file_change changes[ORBIT_FILESYSTEM_JOURNAL_MAX_CHANGES];
 } orbit_package_filesystem_journal_record;
 

@@ -290,7 +290,11 @@ bool orbit_repository_trust_observe_time_and_store(
   if(store_result)*store_result=ORBIT_TRUST_STORE_INVALID_ARGUMENT;
   return false;
  }
- if(!backend->begin_transaction(backend->context,repository_id)){memset(state,0,sizeof(*state));*store_result=ORBIT_TRUST_STORE_IO_ERROR;return false;}
+ if(!backend->begin_transaction(backend->context,repository_id)){
+  memset(state,0,sizeof(*state));
+  *store_result=ORBIT_TRUST_STORE_IO_ERROR;
+  return false;
+ }
  orbit_repository_trust_state current;memset(&current,0,sizeof(current));
  *store_result=store_load_locked(&current,repository_id,backend);
  if(*store_result==ORBIT_TRUST_STORE_OK){
@@ -388,7 +392,10 @@ bool orbit_repository_trust_fingerprint_allowed_and_store(
 bool orbit_repository_trust_advance_and_store(
  orbit_repository_trust_state *state,const char *repository_id,uint64_t now_seconds,
  const orbit_trust_store_backend *backend,orbit_trust_store_code *store_result) {
- if(!state||!store_result||!valid_repo(repository_id)||!backend_valid(backend)){if(store_result)*store_result=ORBIT_TRUST_STORE_INVALID_ARGUMENT;return false;}
+ if(!state||!store_result||!valid_repo(repository_id)||!backend_valid(backend)){
+  if(store_result)*store_result=ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+  return false;
+ }
  if(!backend->begin_transaction(backend->context,repository_id)){memset(state,0,sizeof(*state));*store_result=ORBIT_TRUST_STORE_IO_ERROR;return false;}
  orbit_repository_trust_state current;memset(&current,0,sizeof(current));*store_result=store_load_locked(&current,repository_id,backend);bool changed=false;
  if(*store_result==ORBIT_TRUST_STORE_OK){

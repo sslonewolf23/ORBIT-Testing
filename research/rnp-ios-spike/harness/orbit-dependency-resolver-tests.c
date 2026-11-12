@@ -195,6 +195,23 @@ int main(void) {
 
     orbit_dependency_plan_destroy(&plan);
 
+    orbit_package_record provider_records[3];
+    package(&provider_records[0],"provider-app","1.0","iphoneos-arm64",
+            "shared-abi (>= 2.0)",NULL,NULL);
+    package(&provider_records[1],"provider-old","9.0","iphoneos-arm64",NULL,NULL,NULL);
+    package(&provider_records[2],"provider-new","1.0","iphoneos-arm64",NULL,NULL,NULL);
+    snprintf(provider_records[1].provides,sizeof(provider_records[1].provides),
+             "shared-abi (= 1.5)");
+    snprintf(provider_records[2].provides,sizeof(provider_records[2].provides),
+             "shared-abi (= 2.5)");
+    orbit_packages_index provider_catalog={provider_records,3U,3U};
+    code=orbit_dependency_plan_build(&provider_catalog,NULL,0U,"provider-app",
+                                     "iphoneos-arm64",&plan);
+    expect("multiple-providers-select-version-compatible-provider",
+        code==ORBIT_DEPENDENCY_OK&&plan.count==2U&&
+        strcmp(plan.ordered[0]->name,"provider-new")==0);
+    orbit_dependency_plan_destroy(&plan);
+
     orbit_package_record arch_records[2];
     package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",
             "foreign-lib:any",NULL,NULL);
@@ -227,6 +244,51 @@ int main(void) {
                                      "iphoneos-arm64",&plan);
     expect("unsupported-architecture-qualifier-fails-closed",
         code==ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION);
+
+    orbit_dependency_plan_destroy(&plan);
+
+    /* Installed foreign-architecture packages must use the same qualifier
+       policy as repository candidates. */
+    package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",
+            "foreign-lib:any",NULL,NULL);
+    package(&arch_records[1],"foreign-lib","1.0","iphoneos-arm64e",NULL,NULL,NULL);
+    snprintf(arch_records[1].multi_arch,sizeof(arch_records[1].multi_arch),"allowed");
+    const orbit_package_record *installed_foreign[]={&arch_records[1]};
+    code=orbit_dependency_plan_build(&arch_catalog,installed_foreign,1U,
+                                     "arch-app","iphoneos-arm64",&plan);
+    expect("installed-multiarch-allowed-satisfies-any",
+        code==ORBIT_DEPENDENCY_OK&&plan.count==1U);
+    orbit_dependency_plan_destroy(&plan);
+
+    snprintf(arch_records[1].multi_arch,sizeof(arch_records[1].multi_arch),"no");
+    code=orbit_dependency_plan_build(&arch_catalog,installed_foreign,1U,
+                                     "arch-app","iphoneos-arm64",&plan);
+    expect("installed-foreign-without-multiarch-allowed-rejected",
+        code==ORBIT_DEPENDENCY_UNSATISFIED);
+
+    snprintf(arch_records[0].depends,sizeof(arch_records[0].depends),
+             "foreign-lib:native");
+    snprintf(arch_records[1].multi_arch,sizeof(arch_records[1].multi_arch),"allowed");
+    code=orbit_dependency_plan_build(&arch_catalog,installed_foreign,1U,
+                                     "arch-app","iphoneos-arm64",&plan);
+    expect("installed-foreign-rejected-for-native-dependency",
+        code==ORBIT_DEPENDENCY_UNSATISFIED);
+
+    package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",NULL,NULL,
+            "foreign-lib:any");
+    code=orbit_dependency_plan_build(&arch_catalog,installed_foreign,1U,
+                                     "arch-app","iphoneos-arm64",&plan);
+    expect("qualified-conflict-detects-installed-foreign-provider",
+        code==ORBIT_DEPENDENCY_CONFLICT);
+
+    package(&arch_records[0],"arch-app","1.0","iphoneos-arm64",NULL,NULL,NULL);
+    package(&arch_records[1],"foreign-blocker","1.0","iphoneos-arm64e",NULL,NULL,
+            "arch-app:any");
+    const orbit_package_record *installed_blocker[]={&arch_records[1]};
+    code=orbit_dependency_plan_build(&arch_catalog,installed_blocker,1U,
+                                     "arch-app","iphoneos-arm64",&plan);
+    expect("reverse-qualified-conflict-detects-foreign-installed-package",
+        code==ORBIT_DEPENDENCY_CONFLICT);
 
     orbit_dependency_plan_destroy(&plan);
     printf("decision=%s checks=%u failures=%u\n",

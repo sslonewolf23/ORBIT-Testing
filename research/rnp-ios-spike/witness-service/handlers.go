@@ -255,3 +255,39 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 	if err = tx.Commit(); err != nil { jsonError(w, 503, "unavailable"); return }
 	w.WriteHeader(http.StatusNoContent)
 }
+
+
+// commitKeyRecovery performs the one-time challenge consumption, audit append,
+// and App Attest key replacement in the same SQL transaction. Journal head
+// fields and the recovery verifier are deliberately not updated.
+func commitKeyRecovery(tx *sql.Tx, oldKeyID, newKeyID string, verifier,
+	challengeDigest, publicDER, attestationDigest []byte, now int64) error {
+	var revision, headDigest []byte
+	var tombstone int
+	if err := tx.QueryRow(
+		"SELECT revision,head_digest,tombstone FROM installations WHERE key_id=? AND recovery_verifier=?",
+		oldKeyID, verifier).Scan(&revision, &headDigest, &tombstone); err != nil {
+		return err
+	}
+	if len(revision) != 8 || len(headDigest) != 32 || (tombstone != 0 && tombstone != 1) {
+		return errors.New("invalid journal head during recovery")
+	}
+	res, err := tx.Exec(
+		"UPDATE recovery_challenges SET consumed=1 WHERE digest=? AND old_key_id=? AND new_key_id=? AND consumed=0 AND expires_at>=?",
+		challengeDigest, oldKeyID, newKeyID, now)
+	if err != nil { return err }
+	changed, err := res.RowsAffected()
+	if err != nil || changed != 1 { return errors.New("recovery challenge unavailable") }
+	if _, err = tx.Exec(
+		"INSERT INTO key_recovery_history(old_key_id,new_key_id,recovered_at,prior_revision,prior_head_digest,prior_tombstone) VALUES(?,?,?,?,?,?)",
+		oldKeyID, newKeyID, now, revision, headDigest, tombstone); err != nil {
+		return err
+	}
+	res, err = tx.Exec(
+		"UPDATE installations SET key_id=?,public_key=?,attestation_digest=?,assertion_counter=0 WHERE key_id=? AND recovery_verifier=?",
+		newKeyID, publicDER, attestationDigest, oldKeyID, verifier)
+	if err != nil { return err }
+	changed, err = res.RowsAffected()
+	if err != nil || changed != 1 { return errors.New("installation key replacement conflict") }
+	return nil
+}

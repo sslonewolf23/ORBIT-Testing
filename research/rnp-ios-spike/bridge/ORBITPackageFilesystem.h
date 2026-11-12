@@ -48,8 +48,9 @@ typedef struct {
 } orbit_package_filesystem_lock;
 
 /* Acquires a nonblocking exclusive advisory lock in an owner-controlled root
- * that is not group/world writable. The caller must hold it across prepare,
- * journal execution/recovery, and cleanup. This coordinates cooperating ORBIT
+ * that is not group/world writable. Initialize lock->descriptor to -1 before
+ * the first call; a live handle cannot be overwritten. The caller must hold it
+ * across prepare, journal execution/recovery, and cleanup. This coordinates cooperating ORBIT
  * processes only; it cannot exclude privileged or same-owner non-ORBIT writers. */
 orbit_filesystem_code orbit_package_filesystem_lock_acquire(
     int trusted_root_fd, orbit_package_filesystem_lock *lock);

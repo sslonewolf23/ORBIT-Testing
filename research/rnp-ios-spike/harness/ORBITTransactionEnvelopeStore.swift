@@ -467,7 +467,8 @@ actor ORBITTransactionEnvelopeStore {
             return true
         }
         guard writeStatus, fsync(descriptor) == 0,
-              renameat(directoryFD, temporary, directoryFD, name) == 0,
+              linkat(directoryFD, temporary, directoryFD, name, 0) == 0,
+              unlinkat(directoryFD, temporary, 0) == 0,
               fsync(directoryFD) == 0 else {
             throw ORBITEnvelopeStoreError.ioFailure
         }

@@ -130,7 +130,7 @@ func verifyAppAttestExtensions(authData []byte, extensionOffset int,
 		return nil, errors.New("malformed App Attest extension map")
 	}
 	category, ok := extensions["apple_validation_category_01"].(uint64)
-	if !ok || !(category >= 1 && category <= 6 || category == 10) {
+	if !ok || category == 0 || category > 255 {
 		return nil, errors.New("invalid App Attest validation category")
 	}
 	bundleVersion, ok := extensions["apple_bundle_version_01"].(string)

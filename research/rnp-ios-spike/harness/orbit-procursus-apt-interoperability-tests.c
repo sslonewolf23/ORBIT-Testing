@@ -27,6 +27,8 @@ static int write_text(const char *path, const char *value) {
 static int run_apt(const char *root, const char *deb, const char *log_path) {
     char status[1200], state[1200], cache[1200], lists[1200], logs[1200];
     char source[1200], root_option[1300];
+    char opt_status[1400], opt_state[1400], opt_cache[1400];
+    char opt_lists[1400], opt_logs[1400], opt_source[1400];
     snprintf(status, sizeof(status), "%s/var/lib/dpkg/status", root);
     snprintf(state, sizeof(state), "%s/var/lib/apt", root);
     snprintf(cache, sizeof(cache), "%s/var/cache/apt", root);
@@ -34,6 +36,12 @@ static int run_apt(const char *root, const char *deb, const char *log_path) {
     snprintf(logs, sizeof(logs), "%s/var/log/apt", root);
     snprintf(source, sizeof(source), "%s/etc/apt/sources.list", root);
     snprintf(root_option, sizeof(root_option), "DPkg::Options::=--root=%s", root);
+    snprintf(opt_status, sizeof(opt_status), "Dir::State::status=%s", status);
+    snprintf(opt_state, sizeof(opt_state), "Dir::State=%s", state);
+    snprintf(opt_cache, sizeof(opt_cache), "Dir::Cache=%s", cache);
+    snprintf(opt_lists, sizeof(opt_lists), "Dir::State::lists=%s", lists);
+    snprintf(opt_logs, sizeof(opt_logs), "Dir::Log=%s", logs);
+    snprintf(opt_source, sizeof(opt_source), "Dir::Etc::sourcelist=%s", source);
 
     pid_t child = fork();
     if (child < 0) return -1;
@@ -43,18 +51,12 @@ static int run_apt(const char *root, const char *deb, const char *log_path) {
         dup2(fd, STDERR_FILENO);
         close(fd);
         execlp("apt-get", "apt-get",
-            "-o", "Dir::State::status=",
-            "-o", status,
-            "-o", "Dir::State=",
-            "-o", state,
-            "-o", "Dir::Cache=",
-            "-o", cache,
-            "-o", "Dir::State::lists=",
-            "-o", lists,
-            "-o", "Dir::Log=",
-            "-o", logs,
-            "-o", "Dir::Etc::sourcelist=",
-            "-o", source,
+            "-o", opt_status,
+            "-o", opt_state,
+            "-o", opt_cache,
+            "-o", opt_lists,
+            "-o", opt_logs,
+            "-o", opt_source,
             "-o", "Dir::Etc::sourceparts=-",
             "-o", "Dir::Etc::main=-",
             "-o", root_option,

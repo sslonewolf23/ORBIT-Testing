@@ -17,6 +17,7 @@ typedef struct {
 } orbit_release_checksum;
 
 typedef struct {
+    char origin[ORBIT_RELEASE_FIELD_CAPACITY];
     char date[ORBIT_RELEASE_FIELD_CAPACITY];
     char valid_until[ORBIT_RELEASE_FIELD_CAPACITY];
     char suite[ORBIT_RELEASE_FIELD_CAPACITY];
@@ -50,6 +51,16 @@ bool orbit_release_metadata_matches_policy(const orbit_release_metadata *metadat
                                             const char *expected_codename,
                                             const char *required_architecture,
                                             const char *required_component);
+
+/* Stronger repository identity policy: Origin must match exactly in addition
+ * to suite, codename, architecture, and component constraints. */
+bool orbit_release_metadata_matches_repository_policy(
+    const orbit_release_metadata *metadata,
+    const char *expected_origin,
+    const char *expected_suite,
+    const char *expected_codename,
+    const char *required_architecture,
+    const char *required_component);
 
 /* Verify actual Packages-index bytes against the exact SHA256 entry in an
  * already-authenticated Release document. Requires trusted InRelease result,

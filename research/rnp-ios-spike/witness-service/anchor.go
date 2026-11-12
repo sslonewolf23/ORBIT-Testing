@@ -105,11 +105,19 @@ func (d *dynamoAnchor) Latest(ctx context.Context, installationID string) (ancho
 	parsed, err := strconv.ParseUint(seq.Value, 10, 64)
 	if err != nil || parsed != c.Sequence { return zero, false, errors.New("anchor sequence mismatch") }
 	if err := validateCheckpoint(c); err != nil { return zero, false, err }
+	hashAttr, ok := out.Items[0]["checkpoint_hash"].(*types.AttributeValueMemberS)
+	if !ok || hashAttr.Value != hex.EncodeToString(c.Hash[:]) { return zero,false,errors.New("anchor checkpoint hash index mismatch") }
 	return c, true, nil
 }
 
 func (d *dynamoAnchor) Append(ctx context.Context, installationID string, c anchorCheckpoint) error {
 	if err := validateCheckpoint(c); err != nil { return err }
+	latest, found, err := d.Latest(context.Background(),installationID)
+	if err != nil { return err }
+	if found {
+		if latest.Hash == c.Hash { return nil }
+		if latest.Sequence == ^uint64(0) || c.Sequence != latest.Sequence+1 || c.PreviousHash != latest.Hash { return errAnchorConflict }
+	} else if c.Sequence != 1 || c.PreviousHash != ([32]byte{}) { return errAnchorConflict }
 	raw, err := json.Marshal(c)
 	if err != nil { return err }
 	_, err = d.client.PutItem(ctx, &dynamodb.PutItemInput{
@@ -124,7 +132,11 @@ func (d *dynamoAnchor) Append(ctx context.Context, installationID string, c anch
 		ConditionExpression: aws.String("attribute_not_exists(installation_id) AND attribute_not_exists(sequence)"),
 	})
 	var conditional *types.ConditionalCheckFailedException
-	if errors.As(err, &conditional) { return errAnchorConflict }
+	if errors.As(err, &conditional) {
+		latest, found, readErr := d.Latest(context.Background(),installationID)
+		if readErr == nil && found && latest.Hash == c.Hash { return nil }
+		return errAnchorConflict
+	}
 	if err != nil { return fmt.Errorf("append monotonic anchor: %w", err) }
 	return nil
 }

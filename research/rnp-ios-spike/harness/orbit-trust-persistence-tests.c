@@ -486,7 +486,7 @@ int main(int argc,char **argv) {
         packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
         &verify_backend,&verify_result);
     expect("wrong-index-path-rejected",
-        verify_code==ORBIT_REPOSITORY_VERIFY_INDEX_REJECTED,true);
+        verify_code==ORBIT_REPOSITORY_VERIFY_REPOSITORY_POLICY_REJECTED,true);
     uint8_t *tampered_inrelease=(uint8_t*)malloc(index_inrelease_len);
     expect("tampered-InRelease-fixture-allocation",tampered_inrelease!=NULL,true);
     if(tampered_inrelease!=NULL) {

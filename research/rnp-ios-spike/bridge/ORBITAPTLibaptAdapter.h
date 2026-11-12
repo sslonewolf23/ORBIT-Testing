@@ -10,7 +10,7 @@ extern "C" {
 /* Copy the effective Dir::State::status path from an initialized libapt-pkg
  * Configuration object. The object must have completed pkgInitConfig() and
  * pkgInitSystem() using the same config inputs/options as the target APT
- * invocation. The opaque pointer is a const apt::Configuration*. */
+ * invocation. The opaque pointer is a const Configuration*. */
 int orbit_apt_copy_effective_status_path(
     const void *initialized_apt_configuration,
     char *output,

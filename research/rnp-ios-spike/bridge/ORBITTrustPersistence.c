@@ -1,4 +1,5 @@
 #include "ORBITTrustPersistence.h"
+#include "ORBITTrustPersistenceTesting.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -286,7 +287,7 @@ orbit_trust_store_code orbit_repository_trust_store_load(
     return result;
 }
 
-orbit_trust_store_code orbit_repository_trust_store_save(
+orbit_trust_store_code orbit_repository_trust_store_save_for_testing(
     const orbit_repository_trust_state *state,const char *repository_id,
     const orbit_trust_store_backend *backend) {
     if(!state||!valid_repo(repository_id)||!backend_valid(backend))

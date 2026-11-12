@@ -385,24 +385,23 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
         }
         for(size_t i=0;i<r->installed_count;++i) {
             const orbit_package_record *q=r->installed[i];
-            if(!q||!package_arch_ok(q,r->architecture))continue;
+            if(!q)continue;
             char copy[RELATION_MAX];strcpy(copy,item);
             bool malformed=false;
-            if(package_satisfies_relation(q,copy,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            if(package_satisfies_dependency(q,copy,r->architecture,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
             if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
         for(size_t i=0;i<r->available->count;++i) {
-            if(r->state[i]!=1U||!package_arch_ok(&r->available->packages[i],r->architecture))continue;
+            if(r->state[i]!=1U)continue;
             char copy[RELATION_MAX];strcpy(copy,item);
             bool malformed=false;
-            if(package_satisfies_relation(&r->available->packages[i],copy,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            if(package_satisfies_dependency(&r->available->packages[i],copy,r->architecture,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
             if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
         for(size_t i=0;i<r->count;++i) {
-            if(!package_arch_ok(r->ordered[i],r->architecture))continue;
             char copy[RELATION_MAX];strcpy(copy,item);
             bool malformed=false;
-            if(package_satisfies_relation(r->ordered[i],copy,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            if(package_satisfies_dependency(r->ordered[i],copy,r->architecture,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
             if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
     }
@@ -433,7 +432,7 @@ static bool record_rejects_candidate(resolver *r,
                 trim(alt);
                 char copy[RELATION_MAX];strcpy(copy,alt);
                 bool malformed=false;
-                if(package_satisfies_relation(candidate,copy,&malformed)) {
+                if(package_satisfies_dependency(candidate,copy,r->architecture,&malformed)) {
                     r->error=ORBIT_DEPENDENCY_CONFLICT;return true;
                 }
                 if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return true;}
@@ -445,12 +444,10 @@ static bool record_rejects_candidate(resolver *r,
 static bool reverse_conflict(resolver *r,const orbit_package_record *candidate) {
     for(size_t i=0;i<r->installed_count;++i) {
         const orbit_package_record *existing=r->installed[i];
-        if(existing&&package_arch_ok(existing,r->architecture)&&
-           record_rejects_candidate(r,existing,candidate))return false;
+        if(existing&&record_rejects_candidate(r,existing,candidate))return false;
     }
     for(size_t i=0;i<r->available->count;++i) {
-        if(r->state[i]!=1U||
-           !package_arch_ok(&r->available->packages[i],r->architecture))continue;
+        if(r->state[i]!=1U)continue;
         if(record_rejects_candidate(r,&r->available->packages[i],candidate))return false;
     }
     return true;

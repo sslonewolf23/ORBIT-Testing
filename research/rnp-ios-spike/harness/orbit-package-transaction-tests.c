@@ -17,7 +17,7 @@ typedef struct {
 } fixture;
 static unsigned checks=0,failures=0;
 static void expect(const char *name,bool condition) {
-    ++checks;if(!condition){++failures;fprintf(stderr,"FAIL %s\\n",name);}
+    ++checks;if(!condition){++failures;fprintf(stderr,"FAIL %s\n",name);}
 }
 static orbit_journal_status load_journal(void *ctx,orbit_transaction_journal *out) {
     fixture *f=ctx;
@@ -134,7 +134,7 @@ int main(void) {
     code=orbit_package_transaction_recover(&jb,&pb);
     expect("corrupt-journal-fails-closed",code==ORBIT_TRANSACTION_JOURNAL_ERROR);
 
-    printf("decision=%s checks=%u failures=%u\\n",
+    printf("decision=%s checks=%u failures=%u\n",
            failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;
 }

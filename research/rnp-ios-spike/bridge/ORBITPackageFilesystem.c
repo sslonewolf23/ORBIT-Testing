@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -270,6 +271,59 @@ static orbit_filesystem_code restore_backup(
     if (fsync(target_parent_fd) < 0 || fsync(backup_parent_fd) < 0)
         return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     return ORBIT_FILESYSTEM_OK;
+}
+
+orbit_filesystem_code orbit_package_filesystem_lock_acquire(
+    int trusted_root_fd, orbit_package_filesystem_lock *lock) {
+    if (trusted_root_fd < 0 || !lock)
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    lock->descriptor = -1;
+    struct stat root_status;
+    if (fstat(trusted_root_fd, &root_status) < 0)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    if (!S_ISDIR(root_status.st_mode))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    int fd = openat(trusted_root_fd, ORBIT_FILESYSTEM_LOCK_NAME,
+        O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (fd < 0) return ORBIT_FILESYSTEM_IO_ERROR;
+    struct stat lock_status, named_status;
+    if (fstat(fd, &lock_status) < 0 ||
+        fstatat(trusted_root_fd, ORBIT_FILESYSTEM_LOCK_NAME,
+                &named_status, AT_SYMLINK_NOFOLLOW) < 0) {
+        close(fd);
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    }
+    if (!S_ISREG(lock_status.st_mode) || !S_ISREG(named_status.st_mode) ||
+        lock_status.st_dev != named_status.st_dev ||
+        lock_status.st_ino != named_status.st_ino ||
+        lock_status.st_dev != root_status.st_dev ||
+        lock_status.st_uid != geteuid() ||
+        (lock_status.st_mode & 0077) != 0 ||
+        lock_status.st_nlink != 1) {
+        close(fd);
+        return ORBIT_FILESYSTEM_CONFLICT;
+    }
+    if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+        int saved_errno = errno;
+        close(fd);
+        return (saved_errno == EWOULDBLOCK || saved_errno == EAGAIN) ?
+            ORBIT_FILESYSTEM_BUSY : ORBIT_FILESYSTEM_IO_ERROR;
+    }
+    lock->descriptor = fd;
+    return ORBIT_FILESYSTEM_OK;
+}
+
+orbit_filesystem_code orbit_package_filesystem_lock_release(
+    orbit_package_filesystem_lock *lock) {
+    if (!lock || lock->descriptor < 0)
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    int fd = lock->descriptor;
+    lock->descriptor = -1;
+    bool unlocked = flock(fd, LOCK_UN) == 0;
+    bool closed = close(fd) == 0;
+    return unlocked && closed ? ORBIT_FILESYSTEM_OK :
+           ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
 }
 
 orbit_filesystem_code orbit_package_filesystem_validate_change(

@@ -248,22 +248,24 @@ func (s *service) recoveryChallenge(w http.ResponseWriter, r *http.Request) {
 	if err != nil { jsonError(w, 400, "recovery unavailable"); return }
 	verifier, err := s.recoveryVerifier(credential)
 	if err != nil { jsonError(w, 503, "unavailable"); return }
-	var oldKeyID string
-	if err := s.db.QueryRow("SELECT key_id FROM installations WHERE recovery_verifier=?", verifier).Scan(&oldKeyID); err != nil {
-		// Do not reveal whether an installation or credential exists.
-		jsonError(w, 403, "recovery unavailable"); return
-	}
+	tx, err := s.db.Begin()
+	if err != nil { jsonError(w,503,"unavailable"); return }
+	defer tx.Rollback()
+	checkpoint, err := s.reconcileAnchoredInstallation(r.Context(),tx,verifier)
+	if err != nil { jsonError(w,403,"recovery unavailable"); return }
+	if checkpoint.KeyID == req.NewKeyID { jsonError(w,409,"replacement key already active"); return }
 	var replacementExists int
-	if err := s.db.QueryRow("SELECT 1 FROM installations WHERE key_id=?", req.NewKeyID).Scan(&replacementExists); err == nil {
+	if err := tx.QueryRow("SELECT 1 FROM installations WHERE key_id=?", req.NewKeyID).Scan(&replacementExists); err == nil {
 		jsonError(w, 409, "replacement key already registered"); return
 	} else if err != sql.ErrNoRows { jsonError(w, 503, "unavailable"); return }
 	challenge := make([]byte, 32)
 	if _, err := rand.Read(challenge); err != nil { jsonError(w, 503, "unavailable"); return }
 	digest := sha256.Sum256(challenge)
-	_, _ = s.db.Exec("DELETE FROM recovery_challenges WHERE expires_at<? OR consumed=1", s.now().Unix())
-	if _, err := s.db.Exec("INSERT INTO recovery_challenges(digest,old_key_id,new_key_id,expires_at,consumed) VALUES(?,?,?,?,0)", digest[:], oldKeyID, req.NewKeyID, s.now().Add(5*time.Minute).Unix()); err != nil {
+	_, _ = tx.Exec("DELETE FROM recovery_challenges WHERE expires_at<? OR consumed=1", s.now().Unix())
+	if _, err := tx.Exec("INSERT INTO recovery_challenges(digest,old_key_id,new_key_id,expires_at,consumed) VALUES(?,?,?,?,0)", digest[:], checkpoint.KeyID, req.NewKeyID, s.now().Add(5*time.Minute).Unix()); err != nil {
 		jsonError(w, 503, "unavailable"); return
 	}
+	if err = tx.Commit(); err != nil { jsonError(w,503,"unavailable"); return }
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"challenge": base64.StdEncoding.EncodeToString(challenge)})
 }

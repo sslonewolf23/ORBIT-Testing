@@ -42,9 +42,9 @@ typedef struct {
 } orbit_archive_report;
 
 /* Strict inspection only. No extraction, filesystem writes, or script execution.
- * The initial implementation accepts an uncompressed data.tar member only.
- * Compressed data.tar members are rejected explicitly until a bounded decoder
- * adapter is added and independently reviewed. */
+ * Supports uncompressed, gzip, xz, bzip2, and zstd control/data tar members.
+ * Compressed members are decoded in fixed chunks with a 256 MiB expanded
+ * output ceiling and a 200:1 expansion-ratio ceiling. */
 orbit_archive_code orbit_package_archive_inspect_deb(
     const uint8_t *deb, size_t deb_length, orbit_archive_report *report);
 

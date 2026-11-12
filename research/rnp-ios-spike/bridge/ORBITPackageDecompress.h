@@ -33,8 +33,8 @@ typedef bool (*orbit_decompress_sink)(void *context,
                                       const uint8_t *bytes,
                                       size_t length);
 
-/* Decodes exactly one compressed stream in bounded output chunks.
- * Rejects truncation, trailing bytes, and concatenated streams.
+/* Decodes exactly one compressed stream in bounded output chunks and decoder
+ * iterations. Rejects truncation, trailing bytes, and concatenated streams.
  * The sink must consume/copy each chunk before returning. */
 orbit_decompress_code orbit_package_decompress_stream(
     orbit_decompress_format format,

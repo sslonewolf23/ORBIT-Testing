@@ -118,3 +118,23 @@ This is a design requirement, not an implemented feature. The current file-journ
 ## Verification status update
 
 The canonical file-journal codec and filesystem-journal host tests are now wired into the host verification workflow and have passed on the feature branch. The earlier statements that these tests had not run are superseded by the successful CI run. This does not mean a production persistence adapter or device crash-recovery path exists.
+
+
+## Canonical combined transaction envelope (implementation in progress)
+
+`ORBITPackageTransactionEnvelope.h/.c` now defines a version-1 `ORBE` envelope. Its canonical header carries the envelope revision, active/empty state, transaction phase, transaction ID, and explicit lengths for three opaque canonical payloads:
+
+- active per-file journal payload;
+- last committed ownership snapshot;
+- pending replacement ownership snapshot.
+
+The encoder uses fixed-width big-endian integers, rejects invalid state combinations and payloads over their independent bounds, and never serializes C struct padding. The transition validator enforces consecutive revisions and these rules:
+
+- Begin: retain committed ownership and stage pending ownership before any file mutation.
+- Rollback: preserve committed ownership; clear the pending snapshot only when rollback has completed.
+- Commit: keep old committed ownership while the journal is COMMITTED and backups are being finalized; promote pending ownership only in the final atomic transition that clears the active journal.
+- Reject attempts to promote stale ownership, skip revisions, or clear an APPLYING transaction without first entering rollback or commit.
+
+The host harness covers canonical encode/decode, malformed/truncated/trailing data, revision jumps, rollback preservation, commit promotion, and split-brain rejection. The iOS harness now includes a Swift persistence adapter that uses a device-only Keychain identity, HMAC-SHA-256 over the complete envelope, a same-directory pending-file/atomic-rename protocol, and App Attest assertions against the existing independent freshness-witness service. A pending file is retained when the witness is unavailable so recovery can retry; the adapter never silently recreates missing identity material.
+
+Important integration boundary: the envelope codec/state validator and Swift adapter are new building blocks. The existing per-file journal backend and package transaction coordinator have **not yet been switched over** to this combined backend. The Swift adapter is currently compiled as part of the simulator harness, not wired into a production ORBIT app or privileged filesystem helper. It assumes the caller holds the package-wide cross-process lock, and App Attest enrollment/recovery plus real-device crash testing remain separate prerequisites. The envelope payload digest and server witness format must be kept byte-for-byte consistent during integration. Installation remains disabled.

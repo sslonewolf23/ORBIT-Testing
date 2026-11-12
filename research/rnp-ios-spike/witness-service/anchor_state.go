@@ -23,6 +23,7 @@ func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 	if err != nil { return checkpoint, err }
 	if !found { return checkpoint, errors.New("independent monotonic anchor missing") }
 	if err := validateCheckpoint(remote); err != nil { return checkpoint, err }
+	if remote.Sequence > uint64(^uint64(0)>>1) { return checkpoint, errors.New("anchor sequence exceeds local storage range") }
 
 	var keyID string
 	var publicKey, revision, digest, storedVerifier []byte
@@ -82,9 +83,6 @@ func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 			return checkpoint, errors.New("local and independent witness states disagree")
 		}
 		return remote,nil
-	}
-	if remote.Sequence > uint64(^uint64(0)>>1) {
-		return checkpoint, errors.New("anchor sequence exceeds local storage range")
 	}
 	// The anchor is authoritative. A stale DB backup is advanced to its exact
 	// immutable checkpoint before any assertion is accepted.

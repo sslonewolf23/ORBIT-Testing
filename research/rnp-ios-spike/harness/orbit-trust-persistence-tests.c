@@ -406,6 +406,16 @@ int main(int argc,char **argv) {
     }
     orbit_packages_index_destroy(&parsed_index);
     orbit_repository_verify_result_destroy(&verify_result);
+    verify_storage.fail_read=true;
+    verify_code=orbit_repository_verify_packages_index(
+        &verify_state,repo,trusted_fpr,trusted,trusted_len,
+        index_inrelease,index_inrelease_len,"ORBIT Test","stable","fixture",
+        "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
+        packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
+        &verify_backend,&verify_result);
+    expect("repository-verification-storage-error-fails-closed",
+        verify_code==ORBIT_REPOSITORY_VERIFY_TRUST_STORE_ERROR,true);
+    verify_storage.fail_read=false;
     const char unsafe_package[]=
         "Package: orbit-bad\nVersion: 1.0\nArchitecture: iphoneos-arm64\n"
         "Filename: ../escape.deb\nSize: 1\n"

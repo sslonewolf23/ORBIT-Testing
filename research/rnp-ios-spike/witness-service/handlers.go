@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"crypto/hmac"
 	"errors"
 	"net/http"
 	"time"
@@ -38,6 +39,10 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	}
 	challenge, err := decodeB64(req.Challenge, 32, 32)
 	if err != nil { jsonError(w, 400, "invalid request"); return }
+	credential, credErr := decodeB64(req.RecoveryCredential, 32, 32)
+	if credErr != nil { jsonError(w, 400, "invalid recovery credential"); return }
+	verifier, verifierErr := s.recoveryVerifier(credential)
+	if verifierErr != nil { jsonError(w, 503, "recovery unavailable"); return }
 	attestation, err := decodeB64(req.Attestation, 1, 512<<10)
 	if err != nil { jsonError(w, 400, "invalid request"); return }
 	attDigest := sha256.Sum256(attestation)
@@ -73,8 +78,8 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	if err != nil || changed != 1 { jsonError(w, 409, "challenge expired or consumed"); return }
 	zero := make([]byte, 32)
 	rev := make([]byte, 8)
-	if _, err = tx.Exec("INSERT INTO installations(key_id,public_key,attestation_digest,assertion_counter,revision,head_digest,tombstone,created_at) VALUES(?,?,?,0,?,?,1,?)",
-		req.KeyID, publicDER, attDigest[:], rev, zero, s.now().Unix()); err != nil {
+	if _, err = tx.Exec("INSERT INTO installations(key_id,public_key,attestation_digest,assertion_counter,revision,head_digest,tombstone,created_at,recovery_verifier) VALUES(?,?,?,0,?,?,1,?,?)",
+		req.KeyID, publicDER, attDigest[:], rev, zero, s.now().Unix(), verifier); err != nil {
 		jsonError(w, 409, "registration conflict"); return
 	}
 	if err = tx.Commit(); err != nil { jsonError(w, 503, "unavailable"); return }
@@ -188,4 +193,62 @@ func equalBytes(a,b []byte) bool {
 	var diff byte
 	for i:=range a { diff |= a[i]^b[i] }
 	return diff==0
+}
+
+
+func (s *service) recoveryChallenge(w http.ResponseWriter, r *http.Request) {
+	var req recoveryChallengeRequest
+	if err := decodeJSON(w, r, &req); err != nil || req.OldKeyID == "" || req.NewKeyID == "" || len(req.OldKeyID) > 128 || len(req.NewKeyID) > 128 || req.OldKeyID == req.NewKeyID {
+		jsonError(w, 400, "invalid recovery request"); return
+	}
+	if _, err := decodeAppAttestKeyID(req.NewKeyID); err != nil { jsonError(w, 400, "invalid replacement key"); return }
+	var exists int
+	if err := s.db.QueryRow("SELECT 1 FROM installations WHERE key_id=?", req.OldKeyID).Scan(&exists); err != nil { jsonError(w, 404, "recovery unavailable"); return }
+	var verifier []byte
+	if err := s.db.QueryRow("SELECT recovery_verifier FROM installations WHERE key_id=?", req.OldKeyID).Scan(&verifier); err != nil || len(verifier) != 32 { jsonError(w, 409, "recovery credential unavailable"); return }
+	var replacementExists int
+	if err := s.db.QueryRow("SELECT 1 FROM installations WHERE key_id=?", req.NewKeyID).Scan(&replacementExists); err == nil { jsonError(w, 409, "replacement key already registered"); return } else if err != sql.ErrNoRows { jsonError(w, 503, "unavailable"); return }
+	challenge := make([]byte, 32)
+	if _, err := rand.Read(challenge); err != nil { jsonError(w, 503, "unavailable"); return }
+	digest := sha256.Sum256(challenge)
+	_, _ = s.db.Exec("DELETE FROM recovery_challenges WHERE expires_at<? OR consumed=1", s.now().Unix())
+	if _, err := s.db.Exec("INSERT INTO recovery_challenges(digest,old_key_id,new_key_id,expires_at,consumed) VALUES(?,?,?,?,0)", digest[:], req.OldKeyID, req.NewKeyID, s.now().Add(5*time.Minute).Unix()); err != nil { jsonError(w, 503, "unavailable"); return }
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"challenge": base64.StdEncoding.EncodeToString(challenge)})
+}
+
+func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
+	var req recoveryRequest
+	if err := decodeJSON(w, r, &req); err != nil || req.OldKeyID == "" || req.NewKeyID == "" || req.OldKeyID == req.NewKeyID {
+		jsonError(w, 400, "invalid recovery request"); return
+	}
+	if _, err := decodeAppAttestKeyID(req.NewKeyID); err != nil { jsonError(w, 400, "invalid replacement key"); return }
+	challenge, err := decodeB64(req.Challenge, 32, 32); if err != nil { jsonError(w, 400, "invalid recovery request"); return }
+	proof, err := decodeB64(req.Proof, 32, 32); if err != nil { jsonError(w, 400, "invalid recovery request"); return }
+	attestation, err := decodeB64(req.Attestation, 1, 512<<10); if err != nil { jsonError(w, 400, "invalid recovery request"); return }
+	challengeDigest := sha256.Sum256(challenge)
+	var verifier []byte
+	var storedOld, storedNew string
+	var expires int64
+	var consumed int
+	err = s.db.QueryRow("SELECT c.old_key_id,c.new_key_id,c.expires_at,c.consumed,i.recovery_verifier FROM recovery_challenges c JOIN installations i ON i.key_id=c.old_key_id WHERE c.digest=?", challengeDigest[:]).Scan(&storedOld,&storedNew,&expires,&consumed,&verifier)
+	if err != nil || consumed != 0 || expires < s.now().Unix() || storedOld != req.OldKeyID || storedNew != req.NewKeyID || len(verifier) != 32 { jsonError(w, 409, "recovery rejected"); return }
+	// The proof is checked against the stored verifier by recomputing it from
+	// the supplied credential only on enrollment; recovery sends HMAC proof.
+	// Verify the proof with a keyed derivation that can be reproduced from the
+	// verifier rather than retaining the raw credential.
+	expected := recoveryProofFromVerifier(verifier, challenge, req.OldKeyID, req.NewKeyID)
+	if !hmac.Equal(expected, proof) { jsonError(w, 403, "recovery rejected"); return }
+	publicDER, err := s.verifyAttestation(req.NewKeyID, challenge, attestation)
+	if err != nil { jsonError(w, 403, "replacement attestation rejected"); return }
+	tx, err := s.db.Begin(); if err != nil { jsonError(w, 503, "unavailable"); return }; defer tx.Rollback()
+	var revision, headDigest []byte; var tombstone int
+	if err = tx.QueryRow("SELECT revision,head_digest,tombstone FROM installations WHERE key_id=?", req.OldKeyID).Scan(&revision,&headDigest,&tombstone); err != nil || len(revision)!=8 || len(headDigest)!=32 { jsonError(w, 409, "recovery rejected"); return }
+	res, err := tx.Exec("UPDATE recovery_challenges SET consumed=1 WHERE digest=? AND consumed=0 AND expires_at>=?", challengeDigest[:], s.now().Unix())
+	if err != nil { jsonError(w,503,"unavailable"); return }; n,_ := res.RowsAffected(); if n!=1 { jsonError(w,409,"recovery challenge consumed"); return }
+	if _, err = tx.Exec("INSERT INTO key_recovery_history(old_key_id,new_key_id,recovered_at,prior_revision,prior_head_digest,prior_tombstone) VALUES(?,?,?,?,?,?)", req.OldKeyID,req.NewKeyID,s.now().Unix(),revision,headDigest,tombstone); err != nil { jsonError(w,409,"recovery conflict"); return }
+	attDigest := sha256.Sum256(attestation)
+	if _, err = tx.Exec("UPDATE installations SET key_id=?,public_key=?,attestation_digest=?,assertion_counter=0 WHERE key_id=?", req.NewKeyID,publicDER,attDigest[:],req.OldKeyID); err != nil { jsonError(w,409,"recovery conflict"); return }
+	if err = tx.Commit(); err != nil { jsonError(w,503,"unavailable"); return }
+	w.WriteHeader(http.StatusNoContent)
 }

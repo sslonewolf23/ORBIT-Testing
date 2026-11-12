@@ -148,8 +148,9 @@ static bool write_file_at(int directory_fd, const char *name, const char *value)
         if (count <= 0) { close(fd); return false; }
         offset += (size_t)count;
     }
-    bool result = fsync(fd) == 0 && close(fd) == 0;
-    return result;
+    bool synced = fsync(fd) == 0;
+    bool closed = close(fd) == 0;
+    return synced && closed;
 }
 
 static bool file_equals_at(int directory_fd, const char *name, const char *value) {
@@ -395,6 +396,10 @@ int main(void) {
     EXPECT("commit backup directory removed",
         unlinkat(root_fd, "backup-commit", AT_REMOVEDIR) == 0);
 
+    EXPECT("success target cleaned", unlinkat(install_fd, "target-success", 0) == 0);
+    EXPECT("rollback target cleaned", unlinkat(install_fd, "target-rollback", 0) == 0);
+    EXPECT("commit target cleaned", unlinkat(install_fd, "target-commit", 0) == 0);
+    EXPECT("unapplied staged file cleaned", unlinkat(stage_fd, "stage-rollback", 0) == 0);
     free(journal_buffer);
     free(committed_buffer);
     free(pending_buffer);

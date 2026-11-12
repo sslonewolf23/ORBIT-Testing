@@ -757,9 +757,27 @@ orbit_filesystem_code orbit_package_filesystem_rollback(
         file_identity_result anchor_identity = file_identity_at(
             backup_parent_fd, anchor, change->staged_device,
             change->staged_inode, NULL, NULL, NULL);
+        if (anchor_identity == FILE_ID_ERROR)
+            return ORBIT_FILESYSTEM_IO_ERROR;
+        if (anchor_identity == FILE_ID_MISSING) {
+            nlink_t old_links = 0;
+            file_identity_result old_target = file_identity_at(
+                target_parent_fd, change->target_name,
+                change->preimage_device, change->preimage_inode,
+                NULL, NULL, &old_links);
+            file_identity_result old_backup = change->preimage_exists ?
+                file_identity_at(backup_parent_fd, change->backup_name,
+                    change->preimage_device, change->preimage_inode,
+                    NULL, NULL, NULL) : FILE_ID_MISSING;
+            if (old_target == FILE_ID_MATCH && old_links == 1 &&
+                old_backup == FILE_ID_MISSING)
+                return ORBIT_FILESYSTEM_OK;
+            if (old_target == FILE_ID_ERROR || old_backup == FILE_ID_ERROR)
+                return ORBIT_FILESYSTEM_IO_ERROR;
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        }
         if (anchor_identity != FILE_ID_MATCH)
-            return anchor_identity == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
-                   ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
 
     if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
@@ -929,5 +947,6 @@ orbit_filesystem_code orbit_package_filesystem_finalize(
             change->preimage_device, change->preimage_inode);
         if (removed != ORBIT_FILESYSTEM_OK) return removed;
     }
-    return remove_staged_anchor(backup_parent_fd, change);
+    return remove_staged_anchor_after_commit(
+        target_parent_fd, backup_parent_fd, change);
 }

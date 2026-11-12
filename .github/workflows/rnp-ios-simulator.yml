@@ -177,6 +177,7 @@ jobs:
             -c research/rnp-ios-spike/bridge/ORBITRepositoryVerifier.c \
             -o "$RUNNER_TEMP/ORBITRepositoryVerifier-ios.o"
           clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
+            -I"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/include" \
             -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/bridge/ORBITPackagesIndex.c \
             -o "$RUNNER_TEMP/ORBITPackagesIndex-ios.o"

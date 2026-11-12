@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <bzlib.h>
+#include <lzma.h>
+#include <zlib.h>
+#include <zstd.h>
 
 static unsigned checks;
 static unsigned failures;
@@ -71,6 +75,64 @@ static size_t make_deb(uint8_t *out, const char *path, char type) {
     return offset;
 }
 
+
+static size_t compress_fixture(orbit_decompress_format format,
+                               const uint8_t *input, size_t input_length,
+                               uint8_t *output, size_t capacity) {
+    if (format == ORBIT_DECOMPRESS_GZIP) {
+        z_stream stream;
+        memset(&stream, 0, sizeof(stream));
+        if (deflateInit2(&stream, Z_BEST_COMPRESSION, Z_DEFLATED, 31, 8,
+                         Z_DEFAULT_STRATEGY) != Z_OK) return 0U;
+        stream.next_in = (Bytef *)input;
+        stream.avail_in = (uInt)input_length;
+        stream.next_out = output;
+        stream.avail_out = (uInt)capacity;
+        int status = deflate(&stream, Z_FINISH);
+        size_t length = status == Z_STREAM_END ? stream.total_out : 0U;
+        deflateEnd(&stream);
+        return length;
+    }
+    if (format == ORBIT_DECOMPRESS_BZIP2) {
+        unsigned int output_length = (unsigned int)capacity;
+        if (BZ2_bzBuffToBuffCompress((char *)output, &output_length,
+            (char *)input, (unsigned int)input_length, 9, 0, 30) != BZ_OK)
+            return 0U;
+        return output_length;
+    }
+    if (format == ORBIT_DECOMPRESS_XZ) {
+        size_t output_length = 0U;
+        return lzma_easy_buffer_encode(6U, LZMA_CHECK_CRC64, NULL,
+            input, input_length, output, &output_length, capacity) == LZMA_OK ?
+            output_length : 0U;
+    }
+    if (format == ORBIT_DECOMPRESS_ZSTD) {
+        size_t length = ZSTD_compress(output, capacity, input, input_length, 3);
+        return ZSTD_isError(length) ? 0U : length;
+    }
+    return 0U;
+}
+
+static size_t make_deb_compressed(uint8_t *out, const char *path,
+                                  orbit_decompress_format format,
+                                  const char *suffix) {
+    uint8_t tar[1536], compressed[2048];
+    size_t tar_length = make_tar(tar, path, '0');
+    size_t compressed_length = compress_fixture(format, tar, tar_length,
+                                                 compressed, sizeof(compressed));
+    if (compressed_length == 0U) return 0U;
+    char control_name[32], data_name[32];
+    (void)snprintf(control_name, sizeof(control_name), "control.tar%s", suffix);
+    (void)snprintf(data_name, sizeof(data_name), "data.tar%s", suffix);
+    memcpy(out, "!<arch>\n", 8U);
+    size_t offset = 8U;
+    static const uint8_t version[] = "2.0\n";
+    offset = append_ar_member(out, offset, "debian-binary", version, 4U);
+    offset = append_ar_member(out, offset, control_name, compressed, compressed_length);
+    offset = append_ar_member(out, offset, data_name, compressed, compressed_length);
+    return offset;
+}
+
 int main(void) {
     EXPECT("normal package path accepted",
            orbit_package_archive_path_is_safe("usr/lib/orbit/example.dylib"));
@@ -95,6 +157,26 @@ int main(void) {
            orbit_package_archive_path_is_safe("Library/ORBIT/example.dylib"));
     EXPECT("required deb members present",
            report.saw_debian_binary && report.saw_control_archive && report.saw_data_archive);
+
+
+    const struct {
+        orbit_decompress_format format;
+        const char *suffix;
+        const char *label;
+    } compressed_formats[] = {
+        { ORBIT_DECOMPRESS_GZIP, ".gz", "gzip deb inspected" },
+        { ORBIT_DECOMPRESS_XZ, ".xz", "xz deb inspected" },
+        { ORBIT_DECOMPRESS_BZIP2, ".bz2", "bzip2 deb inspected" },
+        { ORBIT_DECOMPRESS_ZSTD, ".zst", "zstd deb inspected" }
+    };
+    for (size_t i = 0U; i < sizeof(compressed_formats) / sizeof(compressed_formats[0]); ++i) {
+        length = make_deb_compressed(deb, "Library/ORBIT/compressed.dylib",
+                                     compressed_formats[i].format,
+                                     compressed_formats[i].suffix);
+        EXPECT("compressed Debian fixture generated", length > 0U);
+        EXPECT(compressed_formats[i].label,
+               orbit_package_archive_inspect_deb(deb, length, &report) == ORBIT_ARCHIVE_OK);
+    }
 
     length = make_deb(deb, "../escape", '0');
     EXPECT("tar traversal rejected",

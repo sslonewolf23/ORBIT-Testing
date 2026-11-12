@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"math"
 	"errors"
 	"net/http"
 	"time"
@@ -95,7 +94,7 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 		!equalBytes(checkpoint.PublicKey,publicDER) {
 		jsonError(w,409,"registration conflicts with existing installation"); return
 	}
-	if checkpoint.Sequence > math.MaxInt64 { jsonError(w,503,"witness anchor unavailable"); return }
+	if checkpoint.Sequence > uint64(^uint64(0)>>1) { jsonError(w,503,"witness anchor unavailable"); return }
 	if _, err = tx.Exec("INSERT INTO installations(key_id,public_key,attestation_digest,assertion_counter,revision,head_digest,tombstone,created_at,recovery_verifier,anchor_sequence) VALUES(?,?,?,?,?,?,?,?,?,?)",
 		req.KeyID,checkpoint.PublicKey,attDigest[:],checkpoint.Counter,
 		u64Bytes(checkpoint.Head.Revision),checkpoint.Head.Digest[:],boolInt(checkpoint.Head.Tombstone),

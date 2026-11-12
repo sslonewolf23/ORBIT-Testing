@@ -48,6 +48,7 @@ static int run_apt(const char *root, const char *deb, const char *log_path) {
     if (child == 0) {
         int fd = open(log_path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd < 0) _exit(120);
+        dup2(fd, STDOUT_FILENO);
         dup2(fd, STDERR_FILENO);
         close(fd);
         execlp("apt-get", "apt-get",
@@ -69,6 +70,15 @@ static int run_apt(const char *root, const char *deb, const char *log_path) {
     if (waitpid(child, &status_code, 0) != child || !WIFEXITED(status_code))
         return -1;
     return WEXITSTATUS(status_code);
+}
+static void dump_log(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) { fprintf(stderr, "Unable to read APT diagnostic log: %s\n", path); return; }
+    fprintf(stderr, "--- APT diagnostic log: %s ---\n", path);
+    char line[1024];
+    while (fgets(line, sizeof(line), f)) fputs(line, stderr);
+    fclose(f);
+    fprintf(stderr, "--- end APT diagnostic log ---\n");
 }
 static int file_contains(const char *path, const char *needle) {
     char buffer[8192];
@@ -154,8 +164,11 @@ int main(void) {
     snprintf(log_path, sizeof(log_path), "%s/apt-released-lock.log", root);
     int installed = run_apt(root, deb_path, log_path);
     expect("real apt-get proceeds after ORBIT releases locks", installed == 0);
+    if (installed != 0) dump_log(log_path);
     snprintf(path, sizeof(path), "%s/usr/share/orbit-lock-probe/probe.txt", root);
-    expect("APT and dpkg install fixture into isolated root", access(path, F_OK) == 0);
+    int payload_installed = access(path, F_OK) == 0;
+    expect("APT and dpkg install fixture into isolated root", payload_installed);
+    if (!payload_installed && installed == 0) dump_log(log_path);
 
     close(root_fd);
     printf("procursus_apt_interop_checks=%u\nprocursus_apt_interop_failures=%u\n",

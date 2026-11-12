@@ -41,7 +41,7 @@ int main(void) {
         orbit_package_filesystem_journal_encode(
             source, NULL, 0U, &required) == ORBIT_JOURNAL_CODEC_BUFFER_TOO_SMALL &&
         required > 29U);
-    uint8_t *encoded = (uint8_t *)malloc(required);
+    uint8_t *encoded = (uint8_t *)malloc(required + 1U);
     EXPECT("canonical payload allocated", encoded != NULL);
     if (!encoded) {
         free(source);
@@ -59,6 +59,7 @@ int main(void) {
     EXPECT("round-trip record is byte-identical",
         memcmp(source, decoded, sizeof(*source)) == 0);
 
+    encoded[written] = 0U;
     EXPECT("trailing bytes rejected",
         orbit_package_filesystem_journal_decode(
             encoded, written + 1U, source->revision, decoded) ==

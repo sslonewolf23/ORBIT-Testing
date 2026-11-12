@@ -100,9 +100,24 @@ func validTransition(old, next witnessHead) bool {
 		next.Digest != ([32]byte{})
 }
 
+func decodeAppAttestKeyID(keyID string) ([]byte, error) {
+	encodings := []*base64.Encoding{
+		base64.StdEncoding.Strict(),
+		base64.RawStdEncoding.Strict(),
+		base64.URLEncoding.Strict(),
+		base64.RawURLEncoding.Strict(),
+	}
+	for _, encoding := range encodings {
+		if decoded, err := encoding.DecodeString(keyID); err == nil && len(decoded) == 32 {
+			return decoded, nil
+		}
+	}
+	return nil, errors.New("invalid App Attest key identifier")
+}
+
 func appAttestKeyIDMatches(keyID string, publicKey []byte) bool {
-	got, err := base64.StdEncoding.Strict().DecodeString(keyID)
-	if err != nil || len(got) != 32 { return false }
+	got, err := decodeAppAttestKeyID(keyID)
+	if err != nil { return false }
 	sum := sha256.Sum256(publicKey)
 	return bytes.Equal(got, sum[:])
 }

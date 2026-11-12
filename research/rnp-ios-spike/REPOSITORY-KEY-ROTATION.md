@@ -173,9 +173,10 @@ The current work does not download packages, install them, resolve dependencies,
 or authorize package execution.
 
 The unrestricted low-level record-save entry point is absent from the
-production persistence header; it exists only in a test-only header for
-storage fault/tamper harnesses. Production writes go through policy-aware
-transactional wrappers.
+production persistence header and is compiled only in the host test build
+behind an explicit test macro. It exists in a test-only header for storage
+fault/tamper harnesses; it is not present in the iOS Simulator build.
+Production writes go through policy-aware transactional wrappers.
 
 All persistent trust mutations (bootstrap, normal rotation, emergency
 recovery, time-floor updates, activation, and grace pruning) hold the

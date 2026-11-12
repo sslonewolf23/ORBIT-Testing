@@ -79,8 +79,6 @@ func parseCOSEPublicKey(data []byte) (*ecdsa.PublicKey, []byte, error) {
 	alg, ok3 := cborSignedInteger(raw, 3)
 	xRaw, ok4 := raw[int64(-2)].([]byte)
 	yRaw, ok5 := raw[int64(-3)].([]byte)
-	if !ok4 { xRaw, ok4 = raw[uint64(2)].([]byte) }
-	if !ok5 { yRaw, ok5 = raw[uint64(3)].([]byte) }
 	if !ok1 || !ok2 || !ok3 || kty != 2 || crv != 1 || alg != -7 ||
 		!ok4 || !ok5 || len(xRaw) != 32 || len(yRaw) != 32 {
 		return nil, nil, errors.New("unsupported COSE credential key")

@@ -106,7 +106,10 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
 }
 
 static bool backup_directory_is_empty(int directory_fd) {
-    int duplicate = fcntl(directory_fd, F_DUPFD_CLOEXEC, 0);
+    /* openat(".") creates a fresh open-file description. dup()/F_DUPFD would
+     * share the directory stream offset with the caller's descriptor. */
+    int duplicate = openat(directory_fd, ".",
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     if (duplicate < 0) return false;
     DIR *directory = fdopendir(duplicate);
     if (!directory) {
@@ -546,4 +549,58 @@ orbit_filesystem_code orbit_package_filesystem_journal_recover(
         result = ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     free(record);
     return result;
+}
+
+orbit_filesystem_code orbit_package_filesystem_journal_cleanup_backup_directory(
+    const orbit_package_filesystem_journal_backend *backend,
+    int backup_base_directory_fd,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES]) {
+    if (!backend_is_valid(backend) || backup_base_directory_fd < 0 ||
+        !transaction_id_is_valid(transaction_id))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    struct stat base_status;
+    if (fstat(backup_base_directory_fd, &base_status) < 0)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    if (!S_ISDIR(base_status.st_mode))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    orbit_package_filesystem_journal_record *record =
+        (orbit_package_filesystem_journal_record *)calloc(1U, sizeof(*record));
+    if (!record) return ORBIT_FILESYSTEM_LIMIT;
+    uint64_t last_revision = 0U;
+    orbit_file_journal_load_result loaded =
+        load_record(backend, record, &last_revision);
+    free(record);
+    if (loaded != ORBIT_FILE_JOURNAL_LOAD_EMPTY)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+
+    char name[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES * 2U + 1U];
+    static const char hex[] = "0123456789abcdef";
+    for (size_t i = 0U; i < ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES; ++i) {
+        name[i * 2U] = hex[transaction_id[i] >> 4U];
+        name[i * 2U + 1U] = hex[transaction_id[i] & 0x0fU];
+    }
+    name[sizeof(name) - 1U] = '\0';
+
+    int directory_fd = -1;
+    orbit_filesystem_code opened = orbit_package_filesystem_open_backup_directory(
+        backup_base_directory_fd, transaction_id, false, &directory_fd);
+    if (opened != ORBIT_FILESYSTEM_OK) return opened;
+    bool empty = backup_directory_is_empty(directory_fd);
+    struct stat opened_status, named_status;
+    bool identity_matches =
+        fstat(directory_fd, &opened_status) == 0 &&
+        fstatat(backup_base_directory_fd, name, &named_status,
+                AT_SYMLINK_NOFOLLOW) == 0 &&
+        S_ISDIR(named_status.st_mode) &&
+        opened_status.st_dev == named_status.st_dev &&
+        opened_status.st_ino == named_status.st_ino;
+    bool closed = close(directory_fd) == 0;
+    if (!empty || !identity_matches || !closed)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    if (unlinkat(backup_base_directory_fd, name, AT_REMOVEDIR) < 0)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    return fsync(backup_base_directory_fd) == 0 ?
+        ORBIT_FILESYSTEM_OK : ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
 }

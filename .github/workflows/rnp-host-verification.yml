@@ -676,21 +676,21 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/orbit-parser-corpus" "$RUNNER_TEMP/orbit-parser-fuzz-artifacts"
-          printf '!<arch>\\n' > "$RUNNER_TEMP/orbit-parser-corpus/ar-magic"
+          printf '!<arch>\n' > "$RUNNER_TEMP/orbit-parser-corpus/ar-magic"
           printf 'ustar' > "$RUNNER_TEMP/orbit-parser-corpus/ustar-marker"
-          clang -std=c11 -O1 -g -fsanitize=fuzzer,address,undefined \\
-            -fno-omit-frame-pointer -DORBIT_PACKAGE_ARCHIVE_TESTING=1 \\
-            -Iresearch/rnp-ios-spike/bridge \\
-            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \\
-            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \\
-            research/rnp-ios-spike/harness/orbit-package-parser-fuzz.c \\
-            -lz -lbz2 -llzma -lzstd \\
+          clang -std=c11 -O1 -g -fsanitize=fuzzer,address,undefined \
+            -fno-omit-frame-pointer -DORBIT_PACKAGE_ARCHIVE_TESTING=1 \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/harness/orbit-package-parser-fuzz.c \
+            -lz -lbz2 -llzma -lzstd \
             -o "$RUNNER_TEMP/orbit-package-parser-fuzz"
-          "$RUNNER_TEMP/orbit-package-parser-fuzz" \\
-            "$RUNNER_TEMP/orbit-parser-corpus" \\
-            -dict=research/rnp-ios-spike/harness/orbit-package-parser.dict \\
-            -max_total_time=45 -max_len=1048576 -timeout=2 -rss_limit_mb=1024 \\
-            -artifact_prefix="$RUNNER_TEMP/orbit-parser-fuzz-artifacts/" \\
+          "$RUNNER_TEMP/orbit-package-parser-fuzz" \
+            "$RUNNER_TEMP/orbit-parser-corpus" \
+            -dict=research/rnp-ios-spike/harness/orbit-package-parser.dict \
+            -max_total_time=45 -max_len=1048576 -timeout=2 -rss_limit_mb=1024 \
+            -artifact_prefix="$RUNNER_TEMP/orbit-parser-fuzz-artifacts/" \
             | tee "$RUNNER_TEMP/package-parser-fuzz.out"
 
       - name: Upload host verification evidence

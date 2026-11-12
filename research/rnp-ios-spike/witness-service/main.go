@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -46,6 +47,14 @@ func loadConfig() (config, error) {
 }
 
 func openDatabase(path string) (*sql.DB, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil { return nil, err }
+	if err := os.Chmod(filepath.Dir(path), 0700); err != nil { return nil, err }
+	if info, err := os.Lstat(path); err == nil {
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, errors.New("database path must be a regular file, not a symlink")
+		}
+		if err := os.Chmod(path, 0600); err != nil { return nil, err }
+	} else if !os.IsNotExist(err) { return nil, err }
 	db, err := sql.Open("sqlite", path)
 	if err != nil { return nil, err }
 	db.SetMaxOpenConns(1)
@@ -75,6 +84,7 @@ CREATE TABLE IF NOT EXISTS installations (
   created_at INTEGER NOT NULL
 );`
 	if _, err = db.Exec(schema); err != nil { db.Close(); return nil, err }
+	if err = os.Chmod(path, 0600); err != nil { db.Close(); return nil, err }
 	return db, nil
 }
 

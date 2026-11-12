@@ -45,11 +45,23 @@ The codec adapters decode incrementally into fixed-size output chunks and feed a
 
 The manifest path table is bounded and allocated for inspection only. Parent directories are permitted, but a regular file cannot be an ancestor of another entry.
 
-## Important remaining work
+## Validation and ownership status
 
-1. Add package ownership collision policy across already-installed packages.
-2. Add CPU/time budgets and fuzz the ar, decompressor, and ustar parsers.
-3. Build a staging/extraction backend with descriptor-relative path operations, no-follow semantics, same-filesystem staging, fsync, and atomic replacement.
-4. Capture exact preimages for rollback and integrate the result with the durable transaction journal.
+The separate ownership planner enforces cross-package path collision policy after archive inspection:
 
-Installation must remain disabled. This component is not a production extractor.
+- A candidate cannot replace a regular file owned by another package identity.
+- Case-folded path collisions fail closed.
+- Regular-file ancestor conflicts are rejected; explicit shared directory ownership is permitted.
+- A package upgrade may replace its own prior paths, while unrelated package ownership rows are retained.
+- Regression cases live in `harness/orbit-package-ownership-tests.c`.
+
+The archive regression harness also covers duplicate normalized paths, regular-file ancestor collisions, explicit directory parents, absolute paths, backslashes, empty and dot components, parent traversal, colon characters, symlinks, devices, compressed streams, and streaming callback failure. The host workflow is the authoritative execution gate; a source change or queued run is not evidence of a passing test.
+
+## Remaining work
+
+1. Complete deterministic archive edge-case tests and verify the host sanitizer/fuzz run on the current branch.
+2. Build a separate staging/extraction backend with descriptor-relative directory creation, no-follow semantics, exclusive file creation, bounded writes, fsync, and rollback-safe cleanup.
+3. Integrate staging with the existing package file planner and durable transaction journal only after full archive validation succeeds.
+4. Capture and verify exact preimages, test interrupted extraction and cleanup, and preserve all files owned by other package managers.
+
+Installation must remain disabled. This component is still inspection-only and is not a production extractor.

@@ -62,11 +62,13 @@ fingerprint and public-key bundle are supplied as a separate out-of-band trust
 anchor; they are not learned from the repository's current signing key.
 
 The recovery document uses the same strict, authenticated rotation statement,
-but its activation and previous-key deadline must both equal the current
-persisted timestamp. This is an immediate transition with zero grace. It
+but its activation must be no earlier than the previously persisted time,
+no later than the current time, and no more than 24 hours old. Its previous-key
+deadline must equal that signed activation time. This is an immediate
+transition with zero grace. It
 replaces the current signing pin, cancels any pending normal rotation, and
-discards any older previous-key grace pin. The compromised current key is
-accepted only at the exact recovery timestamp and is rejected afterward.
+discards any older previous-key grace pin. The compromised current key is accepted only through the signed activation
+timestamp; if recovery is processed later, it is rejected immediately.
 The persisted wrapper commits the time floor and emergency transition before
 returning success.
 

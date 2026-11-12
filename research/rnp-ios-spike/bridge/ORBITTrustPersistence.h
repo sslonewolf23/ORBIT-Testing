@@ -60,9 +60,9 @@ typedef struct {
                        uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES]);
 } orbit_trust_store_backend;
 
-/* Load an existing trust record, or initialize and persist the caller's
- * pinned bootstrap fingerprint only when the backend explicitly reports that
- * no record exists and its monotonic counter is zero. */
+/* Load an existing trust record, or initialize and persist both distinct
+ * bootstrap pins only when no record exists and the monotonic counter is zero.
+ * Store format version 2 binds the recovery root into the authenticated record. */
 orbit_trust_store_code orbit_repository_trust_load_or_initialize(
     orbit_repository_trust_state *state,
     const char *repository_id,

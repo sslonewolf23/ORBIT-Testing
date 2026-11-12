@@ -324,7 +324,7 @@ static orbit_archive_code tar_stream_header(tar_stream *stream) {
         return ORBIT_ARCHIVE_MALFORMED_TAR;
     if (!(type == '\0' || type == '0' || directory) ||
         (directory && file_size != 0U) || (mode_value & ~0777ULL) != 0U ||
-        (directory && (mode_value & 0100U) == 0U))
+        false)
         return ORBIT_ARCHIVE_UNSUPPORTED_ENTRY;
     if (file_size > ORBIT_TAR_MAX_FILE_BYTES ||
         stream->report->entries >= ORBIT_TAR_MAX_ENTRIES)

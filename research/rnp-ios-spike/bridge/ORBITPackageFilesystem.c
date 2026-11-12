@@ -310,6 +310,16 @@ orbit_filesystem_code orbit_package_filesystem_lock_acquire(
         return (saved_errno == EWOULDBLOCK || saved_errno == EAGAIN) ?
             ORBIT_FILESYSTEM_BUSY : ORBIT_FILESYSTEM_IO_ERROR;
     }
+    struct stat locked_status, current_name_status;
+    if (fstat(fd, &locked_status) < 0 ||
+        fstatat(trusted_root_fd, ORBIT_FILESYSTEM_LOCK_NAME,
+                &current_name_status, AT_SYMLINK_NOFOLLOW) < 0 ||
+        locked_status.st_dev != current_name_status.st_dev ||
+        locked_status.st_ino != current_name_status.st_ino) {
+        (void)flock(fd, LOCK_UN);
+        close(fd);
+        return ORBIT_FILESYSTEM_CONFLICT;
+    }
     lock->descriptor = fd;
     return ORBIT_FILESYSTEM_OK;
 }

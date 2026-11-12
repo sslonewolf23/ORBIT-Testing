@@ -60,8 +60,9 @@ EOF
 
 INDEX_SHA="$(sha256sum "$OUT/Packages" | awk '{print $1}')"
 INDEX_SIZE="$(wc -c < "$OUT/Packages" | tr -d ' ')"
-RELEASE_DATE="$(date -u -R)"
-VALID_UNTIL="$(date -u -d '+7 days' -R)"
+# Use Python's portable UTC formatter: macOS/BSD date does not support GNU -d.
+RELEASE_DATE="$(python3 -c 'from datetime import datetime, timezone; print(datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S +0000"))')"
+VALID_UNTIL="$(python3 -c 'from datetime import datetime, timedelta, timezone; print((datetime.now(timezone.utc) + timedelta(days=7)).strftime("%a, %d %b %Y %H:%M:%S +0000"))')"
 cat > "$WORK/Release" <<EOF
 Origin: ORBIT Test
 Label: Disposable Fixture Repository

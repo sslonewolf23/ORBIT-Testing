@@ -881,6 +881,20 @@ jobs:
             | tee "$RUNNER_TEMP/package-filesystem-journal-codec.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem-journal-codec.out"
 
+      - name: Compile and run authenticated transaction envelope state tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
+            research/rnp-ios-spike/harness/orbit-package-transaction-envelope-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-transaction-envelope-tests"
+          "$RUNNER_TEMP/orbit-package-transaction-envelope-tests" \
+            | tee "$RUNNER_TEMP/package-transaction-envelope.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction-envelope.out"
+
       - name: Fuzz package archive and decompression parsers
         shell: bash
         run: |

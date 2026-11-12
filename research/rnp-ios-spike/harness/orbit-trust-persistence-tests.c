@@ -1,6 +1,7 @@
-#include "ORBITTrustPersistence.h"
+#include "ORBITRepositoryVerifier.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -83,7 +84,7 @@ static orbit_trust_store_backend backend_for(memory_store *m) {
     orbit_trust_store_backend b={m,begin_transaction,end_transaction,read_counter,advance_counter,read_record,write_record,test_mac};return b;
 }
 int main(int argc,char **argv) {
-    if(argc!=10) {
+    if(argc!=12) {
         fprintf(stderr,"usage: %s trusted-fpr trusted-keyring normal-rotation.InRelease recovery-keyring recovery-fpr emergency.InRelease candidate-keyring candidate-fpr emergency-time\n",argv[0]);
         return 2;
     }
@@ -97,7 +98,10 @@ int main(int argc,char **argv) {
     uint8_t *candidate=read_fixture(argv[7],&candidate_len);
     char *candidate_fpr=read_fixture_text(argv[8]);
     char *time_text=read_fixture_text(argv[9]);
-    if(!trusted_fpr||!trusted||!normal_rotation||!recovery||!recovery_fpr||!emergency||!candidate||!candidate_fpr||!time_text) {
+    size_t index_inrelease_len=0U,packages_len=0U;
+    uint8_t *index_inrelease=read_fixture(argv[10],&index_inrelease_len);
+    uint8_t *packages=read_fixture(argv[11],&packages_len);
+    if(!trusted_fpr||!trusted||!normal_rotation||!recovery||!recovery_fpr||!emergency||!candidate||!candidate_fpr||!time_text||!index_inrelease||!packages) {
         fprintf(stderr,"recovery fixture read failed\n");return 2;
     }
     trusted_fpr[strcspn(trusted_fpr,"\r\n")]='\0';
@@ -345,8 +349,67 @@ int main(int argc,char **argv) {
         strcmp(failed_recovery_state.current_fingerprint,trusted_fpr)==0 &&
         failed_recovery_state.pending_fingerprint[0]=='\0' &&
         failed_recovery_state.last_observed_time==0U,true);
+
+    memory_store verify_storage;memset(&verify_storage,0,sizeof(verify_storage));
+    orbit_trust_store_backend verify_backend=backend_for(&verify_storage);
+    orbit_repository_trust_state verify_state;
+    expect("repository-verification-bootstrap",
+        orbit_repository_trust_load_or_initialize(&verify_state,repo,trusted_fpr,
+            &verify_backend)==ORBIT_TRUST_STORE_OK,true);
+    orbit_repository_verify_result verify_result;
+    uint64_t verify_now=(uint64_t)time(NULL);
+    orbit_repository_verify_code verify_code=orbit_repository_verify_packages_index(
+        &verify_state,repo,trusted_fpr,trusted,trusted_len,
+        index_inrelease,index_inrelease_len,"stable","fixture",
+        "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
+        packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
+        &verify_backend,&verify_result);
+    expect("complete-repository-verification-valid",
+        verify_code==ORBIT_REPOSITORY_VERIFY_VALID &&
+        verify_result.signature.code==ORBIT_RNP_VERIFY_VALID &&
+        verify_result.verified_index_bytes==packages_len &&
+        verify_state.last_observed_time==verify_now,true);
+    uint8_t *tampered_packages=(uint8_t*)malloc(packages_len);
+    expect("tampered-index-fixture-allocation",tampered_packages!=NULL,true);
+    if(tampered_packages!=NULL) {
+        memcpy(tampered_packages,packages,packages_len);
+        tampered_packages[0]^=0x01U;
+        verify_code=orbit_repository_verify_packages_index(
+            &verify_state,repo,trusted_fpr,trusted,trusted_len,
+            index_inrelease,index_inrelease_len,"stable","fixture",
+            "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
+            tampered_packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
+            &verify_backend,&verify_result);
+        expect("tampered-Packages-index-rejected",
+            verify_code==ORBIT_REPOSITORY_VERIFY_INDEX_REJECTED,true);
+        free(tampered_packages);
+    }
+    verify_code=orbit_repository_verify_packages_index(
+        &verify_state,repo,trusted_fpr,trusted,trusted_len,
+        index_inrelease,index_inrelease_len,"stable","wrong-codename",
+        "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
+        packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
+        &verify_backend,&verify_result);
+    expect("wrong-repository-codename-rejected",
+        verify_code==ORBIT_REPOSITORY_VERIFY_REPOSITORY_POLICY_REJECTED,true);
+    verify_code=orbit_repository_verify_packages_index(
+        &verify_state,repo,"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
+        trusted,trusted_len,index_inrelease,index_inrelease_len,
+        "stable","fixture","iphoneos-arm64","main",
+        "main/binary-iphoneos-arm64/Packages",packages,packages_len,
+        verify_now,7ULL*24ULL*60ULL*60ULL,300U,&verify_backend,&verify_result);
+    expect("untrusted-primary-fingerprint-rejected",
+        verify_code==ORBIT_REPOSITORY_VERIFY_SIGNER_NOT_TRUSTED,true);
+    verify_code=orbit_repository_verify_packages_index(
+        &verify_state,repo,trusted_fpr,trusted,trusted_len,
+        index_inrelease,index_inrelease_len,"stable","fixture",
+        "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
+        packages,packages_len,verify_now+8ULL*24ULL*60ULL*60ULL,
+        7ULL*24ULL*60ULL*60ULL,300U,&verify_backend,&verify_result);
+    expect("expired-Release-valid-until-rejected",
+        verify_code==ORBIT_REPOSITORY_VERIFY_FRESHNESS_REJECTED,true);
     free(trusted_fpr);free(recovery);free(recovery_fpr);free(emergency);
-    free(candidate);free(candidate_fpr);free(time_text);
+    free(candidate);free(candidate_fpr);free(time_text);free(index_inrelease);free(packages);
     printf("decision=%s checks=%u failures=%u\n",failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;
 }

@@ -47,10 +47,10 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	attDigest := sha256.Sum256(attestation)
 	// Lost-response retry: the exact same proof is idempotent, while any
 	// different proof for an already registered key is permanently rejected.
-	var prior []byte
-	err = s.db.QueryRow("SELECT attestation_digest FROM installations WHERE key_id=?", req.KeyID).Scan(&prior)
+	var prior, priorVerifier []byte
+	err = s.db.QueryRow("SELECT attestation_digest,recovery_verifier FROM installations WHERE key_id=?", req.KeyID).Scan(&prior, &priorVerifier)
 	if err == nil {
-		if equalBytes(prior, attDigest[:]) { w.WriteHeader(http.StatusNoContent); return }
+		if equalBytes(prior, attDigest[:]) && equalBytes(priorVerifier, verifier) { w.WriteHeader(http.StatusNoContent); return }
 		jsonError(w, 409, "registration conflict"); return
 	}
 	if err != sql.ErrNoRows { jsonError(w, 503, "unavailable"); return }

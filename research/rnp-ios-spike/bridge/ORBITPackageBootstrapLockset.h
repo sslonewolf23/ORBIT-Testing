@@ -8,6 +8,7 @@
 
 typedef struct {
     int directory_descriptor;
+    const orbit_bootstrap_profile *profile;
     unsigned count;
     orbit_package_native_lock locks[ORBIT_BOOTSTRAP_LOCKSET_CAPACITY];
 } orbit_bootstrap_lockset;

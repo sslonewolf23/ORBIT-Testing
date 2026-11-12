@@ -16,10 +16,13 @@ func TestAllowedValidationCategoryParsing(t *testing.T) {
 }
 
 func TestAllowedBundleVersionParsing(t *testing.T) {
-	got, err := parseAllowedBundleVersions("1.0,2.4.1,build_7")
+	got, err := parseAllowedBundleVersions("2.4.1")
 	if err != nil { t.Fatal(err) }
-	for _, value := range []string{"1.0","2.4.1","build_7"} {
-		if _, ok := got[value]; !ok { t.Fatalf("bundle version %q missing", value) }
+	if len(got) != 1 {
+		t.Fatalf("expected exactly one active bundle version, got %d", len(got))
+	}
+	if _, ok := got["2.4.1"]; !ok {
+		t.Fatal("active bundle version missing")
 	}
 	for _, raw := range []string{"", "1.0,,2.0", "1.0, 2.0", "1.0,1.0", "1.0,2.0", "../1", "version;bad"} {
 		if _, err := parseAllowedBundleVersions(raw); err == nil {

@@ -73,7 +73,8 @@ journal revision transition.
 
 ## Journal head storage
 
-Persist one row per authenticated installation:
+Persist one local cache row per enrolled installation and one independent
+append-only monotonic checkpoint stream per installation:
 
 - installation/account binding;
 - App Attest key identifier and public key;
@@ -81,16 +82,30 @@ Persist one row per authenticated installation:
 - journal revision (unsigned 64-bit semantics);
 - exact 32-byte SHA-256 digest of the complete authenticated ORBJ envelope;
 - tombstone flag;
-- server-side audit metadata.
+- server-side audit metadata;
+- local `anchor_sequence`, which must never exceed the external checkpoint sequence.
+
+The external anchor checkpoint binds sequence, current App Attest key ID and
+public key, assertion counter, journal head, and previous checkpoint hash.
+Each accepted assertion—including a read-only `head` assertion—appends the
+next checkpoint with a conditional insert. The anchor uses strongly consistent
+reads. The local SQLite transaction commits only after the external append.
+If the external append succeeds but SQLite commit fails, the next request
+repairs the local cache forward from the anchor. If SQLite is ahead, the anchor
+is missing/unavailable, or checkpoint integrity fails, reject the request.
+Never repair the external anchor from SQLite.
 
 A newly enrolled installation begins at revision 0, tombstone=true, digest
 32 zero bytes. It may not be reinitialized if a row already exists.
 
 ## Signed request formats
 
-The HTTP JSON wrapper contains `keyID`, base64 `request`, and base64
-`assertion`. App Attest signs SHA-256 of the raw request bytes, not the JSON
-wrapper.
+The HTTP JSON wrapper contains `keyID`, base64 `request`, base64
+`assertion`, and base64 `recoveryCredential` (the original 32-byte credential).
+The credential identifies the stable installation so the server can reconcile
+an old SQLite snapshot even when the local App Attest key ID has changed. The
+credential is never part of the bytes signed by App Attest; the assertion signs
+SHA-256 of the raw `request` bytes, not the JSON wrapper.
 
 Head request:
 
@@ -186,9 +201,14 @@ deploy it as the production trust anchor until those items are reviewed.
 The protocol contract above requires an authenticated account/installation
 binding that survives App Attest key replacement. The Go reference now binds initial enrollment to a client-held recovery credential and includes an atomic key-replacement path that preserves the existing head. The private iOS client now generates, stores, and submits the credential and can request recovery without the old key ID. The device validation host displays the credential once after first enrollment. The complete flow still needs service and physical-device testing before it can be relied upon.
 
-Likewise, the SQLite database is crash-durable but can be rolled back by
-restoring an older database snapshot. Production requires an independent
-monotonic anchor or a strongly consistent externally protected store. The
-current server is a protocol and verification reference, not a production
-freshness authority. Package installation must remain disabled until both
+The reference service now implements an independent AWS DynamoDB append-only
+anchor. The table uses partition key `installation_id` (String) and sort key
+`sequence` (Number); reads are strongly consistent and writes are conditional
+inserts only. The service runtime role must be limited to `Query` and
+`PutItem`. Table deletion, restore, replacement, and IAM administration must
+be protected by separate operator controls. SQLite backups can be restored
+behind the anchor and are reconciled forward; the service must never accept a
+SQLite state ahead of the external checkpoint. This is still a reference
+implementation pending service tests, AWS deployment review, IAM/table
+protection, and failure-injection validation. Package installation must remain disabled until both
 gaps are closed and independently reviewed.

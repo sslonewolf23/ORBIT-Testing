@@ -58,8 +58,8 @@ static bool parse_octal(const uint8_t *p, size_t n, uint64_t *value) {
         ++digits;
     }
     while (i < n && (p[i] == ' ' || p[i] == '\0')) ++i;
-    if (i != n) return false;
-    *value = digits == 0U ? 0U : result;
+    if (i != n || digits == 0U) return false;
+    *value = result;
     return true;
 }
 
@@ -230,7 +230,8 @@ static orbit_archive_code inspect_tar_member(
         format, member, member_length, ORBIT_DECOMPRESS_OUTPUT_MAX,
         collect_decompressed, &decoded, &decoded_length);
     orbit_archive_code result;
-    if (code == ORBIT_DECOMPRESS_LIMIT) {
+    if (code == ORBIT_DECOMPRESS_LIMIT ||
+        code == ORBIT_DECOMPRESS_SINK_ERROR) {
         result = ORBIT_ARCHIVE_LIMIT;
     } else if (code != ORBIT_DECOMPRESS_OK ||
                decoded_length != (uint64_t)decoded.length) {

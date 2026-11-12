@@ -570,11 +570,16 @@ jobs:
             -o "$RUNNER_TEMP/ORBITRepositoryVerifier-tests.o"
           clang -std=c11 -Wall -Wextra -Werror \
             -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITPackagesIndex.c \
+            -o "$RUNNER_TEMP/ORBITPackagesIndex-tests.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/harness/orbit-trust-persistence-tests.c \
             -o "$RUNNER_TEMP/orbit-trust-persistence-tests.o"
           clang++ -fsanitize=address,undefined -fno-omit-frame-pointer \
             "$RUNNER_TEMP/ORBITTrustPersistence-tests.o" \
             "$RUNNER_TEMP/ORBITRepositoryVerifier-tests.o" \
+            "$RUNNER_TEMP/ORBITPackagesIndex-tests.o" \
             "$RUNNER_TEMP/orbit-trust-persistence-tests.o" \
             "$RUNNER_TEMP/ORBITRepositoryTrust-rotation.o" \
             "$RUNNER_TEMP/ORBITReleaseMetadata-rotation.o" \

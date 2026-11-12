@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"math"
 	"errors"
 	"net/http"
 	"time"
@@ -77,10 +78,29 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	changed, err := res.RowsAffected()
 	if err != nil || changed != 1 { jsonError(w, 409, "challenge expired or consumed"); return }
-	zero := make([]byte, 32)
-	rev := make([]byte, 8)
-	if _, err = tx.Exec("INSERT INTO installations(key_id,public_key,attestation_digest,assertion_counter,revision,head_digest,tombstone,created_at,recovery_verifier) VALUES(?,?,?,0,?,?,1,?,?)",
-		req.KeyID, publicDER, attDigest[:], rev, zero, s.now().Unix(), verifier); err != nil {
+	installationID := installationAnchorID(verifier)
+	checkpoint, found, anchorErr := s.anchor.Latest(r.Context(),installationID)
+	if anchorErr != nil { jsonError(w,503,"witness anchor unavailable"); return }
+	if !found {
+		checkpoint = anchorCheckpoint{Sequence:1,KeyID:req.KeyID,
+			PublicKey:append([]byte(nil),publicDER...),Counter:0,
+			Head:witnessHead{Revision:0,Tombstone:true}}
+		checkpoint.Hash = checkpointHash(checkpoint)
+		if err = s.anchor.Append(r.Context(),installationID,checkpoint); err != nil {
+			if !errors.Is(err,errAnchorConflict) { jsonError(w,503,"witness anchor unavailable"); return }
+			checkpoint,found,anchorErr = s.anchor.Latest(r.Context(),installationID)
+			if anchorErr != nil || !found { jsonError(w,503,"witness anchor unavailable"); return }
+		}
+	}
+	if err = validateCheckpoint(checkpoint); err != nil || checkpoint.KeyID != req.KeyID ||
+		!equalBytes(checkpoint.PublicKey,publicDER) {
+		jsonError(w,409,"registration conflicts with existing installation"); return
+	}
+	if checkpoint.Sequence > math.MaxInt64 { jsonError(w,503,"witness anchor unavailable"); return }
+	if _, err = tx.Exec("INSERT INTO installations(key_id,public_key,attestation_digest,assertion_counter,revision,head_digest,tombstone,created_at,recovery_verifier,anchor_sequence) VALUES(?,?,?,?,?,?,?,?,?,?)",
+		req.KeyID,checkpoint.PublicKey,attDigest[:],checkpoint.Counter,
+		u64Bytes(checkpoint.Head.Revision),checkpoint.Head.Digest[:],boolInt(checkpoint.Head.Tombstone),
+		s.now().Unix(),verifier,int64(checkpoint.Sequence)); err != nil {
 		jsonError(w, 409, "registration conflict"); return
 	}
 	if err = tx.Commit(); err != nil { jsonError(w, 503, "unavailable"); return }

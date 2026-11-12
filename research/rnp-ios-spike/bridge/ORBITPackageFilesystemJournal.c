@@ -25,15 +25,29 @@ static int compare_ascii_casefold(const char *left, const char *right) {
     return 0;
 }
 
-static int compare_change_targets(
+typedef enum {
+    CHANGE_KEY_TARGET = 0,
+    CHANGE_KEY_BACKUP = 1,
+    CHANGE_KEY_STAGED = 2
+} change_key_kind;
+
+static int compare_change_key(
     const orbit_package_filesystem_journal_record *record,
-    size_t left, size_t right) {
+    size_t left, size_t right, change_key_kind kind) {
+    const orbit_package_file_change *a = &record->changes[left];
+    const orbit_package_file_change *b = &record->changes[right];
+    if (kind == CHANGE_KEY_BACKUP)
+        return compare_ascii_casefold(a->backup_name, b->backup_name);
+    if (kind == CHANGE_KEY_STAGED) {
+        int parent_order = compare_ascii_casefold(
+            a->staged_parent_path, b->staged_parent_path);
+        if (parent_order != 0) return parent_order;
+        return compare_ascii_casefold(a->staged_name, b->staged_name);
+    }
     int parent_order = compare_ascii_casefold(
-        record->changes[left].target_parent_path,
-        record->changes[right].target_parent_path);
+        a->target_parent_path, b->target_parent_path);
     if (parent_order != 0) return parent_order;
-    return compare_ascii_casefold(record->changes[left].target_name,
-                                  record->changes[right].target_name);
+    return compare_ascii_casefold(a->target_name, b->target_name);
 }
 
 static void swap_indices(size_t *left, size_t *right) {
@@ -44,15 +58,16 @@ static void swap_indices(size_t *left, size_t *right) {
 
 static void sift_index_heap(
     size_t *indices, size_t root, size_t count,
-    const orbit_package_filesystem_journal_record *record) {
+    const orbit_package_filesystem_journal_record *record,
+    change_key_kind kind) {
     while (count > 1U && root <= (count - 2U) / 2U) {
         size_t child = root * 2U + 1U;
         if (child + 1U < count &&
-            compare_change_targets(record, indices[child],
-                                   indices[child + 1U]) < 0)
+            compare_change_key(record, indices[child],
+                               indices[child + 1U], kind) < 0)
             ++child;
-        if (compare_change_targets(record, indices[root],
-                                   indices[child]) >= 0)
+        if (compare_change_key(record, indices[root],
+                               indices[child], kind) >= 0)
             return;
         swap_indices(&indices[root], &indices[child]);
         root = child;
@@ -61,13 +76,14 @@ static void sift_index_heap(
 
 static void sort_change_indices(
     size_t *indices, size_t count,
-    const orbit_package_filesystem_journal_record *record) {
+    const orbit_package_filesystem_journal_record *record,
+    change_key_kind kind) {
     if (count < 2U) return;
     for (size_t start = count / 2U; start > 0U; --start)
-        sift_index_heap(indices, start - 1U, count, record);
+        sift_index_heap(indices, start - 1U, count, record, kind);
     for (size_t end = count; end > 1U; --end) {
         swap_indices(&indices[0], &indices[end - 1U]);
-        sift_index_heap(indices, 0U, end - 1U, record);
+        sift_index_heap(indices, 0U, end - 1U, record, kind);
     }
 }
 
@@ -90,13 +106,42 @@ static bool record_is_valid(
 
     size_t *indices = (size_t *)malloc(record->change_count * sizeof(*indices));
     if (!indices) return false;
+
     for (size_t i = 0U; i < record->change_count; ++i) indices[i] = i;
-    sort_change_indices(indices, record->change_count, record);
+    sort_change_indices(indices, record->change_count, record, CHANGE_KEY_TARGET);
     bool unique = true;
     for (size_t i = 1U; i < record->change_count; ++i) {
-        if (compare_change_targets(record, indices[i - 1U], indices[i]) == 0) {
+        if (compare_change_key(record, indices[i - 1U], indices[i],
+                               CHANGE_KEY_TARGET) == 0) {
             unique = false;
             break;
+        }
+    }
+
+    if (unique) {
+        sort_change_indices(indices, record->change_count, record, CHANGE_KEY_BACKUP);
+        for (size_t i = 1U; i < record->change_count; ++i) {
+            if (compare_change_key(record, indices[i - 1U], indices[i],
+                                   CHANGE_KEY_BACKUP) == 0) {
+                unique = false;
+                break;
+            }
+        }
+    }
+
+    if (unique) {
+        size_t staged_count = 0U;
+        for (size_t i = 0U; i < record->change_count; ++i) {
+            if (record->changes[i].operation == ORBIT_FILESYSTEM_REPLACE)
+                indices[staged_count++] = i;
+        }
+        sort_change_indices(indices, staged_count, record, CHANGE_KEY_STAGED);
+        for (size_t i = 1U; i < staged_count; ++i) {
+            if (compare_change_key(record, indices[i - 1U], indices[i],
+                                   CHANGE_KEY_STAGED) == 0) {
+                unique = false;
+                break;
+            }
         }
     }
     free(indices);

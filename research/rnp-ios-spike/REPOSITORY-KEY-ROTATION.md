@@ -64,7 +64,9 @@ not contain this independent pin and are rejected rather than silently
 migrated or assigned a guessed recovery root. The recovery API no longer
 accepts a caller-selected recovery fingerprint; it always verifies against
 the persisted recovery pin. The offline public-key bundle is supplied for
-verification, but cannot change that pin.
+verification, but cannot change that pin. Persistence also compares every
+next-revision record against the currently authenticated recovery fingerprint;
+even a direct low-level store write cannot replace the enrolled root.
 
 The recovery document uses the same strict, authenticated rotation statement,
 but its activation must be no earlier than the previously persisted time,

@@ -3,6 +3,64 @@
 #include <stdlib.h>
 #include <string.h>
 
+orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
+    void *context,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
+    orbit_file_journal_action action,
+    const orbit_package_file_change *change) {
+    orbit_package_filesystem_executor_context *executor =
+        (orbit_package_filesystem_executor_context *)context;
+    if (!executor || !transaction_id || !change ||
+        executor->install_root_fd < 0 || executor->staging_root_fd < 0 ||
+        executor->backup_root_fd < 0 ||
+        memcmp(executor->transaction_id, transaction_id,
+               ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES) != 0)
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    orbit_filesystem_code valid =
+        orbit_package_filesystem_validate_change(change);
+    if (valid != ORBIT_FILESYSTEM_OK) return valid;
+
+    int target_parent_fd = -1;
+    int staged_parent_fd = -1;
+    valid = orbit_package_filesystem_open_parent_directory(
+        executor->install_root_fd, change->target_parent_path,
+        &target_parent_fd);
+    if (valid != ORBIT_FILESYSTEM_OK) return valid;
+
+    if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
+        valid = orbit_package_filesystem_open_parent_directory(
+            executor->staging_root_fd, change->staged_parent_path,
+            &staged_parent_fd);
+        if (valid != ORBIT_FILESYSTEM_OK) {
+            close(target_parent_fd);
+            return valid;
+        }
+    }
+
+    orbit_filesystem_code result;
+    if (action == ORBIT_FILE_JOURNAL_APPLY)
+        result = orbit_package_filesystem_apply(
+            target_parent_fd, staged_parent_fd,
+            executor->backup_root_fd, change);
+    else if (action == ORBIT_FILE_JOURNAL_ROLLBACK)
+        result = orbit_package_filesystem_rollback(
+            target_parent_fd, staged_parent_fd,
+            executor->backup_root_fd, change);
+    else if (action == ORBIT_FILE_JOURNAL_FINALIZE)
+        result = orbit_package_filesystem_finalize(
+            target_parent_fd, staged_parent_fd,
+            executor->backup_root_fd, change);
+    else
+        result = ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    bool staged_closed = staged_parent_fd < 0 || close(staged_parent_fd) == 0;
+    bool target_closed = close(target_parent_fd) == 0;
+    if (!staged_closed || !target_closed)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    return result;
+}
+
 static bool transaction_id_is_valid(
     const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES]) {
     if (!transaction_id) return false;

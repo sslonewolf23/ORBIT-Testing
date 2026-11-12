@@ -216,20 +216,26 @@ int main(void) {
     int cleanup_backup = openat(base_fd, "backup", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     const char *target_names[] = {
         "existing.dylib", "commit.dylib", "remove.dylib",
-        "hardlinked", "hardlinked-alias", "symlink-target", "foreign-change"
+        "new-only", "final-remove", "hardlinked", "hardlinked-alias",
+        "symlink-target", "foreign-change"
     };
     if (cleanup_target >= 0) {
         for (size_t i = 0U; i < sizeof(target_names) / sizeof(target_names[0]); ++i)
             (void)unlinkat(cleanup_target, target_names[i], 0);
         close(cleanup_target);
     }
-    const char *stage_names[] = { "symlink-stage", "foreign-stage" };
+    const char *stage_names[] = {
+        "existing.new", "commit.new", "new-only", "symlink-stage", "foreign-stage"
+    };
     if (cleanup_stage >= 0) {
         for (size_t i = 0U; i < sizeof(stage_names) / sizeof(stage_names[0]); ++i)
             (void)unlinkat(cleanup_stage, stage_names[i], 0);
         close(cleanup_stage);
     }
-    const char *backup_names[] = { "foreign-backup", "occupied.backup" };
+    const char *backup_names[] = {
+        "existing.backup", "commit.backup", "remove.backup",
+        "final-remove.backup", "foreign-backup", "occupied.backup"
+    };
     if (cleanup_backup >= 0) {
         for (size_t i = 0U; i < sizeof(backup_names) / sizeof(backup_names[0]); ++i)
             (void)unlinkat(cleanup_backup, backup_names[i], 0);

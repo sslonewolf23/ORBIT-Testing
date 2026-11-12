@@ -208,7 +208,7 @@ bool orbit_package_staging_entry_callback(
         mark_failed(staging);
         return false;
     }
-    if (!memchr(entry->path, '\\0', sizeof(entry->path)) ||
+    if (!memchr(entry->path, '\0', sizeof(entry->path)) ||
         !orbit_package_archive_path_is_safe(entry->path) ||
         (entry->mode & ~0777U) != 0U ||
         (entry->directory && (entry->mode & 0100U) == 0U)) {
@@ -326,7 +326,7 @@ orbit_staging_code orbit_package_staging_finish(
 orbit_staging_code orbit_package_staging_discard(
     orbit_package_staging *staging) {
     if (!staging || staging->base_directory_fd < 0 ||
-        staging->staging_name[0] == '\\0')
+        staging->staging_name[0] == '\0')
         return ORBIT_STAGING_INVALID_STATE;
     if (staging->active_file_fd >= 0) {
         if (close(staging->active_file_fd) < 0) return ORBIT_STAGING_IO_ERROR;
@@ -354,7 +354,7 @@ orbit_staging_code orbit_package_staging_discard(
         return ORBIT_STAGING_IO_ERROR;
     }
     staging->base_directory_fd = -1;
-    staging->staging_name[0] = '\\0';
+    staging->staging_name[0] = '\0';
     staging->complete = false;
     staging->failed = false;
     return ORBIT_STAGING_OK;

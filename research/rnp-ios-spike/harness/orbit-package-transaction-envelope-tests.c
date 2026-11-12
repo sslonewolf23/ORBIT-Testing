@@ -41,7 +41,7 @@ static const uint8_t journal_payload[] = {
 };
 
 int main(void) {
-    uint8_t encoded[256], journal_out[64], committed_out[64], pending_out[64];
+    uint8_t encoded[256], journal_out[sizeof(journal_payload)], committed_out[64], pending_out[64];
     size_t encoded_length = 0U;
     orbit_package_transaction_envelope empty;
     memset(&empty, 0, sizeof(empty));

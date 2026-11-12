@@ -49,6 +49,17 @@ orbit_ownership_code orbit_package_ownership_plan_remove(
     const orbit_package_ownership_snapshot *installed,
     const orbit_package_record *package,
     orbit_package_ownership_plan *plan);
+/* Build a complete replacement snapshot, not a delta. Output must not overlap
+ * installed->records. Install drops the old identity then adds the candidate. */
+orbit_ownership_code orbit_package_ownership_snapshot_install(
+ const orbit_package_ownership_snapshot *installed,const orbit_package_record *candidate,
+ const orbit_archive_entry *entries,size_t entry_count,orbit_package_ownership_record *output,
+ size_t output_capacity,orbit_package_ownership_snapshot *snapshot);
+/* Removes all rows for an identity, including shared directory ownership rows. */
+orbit_ownership_code orbit_package_ownership_snapshot_remove(
+ const orbit_package_ownership_snapshot *installed,const orbit_package_record *package,
+ orbit_package_ownership_record *output,size_t output_capacity,
+ orbit_package_ownership_snapshot *snapshot);
 void orbit_package_ownership_plan_destroy(orbit_package_ownership_plan *plan);
 #ifdef __cplusplus
 }

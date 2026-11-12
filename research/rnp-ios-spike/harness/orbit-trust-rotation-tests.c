@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
     expect("proof-next-key-matches-candidate", strcmp(proof.next_fingerprint, candidate_fpr) == 0, true);
 
     orbit_repository_trust_state state;
-    expect("initial-pin-created", orbit_repository_trust_init(&state, trusted_fpr), true);
+    expect("initial-pin-created", orbit_repository_trust_init(&state, trusted_fpr, recovery_fpr), true);
     uint64_t now = (uint64_t)time(NULL);
     expect("time-floor-initialized", orbit_repository_trust_observe_time(&state, now), true);
     expect("old-key-authorized-initially", orbit_repository_trust_fingerprint_allowed(
@@ -175,7 +175,7 @@ int main(int argc, char **argv) {
         &state, trusted_fpr, proof.previous_key_valid_until + 1U), false);
 
     orbit_repository_trust_state wrong_state;
-    expect("wrong-candidate-state-init", orbit_repository_trust_init(&wrong_state, trusted_fpr), true);
+    expect("wrong-candidate-state-init", orbit_repository_trust_init(&wrong_state, trusted_fpr, recovery_fpr), true);
     expect("mismatched-candidate-key-rejected", orbit_repository_trust_authorize_rotation(
         &wrong_state, "orbit-official", rotation, rotation_len, trusted, trusted_len,
         wrong_candidate, wrong_len, now)
@@ -203,8 +203,7 @@ int main(int argc, char **argv) {
     expect("duplicate-rotation-field-rejected", orbit_trust_rotation_proof_parse(
         duplicate_proof, sizeof(duplicate_proof) - 1U, &malformed), false);
     orbit_repository_trust_state exhausted;
-    expect("generation-exhaustion-state-init", orbit_repository_trust_init(
-        &exhausted, trusted_fpr), true);
+    expect("generation-exhaustion-state-init", orbit_repository_trust_init(&exhausted, trusted_fpr, recovery_fpr), true);
     exhausted.generation = UINT32_MAX;
     expect("generation-overflow-blocks-rotation", orbit_repository_trust_authorize_rotation(
         &exhausted, "orbit-official", rotation, rotation_len, trusted, trusted_len,
@@ -213,8 +212,7 @@ int main(int argc, char **argv) {
         &state, "1111111111111111111111111111111111111111", proof.previous_key_valid_until), false);
 
     orbit_repository_trust_state recovery_state;
-    expect("recovery-state-initialized", orbit_repository_trust_init(
-        &recovery_state, trusted_fpr), true);
+    expect("recovery-state-initialized", orbit_repository_trust_init(&recovery_state, trusted_fpr, recovery_fpr), true);
     strcpy(recovery_state.previous_fingerprint, expired_fpr);
     recovery_state.previous_valid_until = emergency_now + 3600U;
     strcpy(recovery_state.pending_fingerprint, revoked_fpr);
@@ -252,64 +250,54 @@ int main(int argc, char **argv) {
         orbit_repository_trust_fingerprint_allowed(&recovery_state,candidate_fpr,emergency_now+1U), true);
 
     orbit_repository_trust_state unauthorized_recovery_state;
-    expect("unauthorized-recovery-state-init",orbit_repository_trust_init(
-        &unauthorized_recovery_state,trusted_fpr),true);
+    expect("unauthorized-recovery-state-init",orbit_repository_trust_init(&unauthorized_recovery_state, trusted_fpr, recovery_fpr),true);
     expect("unauthorized-signer-cannot-use-recovery-path",
         orbit_repository_trust_authorize_recovery_rotation(
             &unauthorized_recovery_state,"orbit-official",unauthorized,unauthorized_len,
-            recovery,recovery_len,recovery_fpr,candidate,candidate_len,emergency_now)
+            recovery,recovery_len,candidate,candidate_len,emergency_now)
             == ORBIT_TRUST_RECOVERY_SIGNATURE_REJECTED,true);
     orbit_repository_trust_state delayed_recovery_state;
-    expect("delayed-recovery-state-init",orbit_repository_trust_init(
-        &delayed_recovery_state,trusted_fpr),true);
+    expect("delayed-recovery-state-init",orbit_repository_trust_init(&delayed_recovery_state, trusted_fpr, recovery_fpr),true);
     expect("recovery-root-cannot-schedule-delayed-rotation",
         orbit_repository_trust_authorize_recovery_rotation(
             &delayed_recovery_state,"orbit-official",non_immediate,non_immediate_len,
-            recovery,recovery_len,recovery_fpr,candidate,candidate_len,emergency_now)
+            recovery,recovery_len,candidate,candidate_len,emergency_now)
             == ORBIT_TRUST_RECOVERY_POLICY_REJECTED,true);
     orbit_repository_trust_state wrong_repo_recovery_state;
-    expect("wrong-repository-recovery-state-init",orbit_repository_trust_init(
-        &wrong_repo_recovery_state,trusted_fpr),true);
+    expect("wrong-repository-recovery-state-init",orbit_repository_trust_init(&wrong_repo_recovery_state, trusted_fpr, recovery_fpr),true);
     expect("recovery-proof-repository-binding",
         orbit_repository_trust_authorize_recovery_rotation(
             &wrong_repo_recovery_state,"different-repository",emergency,emergency_len,
-            recovery,recovery_len,recovery_fpr,candidate,candidate_len,emergency_now)
+            recovery,recovery_len,candidate,candidate_len,emergency_now)
             == ORBIT_TRUST_REPOSITORY_MISMATCH,true);
     orbit_repository_trust_state wrong_candidate_recovery_state;
-    expect("wrong-candidate-recovery-state-init",orbit_repository_trust_init(
-        &wrong_candidate_recovery_state,trusted_fpr),true);
+    expect("wrong-candidate-recovery-state-init",orbit_repository_trust_init(&wrong_candidate_recovery_state, trusted_fpr, recovery_fpr),true);
     expect("recovery-proof-candidate-key-binding",
         orbit_repository_trust_authorize_recovery_rotation(
             &wrong_candidate_recovery_state,"orbit-official",emergency,emergency_len,
-            recovery,recovery_len,recovery_fpr,trusted,trusted_len,emergency_now)
+            recovery,recovery_len,trusted,trusted_len,emergency_now)
             == ORBIT_TRUST_CANDIDATE_KEY_REJECTED,true);
     orbit_repository_trust_state stale_recovery_state;
-    expect("stale-recovery-state-init",orbit_repository_trust_init(
-        &stale_recovery_state,trusted_fpr),true);
+    expect("stale-recovery-state-init",orbit_repository_trust_init(&stale_recovery_state, trusted_fpr, recovery_fpr),true);
     expect("recovery-time-floor-advanced",
         orbit_repository_trust_observe_time(&stale_recovery_state,emergency_now+1U),true);
     expect("replayed-recovery-proof-rejected",
         orbit_repository_trust_authorize_recovery_rotation(
             &stale_recovery_state,"orbit-official",emergency,emergency_len,
-            recovery,recovery_len,recovery_fpr,candidate,candidate_len,emergency_now+1U)
+            recovery,recovery_len,candidate,candidate_len,emergency_now+1U)
             == ORBIT_TRUST_ROTATION_WINDOW_REJECTED,true);
     orbit_repository_trust_state expired_recovery_state;
-    expect("expired-recovery-state-init",orbit_repository_trust_init(
-        &expired_recovery_state,trusted_fpr),true);
+    expect("expired-recovery-state-init",orbit_repository_trust_init(&expired_recovery_state, trusted_fpr, recovery_fpr),true);
     expect("recovery-statement-age-bounded",
         orbit_repository_trust_authorize_recovery_rotation(
             &expired_recovery_state,"orbit-official",emergency,emergency_len,
-            recovery,recovery_len,recovery_fpr,candidate,candidate_len,
+            recovery,recovery_len,candidate,candidate_len,
             emergency_now+ORBIT_TRUST_MAX_EMERGENCY_STATEMENT_AGE_SECONDS+1U)
             == ORBIT_TRUST_RECOVERY_POLICY_REJECTED,true);
     orbit_repository_trust_state non_independent_recovery_state;
-    expect("non-independent-recovery-state-init",orbit_repository_trust_init(
-        &non_independent_recovery_state,trusted_fpr),true);
-    expect("recovery-root-must-be-independent",
-        orbit_repository_trust_authorize_recovery_rotation(
-            &non_independent_recovery_state,"orbit-official",emergency,emergency_len,
-            recovery,recovery_len,trusted_fpr,candidate,candidate_len,emergency_now)
-            == ORBIT_TRUST_RECOVERY_POLICY_REJECTED,true);
+    expect("recovery-root-equal-to-signing-pin-rejected",
+        !orbit_repository_trust_init(&non_independent_recovery_state,
+            trusted_fpr,trusted_fpr),true);
 
 
     printf("decision=%s checks=%u failures=%u\n", failures ? "FAIL" : "PASS", checks, failures);

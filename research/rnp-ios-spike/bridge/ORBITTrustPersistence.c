@@ -379,11 +379,17 @@ orbit_trust_store_code orbit_repository_trust_authorize_recovery_rotation_and_st
  else if(!orbit_repository_trust_observe_time(&current,now_seconds)){*trust_result=ORBIT_TRUST_TIME_ROLLBACK_REJECTED;status=ORBIT_TRUST_STORE_OK;goto emergency_done;}
  else status=store_save_locked(&current,repository_id,backend);
  if(status!=ORBIT_TRUST_STORE_OK)goto emergency_recover;
- *state=current;goto emergency_done;
+ *state=current;goto emergency_cleanup;
 emergency_recover:
- memset(&current,0,sizeof(current));if(store_load_locked(&current,repository_id,backend)==ORBIT_TRUST_STORE_OK)*state=current;else memset(state,0,sizeof(*state));
+ memset(&current,0,sizeof(current));
+ if(store_load_locked(&current,repository_id,backend)==ORBIT_TRUST_STORE_OK)
+  *state=current;
+ else
+  memset(state,0,sizeof(*state));
+ goto emergency_cleanup;
 emergency_done:
  if(status!=ORBIT_TRUST_STORE_OK)memset(state,0,sizeof(*state));
+emergency_cleanup:
  memset(&current,0,sizeof(current));backend->end_transaction(backend->context,repository_id);return status;
 }
 bool orbit_repository_trust_fingerprint_allowed_and_store(

@@ -153,3 +153,20 @@ authorization failures for unbound or unauthorized keys.
 
 The service must fail closed if its durable database or consistency mechanism
 is unavailable. A stale replica must never answer a freshness query.
+
+
+## Reference server implementation
+
+A Go reference service now lives in
+`research/rnp-ios-spike/witness-service/`. It provides TLS-only challenge,
+registration, head, and compare-and-swap endpoints; SQLite WAL/FULL durability;
+App Attest certificate-chain, nonce, RP ID, key-ID, and ECDSA assertion
+verification; monotonic assertion counters; and atomic head transitions.
+Its setup and known limitations are documented in that directory's README.
+
+This implementation is not yet approved for production. In particular, it
+still needs validation-category and bundle-version extension verification,
+strict CBOR/resource-limit review, challenge cleanup/rate limiting, current
+Apple root rotation handling, production account/recovery policy, and tests
+against real Apple-issued development and production attestations. Do not
+deploy it as the production trust anchor until those items are reviewed.

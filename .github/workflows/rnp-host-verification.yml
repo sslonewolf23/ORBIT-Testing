@@ -687,6 +687,22 @@ jobs:
           "$RUNNER_TEMP/orbit-package-staging-tests" | tee "$RUNNER_TEMP/package-staging.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-staging.out"
 
+      - name: Compile and run atomic filesystem transaction tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/harness/orbit-package-filesystem-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-filesystem-tests"
+          "$RUNNER_TEMP/orbit-package-filesystem-tests" | tee "$RUNNER_TEMP/package-filesystem.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem.out"
+
       - name: Fuzz package archive and decompression parsers
         shell: bash
         run: |

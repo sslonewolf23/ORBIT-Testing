@@ -38,18 +38,30 @@ called). The Dopamine/ElleKit profile intentionally aliases the Procursus
 rootless package-database layout: ElleKit is a tweak-injection platform, not a
 separate package bootstrap or package-manager lock protocol.
 
-The profile is only a default. Before use, the runtime adapter must inspect the
-active APT configuration and confirm `Dir::State::status` resolves to this
-profile's dpkg administration directory. If it is overridden, the profile
-must fail closed rather than locking a guessed path. The lockset does not yet
-acquire APT archive-cache or package-list locks; those are separate resource
-locks and should only be added if ORBIT shares those mutable directories.
+The profile is only a default. The new `ORBITAPTConfigResolver` accepts the
+effective `Dir::State::status` path and the APT-visible bootstrap prefix,
+requires canonical absolute paths, enforces a path-component boundary, rejects
+dot segments and requires the final component to be `status`. It then derives
+the relative dpkg administration directory. The target adapter must obtain
+that effective value from initialized `libapt-pkg` configuration (after its
+package-system initialization), not guess the default or scrape an arbitrary
+`apt.conf` file. A raw `apt-config dump` may not include defaults calculated
+during Debian-system initialization. The caller must also prove that the
+already-open root descriptor maps to the supplied APT-visible prefix; for
+rootless systems that prefix may be `/var/jb` while the descriptor is opened
+on the resolved bootstrap directory. Any mismatch fails closed.
+
+The lockset does not yet acquire APT archive-cache or package-list locks; those
+are separate resource locks and should only be added if ORBIT shares those
+mutable directories.
 
 ## Integration contract
 
 The target-specific privileged adapter must provide:
 - The exact trusted bootstrap root descriptor and expected lock-file owner.
-- The active APT `Dir::State::status` value, validated against the selected profile.
+- The effective APT `Dir::State::status` value obtained from initialized
+  `libapt-pkg`, plus the APT-visible bootstrap prefix. The resolver derives
+  and validates the dpkg administration path against the selected profile.
 - The native package manager's documented acquisition order. For the verified
   APT Debian-system backend, acquire `lock-frontend` then `lock`; release in
   reverse order. Do not silently skip missing directories or invalid lock files.
@@ -59,6 +71,10 @@ The target-specific privileged adapter must provide:
   A BUSY result must not be bypassed or converted into success.
 - A compatibility test against the actual target APT/dpkg build proving that
   its process cannot obtain the same lock while ORBIT holds it, and vice versa.
+  The host CI also exercises lock contention against the runner's real
+  `apt-get` and `dpkg-deb` binaries in an isolated temporary root; this is
+  useful interoperability evidence, but it is not a substitute for the
+  Procursus-built binaries on a jailbroken device.
 
 Do not invent a universal list of APT locks. A common Debian-family setup has
 frontend and dpkg database locks, but jailbreak layouts and implementations
@@ -77,11 +93,13 @@ outside this guarantee.
 
 ## Current status
 
-The helper, profile, lockset and host harness are research-only. They are not
-wired into the app or privileged helper. The profile defaults are grounded in
-the current Procursus build recipe and upstream APT lock behavior, but the
-actual Procursus-built APT/dpkg binaries have not yet been exercised on-device.
-No real APT/dpkg interoperability test has been performed on either a rootful
-Procursus jailbreak or Dopamine's rootless Procursus bootstrap. Therefore this
-work does not close the production filesystem concurrency gate. Package
-installation remains disabled.
+The helper, profile, lockset, resolver, coordinator and host harness are
+research-only. They are not wired into the app or privileged helper. Host CI
+now tests the resolver under sanitizers and runs an isolated local-package
+install through the runner's real APT/dpkg binaries while ORBIT holds the
+native locks, then verifies installation succeeds after release. This does
+not prove compatibility with Procursus's pinned APT 2.9.4 build or its dpkg
+build on iOS. The actual Procursus-built binaries still need testing on both
+a rootful Procursus jailbreak and Dopamine's rootless Procursus bootstrap.
+Therefore this work does not close the production filesystem concurrency
+gate. Package installation remains disabled.

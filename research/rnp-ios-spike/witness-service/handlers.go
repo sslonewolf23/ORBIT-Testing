@@ -28,6 +28,14 @@ func (s *service) challenge(w http.ResponseWriter, r *http.Request) {
 func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if err := decodeJSON(w, r, &req); err != nil { jsonError(w, 400, "invalid request"); return }
+	if len(req.KeyID) == 0 || len(req.KeyID) > 128 {
+		jsonError(w, 400, "invalid request")
+		return
+	}
+	if _, err := decodeAppAttestKeyID(req.KeyID); err != nil {
+		jsonError(w, 400, "invalid request")
+		return
+	}
 	challenge, err := decodeB64(req.Challenge, 32, 32)
 	if err != nil { jsonError(w, 400, "invalid request"); return }
 	attestation, err := decodeB64(req.Attestation, 1, 512<<10)

@@ -415,6 +415,52 @@ int main(void) {
         !exists_at(backup_fd, "cl-a-backup") &&
         !exists_at(backup_fd, "cl-b-backup"));
 
+    EXPECT("standard executor fixtures created",
+        write_file_at(target_fd, "std-target", "old-standard") &&
+        write_file_at(stage_fd, "std-stage", "new-standard"));
+    uint8_t standard_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xD1U };
+    int standard_backup_fd = -1;
+    EXPECT("standard transaction backup directory created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, standard_transaction_id, true,
+            &standard_backup_fd) == ORBIT_FILESYSTEM_OK);
+    orbit_package_file_change standard_change;
+    EXPECT("standard executor replacement plan prepared",
+        standard_backup_fd >= 0 &&
+        orbit_package_filesystem_prepare_replace(
+            target_fd, "std-target", stage_fd, "std-stage",
+            standard_backup_fd, "std-backup", &standard_change) ==
+            ORBIT_FILESYSTEM_OK);
+    if (standard_backup_fd >= 0) close(standard_backup_fd);
+    EXPECT("standard executor parent locators stored",
+        orbit_package_filesystem_set_parent_paths(
+            &standard_change, "", "") == ORBIT_FILESYSTEM_OK);
+    orbit_package_filesystem_executor_context standard_executor;
+    memset(&standard_executor, 0, sizeof(standard_executor));
+    standard_executor.install_root_fd = target_fd;
+    standard_executor.staging_root_fd = stage_fd;
+    standard_executor.backup_base_directory_fd = base_fd;
+    memcpy(standard_executor.transaction_id, standard_transaction_id,
+           sizeof(standard_transaction_id));
+    EXPECT("standard descriptor-resolving executor commits file replacement",
+        orbit_package_filesystem_journal_execute(
+            &backend, standard_transaction_id, &standard_change, 1U,
+            orbit_package_filesystem_journal_execute_change,
+            &standard_executor) == ORBIT_FILESYSTEM_OK);
+    EXPECT("standard executor installed staged file",
+        file_equals_at(target_fd, "std-target", "new-standard"));
+    EXPECT("standard executor consumed staged path",
+        !exists_at(stage_fd, "std-stage"));
+    standard_backup_fd = -1;
+    EXPECT("standard executor backup directory reopens",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, standard_transaction_id, false,
+            &standard_backup_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("standard executor finalized preimage backup",
+        standard_backup_fd >= 0 && !exists_at(standard_backup_fd, "std-backup"));
+    if (standard_backup_fd >= 0) close(standard_backup_fd);
+    (void)unlinkat(base_fd, "d1000000000000000000000000000000", AT_REMOVEDIR);
+
     EXPECT("case-fold duplicate fixture prepared",
         seed_pair(target_fd, stage_fd, "dup-a", "dup-a-stage", "dup-b") &&
         prepare_pair(target_fd, stage_fd, backup_fd,

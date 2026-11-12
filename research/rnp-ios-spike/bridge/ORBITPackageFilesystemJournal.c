@@ -104,7 +104,7 @@ orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
         name[i * 2U] = hex[transaction_id[i] >> 4U];
         name[i * 2U + 1U] = hex[transaction_id[i] & 0x0fU];
     }
-    name[sizeof(name) - 1U] = '\\0';
+    name[sizeof(name) - 1U] = '\0';
 
     if (create && mkdirat(backup_base_directory_fd, name, 0700) < 0 &&
         errno != EEXIST)

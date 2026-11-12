@@ -251,43 +251,107 @@ void orbit_packages_index_destroy(orbit_packages_index *index) {
     index->packages=NULL;index->count=0U;index->capacity=0U;
 }
 
-bool orbit_package_verify_artifact(const orbit_package_record *package,
-                                   const uint8_t *artifact_data,
-                                   size_t artifact_length) {
-    if(!package||!artifact_data||artifact_length==0U||
-       package->size!=(uint64_t)artifact_length||
+static bool package_sha256_decode(const char *text,uint8_t digest[32]) {
+    if(!text||strlen(text)!=64U)return false;
+    for(size_t i=0U;i<32U;++i) {
+        unsigned char a=(unsigned char)text[i*2U];
+        unsigned char b=(unsigned char)text[i*2U+1U];
+        if(!isxdigit(a)||!isxdigit(b))return false;
+        unsigned high=(unsigned)(isdigit(a)?a-'0':tolower(a)-'a'+10);
+        unsigned low=(unsigned)(isdigit(b)?b-'0':tolower(b)-'a'+10);
+        digest[i]=(uint8_t)((high<<4U)|low);
+    }
+    return true;
+}
+
+void orbit_package_artifact_verifier_destroy(
+    orbit_package_artifact_verifier *verifier) {
+    if(!verifier)return;
+    if(verifier->hash_context) {
+        botan_hash_t hash=(botan_hash_t)verifier->hash_context;
+        (void)botan_hash_destroy(hash);
+    }
+    (void)botan_scrub_mem(verifier->expected_digest,
+                          sizeof(verifier->expected_digest));
+    memset(verifier,0,sizeof(*verifier));
+}
+
+bool orbit_package_artifact_verifier_init(
+    orbit_package_artifact_verifier *verifier,
+    const orbit_package_record *package) {
+    if(!verifier)return false;
+    memset(verifier,0,sizeof(*verifier));
+    if(!package||package->size==0U||
        !memchr(package->filename,'\\0',sizeof(package->filename))||
        !memchr(package->sha256,'\\0',sizeof(package->sha256))||
        !valid_relative_path(package->filename)||
-       !package->sha256[0]||strlen(package->sha256)!=64U)return false;
-    uint8_t expected[32],actual[32];
-    memset(expected,0,sizeof(expected));memset(actual,0,sizeof(actual));
-    for(size_t i=0U;i<32U;++i) {
-        unsigned char a=(unsigned char)package->sha256[i*2U];
-        unsigned char b=(unsigned char)package->sha256[i*2U+1U];
-        if(!isxdigit(a)||!isxdigit(b)) {
-            (void)botan_scrub_mem(expected,sizeof(expected));
-            (void)botan_scrub_mem(actual,sizeof(actual));
-            return false;
-        }
-        unsigned high=(unsigned)(isdigit(a)?a-'0':tolower(a)-'a'+10);
-        unsigned low=(unsigned)(isdigit(b)?b-'0':tolower(b)-'a'+10);
-        expected[i]=(uint8_t)((high<<4U)|low);
+       !package_sha256_decode(package->sha256,verifier->expected_digest)) {
+        (void)botan_scrub_mem(verifier->expected_digest,
+                              sizeof(verifier->expected_digest));
+        return false;
     }
     botan_hash_t hash=NULL;
     if(botan_hash_init(&hash,"SHA-256",0)!=BOTAN_FFI_SUCCESS||!hash) {
-        (void)botan_scrub_mem(expected,sizeof(expected));
-        (void)botan_scrub_mem(actual,sizeof(actual));
+        (void)botan_scrub_mem(verifier->expected_digest,
+                              sizeof(verifier->expected_digest));
         return false;
     }
     size_t output_length=0U;
-    bool ok=botan_hash_output_length(hash,&output_length)==BOTAN_FFI_SUCCESS&&
-        output_length==sizeof(actual)&&
-        botan_hash_update(hash,artifact_data,artifact_length)==BOTAN_FFI_SUCCESS&&
+    if(botan_hash_output_length(hash,&output_length)!=BOTAN_FFI_SUCCESS||
+       output_length!=sizeof(verifier->expected_digest)) {
+        (void)botan_hash_destroy(hash);
+        (void)botan_scrub_mem(verifier->expected_digest,
+                              sizeof(verifier->expected_digest));
+        return false;
+    }
+    verifier->hash_context=(void*)hash;
+    verifier->expected_size=package->size;
+    verifier->bytes_seen=0U;
+    verifier->active=true;
+    return true;
+}
+
+bool orbit_package_artifact_verifier_update(
+    orbit_package_artifact_verifier *verifier,const uint8_t *chunk,
+    size_t chunk_length) {
+    if(!verifier||!verifier->active||
+       (chunk_length>0U&&chunk==NULL)||
+       (uint64_t)chunk_length>UINT64_MAX-verifier->bytes_seen||
+       verifier->bytes_seen+(uint64_t)chunk_length>verifier->expected_size) {
+        if(verifier)orbit_package_artifact_verifier_destroy(verifier);
+        return false;
+    }
+    if(chunk_length==0U)return true;
+    botan_hash_t hash=(botan_hash_t)verifier->hash_context;
+    if(!hash||botan_hash_update(hash,chunk,chunk_length)!=BOTAN_FFI_SUCCESS) {
+        orbit_package_artifact_verifier_destroy(verifier);
+        return false;
+    }
+    verifier->bytes_seen+=(uint64_t)chunk_length;
+    return true;
+}
+
+bool orbit_package_artifact_verifier_finalize(
+    orbit_package_artifact_verifier *verifier) {
+    if(!verifier||!verifier->active)return false;
+    uint8_t actual[32];memset(actual,0,sizeof(actual));
+    botan_hash_t hash=(botan_hash_t)verifier->hash_context;
+    bool valid=hash!=NULL&&verifier->bytes_seen==verifier->expected_size&&
         botan_hash_final(hash,actual)==BOTAN_FFI_SUCCESS&&
-        botan_constant_time_compare(expected,actual,sizeof(actual))==0;
-    (void)botan_hash_destroy(hash);
-    (void)botan_scrub_mem(expected,sizeof(expected));
+        botan_constant_time_compare(verifier->expected_digest,actual,
+                                    sizeof(actual))==0;
     (void)botan_scrub_mem(actual,sizeof(actual));
-    return ok;
+    orbit_package_artifact_verifier_destroy(verifier);
+    return valid;
+}
+
+bool orbit_package_verify_artifact(const orbit_package_record *package,
+                                   const uint8_t *artifact_data,
+                                   size_t artifact_length) {
+    if(!package||!artifact_data||artifact_length==0U)return false;
+    orbit_package_artifact_verifier verifier;
+    if(!orbit_package_artifact_verifier_init(&verifier,package))return false;
+    if(!orbit_package_artifact_verifier_update(&verifier,artifact_data,
+                                               artifact_length))return false;
+    return orbit_package_artifact_verifier_finalize(&verifier);
 }

@@ -43,15 +43,29 @@ test -n "$SUBKEY_FPR"
 gpg --batch --homedir "$WORK/other" --export-secret-keys "$OTHER_FPR" > "$WORK/other-secret.gpg"
 gpg --batch --homedir "$WORK/trusted" --import "$WORK/other-secret.gpg" >/dev/null 2>&1
 
-cat > "$WORK/Release" <<'EOF'
-Origin: Cydia Successor Test
+cat > "$OUT/Packages" <<'EOF'
+Package: orbit-fixture
+Version: 1.0
+Architecture: iphoneos-arm64
+Description: ORBIT repository verification integration fixture
+
+EOF
+
+INDEX_SHA="$(sha256sum "$OUT/Packages" | awk '{print $1}')"
+INDEX_SIZE="$(wc -c < "$OUT/Packages" | tr -d ' ')"
+RELEASE_DATE="$(date -u -R)"
+VALID_UNTIL="$(date -u -d '+7 days' -R)"
+cat > "$WORK/Release" <<EOF
+Origin: ORBIT Test
 Label: Disposable Fixture Repository
 Suite: stable
 Codename: fixture
-Date: Wed, 11 Nov 2026 00:00:00 UTC
+Date: $RELEASE_DATE
+Valid-Until: $VALID_UNTIL
 Architectures: iphoneos-arm64
 Components: main
 SHA256:
+ $INDEX_SHA $INDEX_SIZE main/binary-iphoneos-arm64/Packages
 EOF
 
 gpg --batch --homedir "$WORK/trusted" --local-user "$TRUSTED_FPR" --armor --clearsign \
@@ -299,7 +313,7 @@ printf '%s\n' "$OLD_FPR" > "$OUT/old-signer-primary.fingerprint"
 
 (
   cd "$OUT"
-  shasum -a 256 *.InRelease *.Release *.gpg emergency-activation.timestamp > SHA256SUMS
+  shasum -a 256 *.InRelease *.Release *.gpg Packages emergency-activation.timestamp > SHA256SUMS
 )
 
 echo "Generated disposable RNP fixtures in: $OUT"

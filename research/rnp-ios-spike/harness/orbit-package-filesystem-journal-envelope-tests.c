@@ -140,6 +140,11 @@ static bool memory_initialize(memory_envelope *memory) {
     return true;
 }
 
+static bool unlink_if_present_at(int directory_fd, const char *name) {
+    if (unlinkat(directory_fd, name, 0) == 0) return true;
+    return errno == ENOENT;
+}
+
 static bool write_file_at(int directory_fd, const char *name, const char *value) {
     int fd = openat(directory_fd, name,
         O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
@@ -604,7 +609,7 @@ int main(void) {
     EXPECT("end-to-end backup directory cleaned",
         unlinkat(root_fd, "backup-install", AT_REMOVEDIR) == 0);
     EXPECT("end-to-end install tree cleaned",
-        unlinkat(install_fd, "Library/orbit-demo.dylib", 0) == 0 &&
+        unlink_if_present_at(install_fd, "Library/orbit-demo.dylib") &&
         unlinkat(install_fd, "Library", AT_REMOVEDIR) == 0 &&
         unlinkat(stage_fd, "Library", AT_REMOVEDIR) == 0);
 
@@ -653,6 +658,14 @@ int main(void) {
             &rollback_install_executor,
             &install_plan_result, &install_journal_result) ==
                 ORBIT_PACKAGE_INSTALL_TRANSACTION_JOURNAL_FAILED);
+    fprintf(stderr,
+        "DEBUG rollback apply=%zu rollback=%zu first_target=%d second_target=%d first_stage=%d second_stage=%d\\n",
+        rollback_install_executor.apply_calls,
+        rollback_install_executor.rollback_calls,
+        faccessat(install_library, "orbit-first.dylib", F_OK, AT_SYMLINK_NOFOLLOW),
+        faccessat(install_library, "orbit-second.dylib", F_OK, AT_SYMLINK_NOFOLLOW),
+        file_equals_at(stage_library, "orbit-first.dylib", "first-payload"),
+        file_equals_at(stage_library, "orbit-second.dylib", "second-payload"));
     EXPECT("rollback restored staged files and removed partial installs",
         rollback_install_executor.apply_calls == 2U &&
         rollback_install_executor.rollback_calls >= 1U &&

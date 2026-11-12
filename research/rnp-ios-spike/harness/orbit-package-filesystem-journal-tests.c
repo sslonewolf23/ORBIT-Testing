@@ -553,6 +553,67 @@ int main(void) {
     EXPECT("noncanonical fixture removed",
         unlinkat(base_fd, "not-a-transaction-directory", AT_REMOVEDIR) == 0);
 
+
+    uint8_t nonempty_orphan_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xA4U };
+    int nonempty_orphan_fd = -1;
+    EXPECT("nonempty orphan candidate created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, nonempty_orphan_id, true,
+            &nonempty_orphan_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("nonempty orphan sentinel created",
+        nonempty_orphan_fd >= 0 &&
+        write_file_at(nonempty_orphan_fd, "sentinel", "preserve"));
+    if (nonempty_orphan_fd >= 0) close(nonempty_orphan_fd);
+    EXPECT("orphan sweep refuses nonempty candidate",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    nonempty_orphan_fd = openat(base_fd,
+        "a4000000000000000000000000000000",
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    EXPECT("nonempty orphan candidate and sentinel are preserved",
+        nonempty_orphan_fd >= 0 &&
+        file_equals_at(nonempty_orphan_fd, "sentinel", "preserve"));
+    if (nonempty_orphan_fd >= 0) {
+        (void)unlinkat(nonempty_orphan_fd, "sentinel", 0);
+        close(nonempty_orphan_fd);
+    }
+    (void)unlinkat(base_fd, "a4000000000000000000000000000000", AT_REMOVEDIR);
+
+    EXPECT("canonical symlink orphan fixture created",
+        symlinkat("missing-target", base_fd,
+            "a5000000000000000000000000000000") == 0);
+    EXPECT("orphan sweep refuses symlink candidate",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    struct stat symlink_status;
+    EXPECT("symlink candidate remains untouched",
+        fstatat(base_fd, "a5000000000000000000000000000000",
+                &symlink_status, AT_SYMLINK_NOFOLLOW) == 0 &&
+        S_ISLNK(symlink_status.st_mode));
+    (void)unlinkat(base_fd, "a5000000000000000000000000000000", 0);
+
+    const unsigned oversized_candidate_count = 4097U;
+    char oversized_name[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES * 2U + 1U];
+    unsigned oversized_created = 0U;
+    for (unsigned i = 0U; i < oversized_candidate_count; ++i) {
+        (void)snprintf(oversized_name, sizeof(oversized_name), "%032x", i + 1U);
+        if (mkdirat(base_fd, oversized_name, 0700) != 0) break;
+        ++oversized_created;
+    }
+    EXPECT("all over-limit canonical candidates created",
+        oversized_created == oversized_candidate_count);
+    EXPECT("orphan sweep rejects more than 4096 candidates",
+        oversized_created == oversized_candidate_count &&
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_LIMIT);
+    (void)snprintf(oversized_name, sizeof(oversized_name), "%032x", 1U);
+    EXPECT("over-limit sweep deletes no candidates",
+        exists_at(base_fd, oversized_name));
+    for (unsigned i = 0U; i < oversized_created; ++i) {
+        (void)snprintf(oversized_name, sizeof(oversized_name), "%032x", i + 1U);
+        (void)unlinkat(base_fd, oversized_name, AT_REMOVEDIR);
+    }
+
     EXPECT("case-fold duplicate fixture prepared",
         seed_pair(target_fd, stage_fd, "dup-a", "dup-a-stage", "dup-b") &&
         prepare_pair(target_fd, stage_fd, backup_fd,

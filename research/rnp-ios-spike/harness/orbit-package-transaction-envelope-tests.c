@@ -106,7 +106,7 @@ int main(void) {
             ORBIT_TRANSACTION_ENVELOPE_INVALID_TRANSITION);
 
     orbit_package_transaction_envelope skipped = committed;
-    skipped.revision = 14U;
+    skipped.revision = 13U;
     skipped.state = ORBIT_TRANSACTION_ENVELOPE_EMPTY;
     skipped.phase = ORBIT_TRANSACTION_ENVELOPE_PHASE_NONE;
     skipped.journal_payload = NULL;

@@ -318,10 +318,13 @@ static orbit_archive_code tar_stream_header(tar_stream *stream) {
     if (!orbit_package_archive_path_is_safe(path)) return ORBIT_ARCHIVE_UNSAFE_PATH;
 
     uint64_t file_size = 0U;
-    if (!parse_octal(h + 124U, 12U, &file_size))
+    uint64_t mode_value = 0U;
+    if (!parse_octal(h + 124U, 12U, &file_size) ||
+        !parse_octal(h + 100U, 8U, &mode_value) || mode_value > 07777U)
         return ORBIT_ARCHIVE_MALFORMED_TAR;
     if (!(type == '\0' || type == '0' || directory) ||
-        (directory && file_size != 0U))
+        (directory && file_size != 0U) || (mode_value & ~0777ULL) != 0U ||
+        (directory && (mode_value & 0100U) == 0U))
         return ORBIT_ARCHIVE_UNSUPPORTED_ENTRY;
     if (file_size > ORBIT_TAR_MAX_FILE_BYTES ||
         stream->report->entries >= ORBIT_TAR_MAX_ENTRIES)
@@ -348,6 +351,7 @@ static orbit_archive_code tar_stream_header(tar_stream *stream) {
         memset(&entry, 0, sizeof(entry));
         memcpy(entry.path, path, strlen(path) + 1U);
         entry.size = file_size;
+        entry.mode = (uint32_t)mode_value;
         entry.directory = directory;
         if (!stream->callback(stream->callback_context, &entry))
             return ORBIT_ARCHIVE_CALLBACK_ERROR;

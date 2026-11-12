@@ -25,7 +25,7 @@ static void octal(uint8_t *p, size_t n, uint64_t value) {
 static void make_tar_header(uint8_t *h, const char *path, uint64_t size, char type) {
     memset(h, 0, 512U);
     memcpy(h, path, strlen(path));
-    octal(h + 100U, 8U, 0644U);
+    octal(h + 100U, 8U, type == '5' ? 0755U : 0644U);
     octal(h + 108U, 8U, 0U);
     octal(h + 116U, 8U, 0U);
     octal(h + 124U, 12U, size);

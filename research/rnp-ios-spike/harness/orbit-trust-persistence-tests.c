@@ -125,7 +125,7 @@ int main(int argc,char **argv) {
         &state,repo,pin,recovery_pin,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
     storage.fail_read=false;
     expect("missing-record-bootstraps-and-persists",orbit_repository_trust_load_or_initialize(
-        &state,repo,pin,&backend)==ORBIT_TRUST_STORE_OK,true);
+        &state,repo,pin,recovery_pin,&backend)==ORBIT_TRUST_STORE_OK,true);
     expect("counter-advanced-to-initial-revision",storage.counter==state.revision,true);
     expect("store-transaction-lock-released",!storage.locked,true);
     expect("state-restored",orbit_repository_trust_store_load(

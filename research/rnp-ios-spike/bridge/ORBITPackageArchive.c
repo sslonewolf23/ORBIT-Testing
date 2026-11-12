@@ -149,10 +149,36 @@ static bool tar_checksum_valid(const uint8_t *header) {
     return sum == stored;
 }
 
-static int compare_path_records(const void *left, const void *right) {
-    const path_record *a = (const path_record *)left;
-    const path_record *b = (const path_record *)right;
+static int compare_path_records(const path_record *a, const path_record *b) {
     return strcmp(a->path, b->path);
+}
+
+static void swap_path_records(path_record *a, path_record *b) {
+    path_record temporary = *a;
+    *a = *b;
+    *b = temporary;
+}
+
+static void sift_path_heap(path_record *records, size_t root, size_t count) {
+    while (count > 1U && root <= (count - 2U) / 2U) {
+        size_t child = root * 2U + 1U;
+        if (child + 1U < count &&
+            compare_path_records(&records[child], &records[child + 1U]) < 0)
+            ++child;
+        if (compare_path_records(&records[root], &records[child]) >= 0) return;
+        swap_path_records(&records[root], &records[child]);
+        root = child;
+    }
+}
+
+static void sort_path_records(path_set *set) {
+    if (!set || set->count < 2U) return;
+    for (size_t start = set->count / 2U; start > 0U; --start)
+        sift_path_heap(set->records, start - 1U, set->count);
+    for (size_t end = set->count; end > 1U; --end) {
+        swap_path_records(&set->records[0], &set->records[end - 1U]);
+        sift_path_heap(set->records, 0U, end - 1U);
+    }
 }
 
 static size_t path_lower_bound(const path_set *set, const char *path) {
@@ -173,7 +199,7 @@ static size_t path_lower_bound(const path_set *set, const char *path) {
 
 static orbit_archive_code validate_path_set(path_set *set) {
     if (!set) return ORBIT_ARCHIVE_INVALID_ARGUMENT;
-    qsort(set->records, set->count, sizeof(set->records[0]), compare_path_records);
+    sort_path_records(set);
     for (size_t i = 0U; i < set->count; ++i) {
         const path_record *record = &set->records[i];
         if (i != 0U &&

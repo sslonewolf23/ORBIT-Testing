@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "ORBITPackageFilesystemJournalEnvelope.h"
+#include "ORBITPackageInstallTransaction.h"
+#include "ORBITPackageOwnershipCodec.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -421,6 +423,112 @@ int main(void) {
     close(backup_fd);
     EXPECT("write-ahead failure backup directory removed",
         unlinkat(root_fd, "backup-storefail", AT_REMOVEDIR) == 0);
+
+    /* Full orchestration test: staged manifest -> safe file plan ->
+     * authenticated journal -> filesystem apply/finalize -> ownership commit. */
+    int install_library = -1, stage_library = -1, backup_install_fd = -1;
+    EXPECT("end-to-end install directories created",
+        mkdirat(install_fd, "Library", 0700) == 0 &&
+        mkdirat(stage_fd, "Library", 0700) == 0 &&
+        create_backup_directory(root_fd, "backup-install", &backup_install_fd));
+    install_library = openat(install_fd, "Library",
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    stage_library = openat(stage_fd, "Library",
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    EXPECT("end-to-end package directories opened",
+        install_library >= 0 && stage_library >= 0);
+    EXPECT("end-to-end staged package file created",
+        write_file_at(stage_library, "orbit-demo.dylib", "orbit-package-payload"));
+
+    orbit_package_record candidate;
+    memset(&candidate, 0, sizeof(candidate));
+    (void)snprintf(candidate.name, sizeof(candidate.name), "org.orbit.demo");
+    (void)snprintf(candidate.version, sizeof(candidate.version), "1.0");
+    (void)snprintf(candidate.architecture, sizeof(candidate.architecture),
+                   "iphoneos-arm64");
+    orbit_archive_entry manifest[2];
+    memset(manifest, 0, sizeof(manifest));
+    (void)snprintf(manifest[0].path, sizeof(manifest[0].path), "Library");
+    manifest[0].directory = true;
+    (void)snprintf(manifest[1].path, sizeof(manifest[1].path),
+                   "Library/orbit-demo.dylib");
+    manifest[1].size = strlen("orbit-package-payload");
+    orbit_package_ownership_snapshot installed_snapshot = { NULL, 0U };
+    memory_envelope install_memory;
+    memset(&install_memory, 0, sizeof(install_memory));
+    EXPECT("end-to-end authenticated envelope initialized",
+        memory_initialize(&install_memory));
+    orbit_package_filesystem_envelope_backend install_backend = {
+        &install_memory, memory_load, memory_release, memory_store
+    };
+    envelope_executor install_executor;
+    memset(&install_executor, 0, sizeof(install_executor));
+    install_executor.target_fd = install_fd;
+    install_executor.stage_fd = stage_fd;
+    install_executor.backup_fd = backup_install_fd;
+    uint8_t install_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES];
+    memset(install_transaction_id, 0xB1, sizeof(install_transaction_id));
+    orbit_package_file_plan_code install_plan_result =
+        ORBIT_PACKAGE_FILE_PLAN_INVALID_ARGUMENT;
+    orbit_filesystem_code install_journal_result =
+        ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    EXPECT("complete package install orchestration succeeds",
+        orbit_package_install_transaction_execute_enveloped(
+            &installed_snapshot, &candidate, manifest, 2U,
+            ownership_old, sizeof(ownership_old), install_transaction_id,
+            install_fd, stage_fd, backup_install_fd, &install_backend,
+            execute_change, &install_executor,
+            &install_plan_result, &install_journal_result) ==
+                ORBIT_PACKAGE_INSTALL_TRANSACTION_OK);
+    EXPECT("orchestration reports successful plan and journal",
+        install_plan_result == ORBIT_PACKAGE_FILE_PLAN_OK &&
+        install_journal_result == ORBIT_FILESYSTEM_OK);
+    EXPECT("orchestration installs staged package file",
+        file_equals_at(install_library, "orbit-demo.dylib",
+                       "orbit-package-payload"));
+    uint8_t *install_journal_buffer =
+        (uint8_t *)malloc(ORBIT_TRANSACTION_ENVELOPE_MAX_JOURNAL);
+    uint8_t *install_committed_buffer =
+        (uint8_t *)malloc(ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP);
+    uint8_t *install_pending_buffer =
+        (uint8_t *)malloc(ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP);
+    orbit_package_transaction_envelope install_decoded;
+    EXPECT("orchestration leaves a clean committed envelope",
+        install_journal_buffer && install_committed_buffer &&
+        install_pending_buffer &&
+        decode_memory(&install_memory, &install_decoded,
+            install_journal_buffer, install_committed_buffer,
+            install_pending_buffer) &&
+        install_decoded.state == ORBIT_TRANSACTION_ENVELOPE_EMPTY);
+    orbit_package_ownership_record committed_records[4];
+    orbit_package_ownership_snapshot committed_snapshot;
+    EXPECT("orchestration persisted complete package ownership",
+        orbit_package_ownership_decode(
+            install_decoded.committed_ownership,
+            install_decoded.committed_ownership_length,
+            committed_records, 4U, &committed_snapshot) ==
+                ORBIT_OWNERSHIP_CODEC_OK &&
+        committed_snapshot.count == 2U &&
+        strcmp(committed_snapshot.records[1].path,
+               "Library/orbit-demo.dylib") == 0 &&
+        strcmp(committed_snapshot.records[1].package_name,
+               "org.orbit.demo") == 0);
+    EXPECT("orchestration applied and finalized exactly one file",
+        install_executor.apply_calls == 1U &&
+        install_executor.finalize_calls == 1U);
+    free(install_journal_buffer);
+    free(install_committed_buffer);
+    free(install_pending_buffer);
+    free(install_memory.payload);
+    close(stage_library);
+    close(install_library);
+    EXPECT("end-to-end backup directory cleaned",
+        unlinkat(root_fd, "backup-install", AT_REMOVEDIR) == 0);
+    EXPECT("end-to-end install tree cleaned",
+        unlinkat(install_fd, "Library/orbit-demo.dylib", 0) == 0 &&
+        unlinkat(stage_fd, "Library/orbit-demo.dylib", 0) == 0 &&
+        unlinkat(install_fd, "Library", AT_REMOVEDIR) == 0 &&
+        unlinkat(stage_fd, "Library", AT_REMOVEDIR) == 0);
 
     EXPECT("success target cleaned", unlinkat(install_fd, "target-success", 0) == 0);
     EXPECT("rollback target cleaned", unlinkat(install_fd, "target-rollback", 0) == 0);

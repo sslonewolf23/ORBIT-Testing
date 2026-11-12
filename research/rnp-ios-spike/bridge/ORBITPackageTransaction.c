@@ -4,7 +4,7 @@
 #include <string.h>
 
 static bool bounded_string(const char *value,size_t capacity) {
-    return value&&value[0]!='\\0'&&memchr(value,'\\0',capacity)!=NULL;
+    return value&&value[0]!='\0'&&memchr(value,'\0',capacity)!=NULL;
 }
 static bool backend_valid(const orbit_transaction_journal_backend *j,
                           const orbit_transaction_package_backend *p) {

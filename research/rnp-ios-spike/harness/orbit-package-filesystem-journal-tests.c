@@ -241,6 +241,28 @@ int main(void) {
         orbit_package_filesystem_open_backup_directory(
             base_fd, empty_transaction_id, true,
             &transaction_backup_fd) == ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+    uint8_t stale_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xC1U };
+    EXPECT("stale backup directory initially created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, stale_transaction_id, true,
+            &transaction_backup_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("stale backup sentinel created",
+        transaction_backup_fd >= 0 &&
+        write_file_at(transaction_backup_fd, "stale", "unexpected"));
+    if (transaction_backup_fd >= 0) close(transaction_backup_fd);
+    transaction_backup_fd = -1;
+    EXPECT("new transaction refuses nonempty backup directory",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, stale_transaction_id, true,
+            &transaction_backup_fd) == ORBIT_FILESYSTEM_CONFLICT);
+    int stale_directory_fd = openat(base_fd,
+        "c1000000000000000000000000000000",
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (stale_directory_fd >= 0) {
+        (void)unlinkat(stale_directory_fd, "stale", 0);
+        close(stale_directory_fd);
+    }
+    (void)unlinkat(base_fd, "c1000000000000000000000000000000", AT_REMOVEDIR);
     uint8_t symlink_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xB1U };
     EXPECT("transaction backup symlink fixture created",
         symlinkat("target", base_fd,

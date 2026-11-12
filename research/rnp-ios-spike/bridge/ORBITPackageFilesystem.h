@@ -7,6 +7,7 @@
 #define ORBIT_FILESYSTEM_COMPONENT_CAPACITY 64U
 #define ORBIT_FILESYSTEM_CHANGE_VERSION 2U
 #define ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY 1025U
+#define ORBIT_FILESYSTEM_LOCK_NAME ".orbit-package-transaction.lock"
 
 typedef enum {
     ORBIT_FILESYSTEM_OK = 0,
@@ -39,6 +40,17 @@ typedef struct {
     uint64_t staged_device;
     uint64_t staged_inode;
 } orbit_package_file_change;
+
+typedef struct {
+    int descriptor;
+} orbit_package_filesystem_lock;
+
+/* Acquires a nonblocking exclusive advisory lock in the trusted root. The
+ * caller must hold it across prepare, journal execution/recovery, and cleanup. */
+orbit_filesystem_code orbit_package_filesystem_lock_acquire(
+    int trusted_root_fd, orbit_package_filesystem_lock *lock);
+orbit_filesystem_code orbit_package_filesystem_lock_release(
+    orbit_package_filesystem_lock *lock);
 
 /* Prepare is read-only. The caller must persist the returned change record in
  * its authenticated, monotonic transaction journal before calling apply(). */

@@ -250,6 +250,12 @@ static bool relation_atom_valid(const char *expression) {
     } else if(strchr(copy,')'))return false;
     trim(copy);
     if(!*copy||!isalnum((unsigned char)copy[0]))return false;
+    char *colon=strchr(copy,':');
+    if(colon) {
+        *colon='\\0';
+        const char *qualifier=colon+1;
+        if(strcmp(qualifier,"native")&&strcmp(qualifier,"any"))return false;
+    }
     for(const unsigned char *p=(const unsigned char*)copy;*p;++p)
         if(!((*p>='a'&&*p<='z')||(*p>='0'&&*p<='9')||*p=='-'||*p=='+'||*p=='.'))return false;
     return true;

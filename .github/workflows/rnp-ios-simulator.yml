@@ -161,7 +161,8 @@ jobs:
             ORBITPackageOwnership \
             ORBITPackageOwnershipCodec \
             ORBITPackageFilePlan \
-            ORBITPackageFilesystemJournalEnvelope; do
+            ORBITPackageFilesystemJournalEnvelope \
+            ORBITPackageInstallTransaction; do
             clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
               -I"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/include" \
               -Iresearch/rnp-ios-spike/bridge \
@@ -276,6 +277,7 @@ jobs:
             "$RUNNER_TEMP/ORBITPackageOwnershipCodec-ios.o" \
             "$RUNNER_TEMP/ORBITPackageFilePlan-ios.o" \
             "$RUNNER_TEMP/ORBITPackageFilesystemJournalEnvelope-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageInstallTransaction-ios.o" \
             $(pkg-config --static --libs librnp | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             $(pkg-config --static --libs botan-3 | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \

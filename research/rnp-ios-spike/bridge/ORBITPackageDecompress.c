@@ -79,7 +79,12 @@ static orbit_decompress_code decode_bzip2(
     stream.next_in = (char *)input;
     stream.avail_in = (unsigned int)length;
     orbit_decompress_code result = ORBIT_DECOMPRESS_MALFORMED;
+    unsigned steps = 0U;
     for (;;) {
+        if (++steps > ORBIT_DECOMPRESS_MAX_STEPS) {
+            result = ORBIT_DECOMPRESS_LIMIT;
+            break;
+        }
         stream.next_out = (char *)out;
         stream.avail_out = ORBIT_DECOMPRESS_CHUNK_BYTES;
         int status = BZ2_bzDecompress(&stream);
@@ -112,7 +117,12 @@ static orbit_decompress_code decode_xz(
     stream.next_in = input;
     stream.avail_in = length;
     orbit_decompress_code result = ORBIT_DECOMPRESS_MALFORMED;
+    unsigned steps = 0U;
     for (;;) {
+        if (++steps > ORBIT_DECOMPRESS_MAX_STEPS) {
+            result = ORBIT_DECOMPRESS_LIMIT;
+            break;
+        }
         stream.next_out = out;
         stream.avail_out = ORBIT_DECOMPRESS_CHUNK_BYTES;
         lzma_ret status = lzma_code(&stream, LZMA_FINISH);

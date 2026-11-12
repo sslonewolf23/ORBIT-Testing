@@ -385,9 +385,23 @@ int main(void) {
     EXPECT("partial cleanup remains in committed phase",
         memory.record != NULL &&
         memory.record->phase == ORBIT_FILE_JOURNAL_COMMITTED);
+    uint8_t guarded_cleanup_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xE1U };
+    int guarded_cleanup_fd = -1;
+    EXPECT("guarded cleanup fixture directory created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, guarded_cleanup_id, true,
+            &guarded_cleanup_fd) == ORBIT_FILESYSTEM_OK);
+    if (guarded_cleanup_fd >= 0) close(guarded_cleanup_fd);
+    EXPECT("backup cleanup is blocked while any journal is active",
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, guarded_cleanup_id) ==
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
     EXPECT("committed recovery completes remaining backup cleanup",
         orbit_package_filesystem_journal_recover(
             &backend, execute_change, &executor) == ORBIT_FILESYSTEM_OK);
+    EXPECT("empty journal permits guarded empty backup cleanup",
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, guarded_cleanup_id) == ORBIT_FILESYSTEM_OK);
     EXPECT("partial-finalization recovery preserves committed package state",
         file_equals_at(target_fd, "pf-a", "new-a") &&
         !exists_at(target_fd, "pf-b") &&
@@ -463,7 +477,7 @@ int main(void) {
     EXPECT("standard executor finalized preimage backup",
         standard_backup_fd >= 0 && !exists_at(standard_backup_fd, "std-backup"));
     if (standard_backup_fd >= 0) close(standard_backup_fd);
-    EXPECT("backup cleanup refuses while an authenticated journal is active",
+    EXPECT("successful transaction permits cleanup after journal is empty",
         orbit_package_filesystem_journal_cleanup_backup_directory(
             &backend, base_fd, standard_transaction_id) ==
             ORBIT_FILESYSTEM_OK);

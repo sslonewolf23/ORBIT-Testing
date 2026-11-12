@@ -1,5 +1,5 @@
 # Debian ar container and member names
-"!<arch>\n"
+"\x21<arch>\n"
 "debian-binary/"
 "control.tar"
 "control.tar.gz"

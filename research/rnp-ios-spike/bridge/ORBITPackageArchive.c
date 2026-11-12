@@ -374,6 +374,34 @@ static orbit_archive_code inspect_tar_member(
     return result;
 }
 
+
+#ifdef ORBIT_PACKAGE_ARCHIVE_TESTING
+orbit_archive_code orbit_package_archive_test_inspect_tar_chunks(
+    const uint8_t *tar, size_t tar_length, size_t chunk_size,
+    orbit_archive_report *report) {
+    if (!report || !tar || tar_length == 0U || chunk_size == 0U)
+        return ORBIT_ARCHIVE_INVALID_ARGUMENT;
+    memset(report, 0, sizeof(*report));
+    tar_stream stream;
+    if (!tar_stream_init(&stream, report)) return ORBIT_ARCHIVE_LIMIT;
+    orbit_archive_code result = ORBIT_ARCHIVE_OK;
+    size_t offset = 0U;
+    while (offset < tar_length) {
+        size_t amount = chunk_size < tar_length - offset ?
+            chunk_size : tar_length - offset;
+        if (!tar_stream_feed(&stream, tar + offset, amount)) {
+            result = stream.code;
+            break;
+        }
+        offset += amount;
+    }
+    if (result == ORBIT_ARCHIVE_OK) result = tar_stream_finish(&stream);
+    tar_stream_destroy(&stream);
+    report->code = result;
+    return result;
+}
+#endif
+
 orbit_archive_code orbit_package_archive_inspect_deb(
     const uint8_t *deb, size_t deb_length, orbit_archive_report *report) {
     if (!report) return ORBIT_ARCHIVE_INVALID_ARGUMENT;

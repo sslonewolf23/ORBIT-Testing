@@ -96,6 +96,7 @@ CREATE TABLE IF NOT EXISTS installations (
   created_at INTEGER NOT NULL,
   recovery_verifier BLOB
 );
+CREATE UNIQUE INDEX IF NOT EXISTS installations_recovery_verifier_unique ON installations(recovery_verifier) WHERE recovery_verifier IS NOT NULL;
 CREATE TABLE IF NOT EXISTS recovery_challenges (
   digest BLOB PRIMARY KEY NOT NULL,
   old_key_id TEXT NOT NULL,

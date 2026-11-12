@@ -259,6 +259,11 @@ static orbit_filesystem_code restore_backup(
         return backup == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
                ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     if (backup_links != 1) return ORBIT_FILESYSTEM_CONFLICT;
+    struct stat target_status;
+    if (fstatat(target_parent_fd, change->target_name,
+                &target_status, AT_SYMLINK_NOFOLLOW) == 0)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    if (errno != ENOENT) return ORBIT_FILESYSTEM_IO_ERROR;
     if (renameat(backup_parent_fd, change->backup_name,
                  target_parent_fd, change->target_name) < 0)
         return ORBIT_FILESYSTEM_IO_ERROR;

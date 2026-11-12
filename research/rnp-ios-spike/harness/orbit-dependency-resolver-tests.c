@@ -172,6 +172,13 @@ int main(void) {
         code==ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION);
 
     snprintf(virtual_records[1].provides,sizeof(virtual_records[1].provides),
+             "virtual-abi (= 2.5),");
+    code=orbit_dependency_plan_build(&virtual_catalog,NULL,0U,"virtual-app",
+                                     "iphoneos-arm64",&plan);
+    expect("malformed-trailing-provides-entry-fails-closed",
+        code==ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION);
+
+    snprintf(virtual_records[1].provides,sizeof(virtual_records[1].provides),
              "virtual-abi (= 2.5)");
     snprintf(virtual_records[0].depends,sizeof(virtual_records[0].depends),
              "virtual-abi");

@@ -59,7 +59,9 @@ authorization, and emergency revocation distribution are not implemented.
 An independent offline recovery primary key can authorize an emergency
 rotation through `orbit_repository_trust_authorize_recovery_rotation`. Its
 fingerprint is enrolled alongside the normal signing fingerprint and stored
-inside the authenticated, version-2 trust record. The recovery API no longer
+inside the authenticated, version-2 trust record. Version-1 records do
+not contain this independent pin and are rejected rather than silently
+migrated or assigned a guessed recovery root. The recovery API no longer
 accepts a caller-selected recovery fingerprint; it always verifies against
 the persisted recovery pin. The offline public-key bundle is supplied for
 verification, but cannot change that pin.

@@ -213,6 +213,7 @@ bool orbit_package_staging_entry_callback(
         !orbit_package_archive_path_is_safe(entry->path) ||
         entry->size > ORBIT_TAR_MAX_FILE_BYTES ||
         (entry->mode & ~0777U) != 0U ||
+        (entry->directory && (entry->mode & 0700U) != 0700U) ||
         (entry->directory && (entry->mode & 0100U) == 0U)) {
         mark_failed(staging);
         return false;

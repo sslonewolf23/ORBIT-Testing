@@ -206,6 +206,7 @@ jobs:
           xcrun --sdk iphonesimulator nm -gU "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator" | grep '_orbit_rnp_verify_inrelease'
           xcrun --sdk iphonesimulator nm -gU "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator" | grep '_orbit_repository_verify_packages_index'
           xcrun --sdk iphonesimulator nm -gU "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator" | grep '_orbit_packages_index_parse'
+          xcrun --sdk iphonesimulator nm -gU "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator" | grep '_orbit_package_verify_artifact'
           xcrun --sdk iphonesimulator otool -l "$RUNNER_TEMP/rnp-bridge-smoke-ios-simulator" | grep -A5 'LC_BUILD_VERSION'
 
       - name: Package native verifier into an iOS Simulator app

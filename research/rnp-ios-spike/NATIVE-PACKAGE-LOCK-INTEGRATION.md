@@ -42,10 +42,12 @@ The profile is only a default. The new `ORBITAPTConfigResolver` accepts the
 effective `Dir::State::status` path and the APT-visible bootstrap prefix,
 requires canonical absolute paths, enforces a path-component boundary, rejects
 dot segments and requires the final component to be `status`. It then derives
-the relative dpkg administration directory. The target adapter must obtain
-that effective value from initialized `libapt-pkg` configuration (after its
-package-system initialization), not guess the default or scrape an arbitrary
-`apt.conf` file. A raw `apt-config dump` may not include defaults calculated
+the relative dpkg administration directory. The `ORBITAPTLibaptAdapter.cpp` shim copies the effective value from an
+initialized `libapt-pkg` `Configuration` object. The caller must first run
+`pkgInitConfig()` and `pkgInitSystem()` against the same configuration inputs
+and command-line overrides as the target APT invocation, then pass that
+configuration object to the shim. It must not guess the default or scrape an
+arbitrary `apt.conf` file. A raw `apt-config dump` may not include defaults calculated
 during Debian-system initialization. The caller must also prove that the
 already-open root descriptor maps to the supplied APT-visible prefix; for
 rootless systems that prefix may be `/var/jb` while the descriptor is opened
@@ -93,9 +95,9 @@ outside this guarantee.
 
 ## Current status
 
-The helper, profile, lockset, resolver, coordinator and host harness are
-research-only. They are not wired into the app or privileged helper. Host CI
-now tests the resolver under sanitizers and runs an isolated local-package
+The helper, profile, lockset, resolver, libapt adapter, coordinator and host
+harness are research-only. They are not wired into the app or privileged helper. Host CI now compiles the libapt adapter against the Procursus-pinned APT 2.9.4
+headers, tests the resolver under sanitizers, and runs an isolated local-package
 install through the runner's real APT/dpkg binaries while ORBIT holds the
 native locks, then verifies installation succeeds after release. This does
 not prove compatibility with Procursus's pinned APT 2.9.4 build or its dpkg

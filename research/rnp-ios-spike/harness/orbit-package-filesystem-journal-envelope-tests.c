@@ -394,10 +394,40 @@ int main(void) {
     EXPECT("commit backup directory removed",
         unlinkat(root_fd, "backup-commit", AT_REMOVEDIR) == 0);
 
+    memset(transaction_id, 0xA4, sizeof(transaction_id));
+    EXPECT("write-ahead failure backup directory created",
+        create_backup_directory(root_fd, "backup-storefail", &backup_fd));
+    EXPECT("write-ahead failure fixture files created",
+        write_file_at(install_fd, "target-storefail", "old-storefail") &&
+        write_file_at(stage_fd, "stage-storefail", "new-storefail"));
+    EXPECT("write-ahead failure replacement prepared",
+        prepare_change(install_fd, stage_fd, backup_fd,
+            "target-storefail", "stage-storefail", "backup-storefail-file", &change));
+    memset(&executor, 0, sizeof(executor));
+    executor.target_fd = install_fd;
+    executor.stage_fd = stage_fd;
+    executor.backup_fd = backup_fd;
+    memory.fail_store_once = true;
+    EXPECT("failed APPLYING envelope store blocks file mutation",
+        orbit_package_filesystem_journal_execute_enveloped(
+            &backend, transaction_id, &change, 1U,
+            ownership_old, sizeof(ownership_old),
+            ownership_new, sizeof(ownership_new),
+            execute_change, &executor) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("failed write-ahead store did not invoke executor",
+        executor.apply_calls == 0U &&
+        file_equals_at(install_fd, "target-storefail", "old-storefail") &&
+        file_equals_at(stage_fd, "stage-storefail", "new-storefail"));
+    close(backup_fd);
+    EXPECT("write-ahead failure backup directory removed",
+        unlinkat(root_fd, "backup-storefail", AT_REMOVEDIR) == 0);
+
     EXPECT("success target cleaned", unlinkat(install_fd, "target-success", 0) == 0);
     EXPECT("rollback target cleaned", unlinkat(install_fd, "target-rollback", 0) == 0);
     EXPECT("commit target cleaned", unlinkat(install_fd, "target-commit", 0) == 0);
+    EXPECT("write-ahead failure target cleaned", unlinkat(install_fd, "target-storefail", 0) == 0);
     EXPECT("unapplied staged file cleaned", unlinkat(stage_fd, "stage-rollback", 0) == 0);
+    EXPECT("write-ahead failure staged file cleaned", unlinkat(stage_fd, "stage-storefail", 0) == 0);
     free(journal_buffer);
     free(committed_buffer);
     free(pending_buffer);

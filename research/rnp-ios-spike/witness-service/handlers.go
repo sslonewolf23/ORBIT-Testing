@@ -17,6 +17,7 @@ func (s *service) challenge(w http.ResponseWriter, r *http.Request) {
 	if _, err := rand.Read(value); err != nil { jsonError(w, 503, "unavailable"); return }
 	digest := sha256.Sum256(value)
 	expires := s.now().Add(5*time.Minute).Unix()
+	_, _ = s.db.Exec("DELETE FROM challenges WHERE expires_at<? OR consumed=1", s.now().Unix())
 	if _, err := s.db.Exec("INSERT INTO challenges(digest,expires_at,consumed) VALUES(?,?,0)", digest[:], expires); err != nil {
 		jsonError(w, 503, "unavailable"); return
 	}
@@ -32,6 +33,14 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	attestation, err := decodeB64(req.Attestation, 1, 512<<10)
 	if err != nil { jsonError(w, 400, "invalid request"); return }
 	attDigest := sha256.Sum256(attestation)
+	challengeDigest := sha256.Sum256(challenge)
+	var challengeValid int
+	if err := s.db.QueryRow(
+		"SELECT 1 FROM challenges WHERE digest=? AND consumed=0 AND expires_at>=?",
+		challengeDigest[:], s.now().Unix()).Scan(&challengeValid); err != nil {
+		jsonError(w, 409, "challenge expired or consumed")
+		return
+	}
 
 	// Lost-response retry: the exact same proof is idempotent, while any
 	// different proof for an already registered key is permanently rejected.
@@ -49,7 +58,6 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.db.Begin()
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
-	challengeDigest := sha256.Sum256(challenge)
 	res, err := tx.Exec("UPDATE challenges SET consumed=1 WHERE digest=? AND consumed=0 AND expires_at>=?",
 		challengeDigest[:], s.now().Unix())
 	if err != nil { jsonError(w, 503, "unavailable"); return }

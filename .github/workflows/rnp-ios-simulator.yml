@@ -3,7 +3,7 @@ name: RNP iOS Simulator Cross-Compile
 on:
   workflow_dispatch:
   push:
-    branches: [main, work/atomic-file-replacement]
+    branches: [main, work/atomic-file-replacement, work/dependency-provides-support]
 
 permissions:
   contents: read
@@ -150,6 +150,10 @@ jobs:
           pkg-config --modversion botan-3
           pkg-config --modversion json-c
           clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
+            -o "$RUNNER_TEMP/ORBITPackageTransactionEnvelope-ios.o"
+          clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
             -I"$RUNNER_TEMP/rnp-ios-install/include" \
             -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
@@ -248,6 +252,7 @@ jobs:
             -Iresearch/rnp-ios-spike/bridge \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-ios.o" \
             "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageTransactionEnvelope-ios.o" \
             $(pkg-config --static --libs librnp | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             $(pkg-config --static --libs botan-3 | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \

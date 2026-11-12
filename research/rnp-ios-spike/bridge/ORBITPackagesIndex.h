@@ -12,6 +12,7 @@
 #define ORBIT_PACKAGE_ARCH_CAPACITY 64U
 #define ORBIT_PACKAGE_FILENAME_CAPACITY 512U
 #define ORBIT_PACKAGE_DESCRIPTION_CAPACITY 768U
+#define ORBIT_PACKAGE_RELATION_CAPACITY 2048U
 
 typedef struct {
     char name[ORBIT_PACKAGE_NAME_CAPACITY];
@@ -20,6 +21,13 @@ typedef struct {
     char filename[ORBIT_PACKAGE_FILENAME_CAPACITY];
     char sha256[65];
     char description[ORBIT_PACKAGE_DESCRIPTION_CAPACITY];
+    char depends[ORBIT_PACKAGE_RELATION_CAPACITY];
+    char pre_depends[ORBIT_PACKAGE_RELATION_CAPACITY];
+    char conflicts[ORBIT_PACKAGE_RELATION_CAPACITY];
+    char breaks[ORBIT_PACKAGE_RELATION_CAPACITY];
+    char provides[ORBIT_PACKAGE_RELATION_CAPACITY];
+    char replaces[ORBIT_PACKAGE_RELATION_CAPACITY];
+    char multi_arch[32];
     uint64_t size;
 } orbit_package_record;
 

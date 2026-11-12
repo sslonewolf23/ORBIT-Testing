@@ -117,6 +117,13 @@ func main() {
 	s := &service{db: db, appID: cfg.appID, environment: cfg.environment,
 		roots: roots, now: time.Now}
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.Ping(); err != nil {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("GET /v1/orbit/journal/attestation-challenge", s.challenge)
 	mux.HandleFunc("POST /v1/orbit/journal/register", s.register)
 	mux.HandleFunc("POST /v1/orbit/journal/head", s.head)

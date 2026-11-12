@@ -33,6 +33,21 @@ static bool valid_stored_component(const char *name, size_t capacity) {
            orbit_package_archive_path_is_safe(name);
 }
 
+static bool valid_parent_path(const char *path, size_t capacity) {
+    if (!path) return false;
+    size_t length = strlen(path);
+    return length < capacity &&
+           (length == 0U || orbit_package_archive_path_is_safe(path));
+}
+
+static bool valid_stored_parent_path(const char *path, size_t capacity) {
+    if (!path) return false;
+    const char *terminator = (const char *)memchr(path, '\\0', capacity);
+    if (!terminator) return false;
+    size_t length = (size_t)(terminator - path);
+    return length == 0U || orbit_package_archive_path_is_safe(path);
+}
+
 static bool same_volume_directories(int first_fd, int second_fd) {
     struct stat first, second;
     return first_fd >= 0 && second_fd >= 0 &&
@@ -107,15 +122,20 @@ static orbit_filesystem_code verify_change(
     const orbit_package_file_change *change) {
     if (!change || change->version != ORBIT_FILESYSTEM_CHANGE_VERSION ||
         !valid_stored_component(change->target_name, sizeof(change->target_name)) ||
-        !valid_stored_component(change->backup_name, sizeof(change->backup_name)))
+        !valid_stored_component(change->backup_name, sizeof(change->backup_name)) ||
+        !valid_stored_parent_path(change->target_parent_path,
+                                  sizeof(change->target_parent_path)))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
         if (!valid_stored_component(change->staged_name, sizeof(change->staged_name)) ||
+            !valid_stored_parent_path(change->staged_parent_path,
+                                      sizeof(change->staged_parent_path)) ||
             change->staged_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
-        if (change->staged_name[0] != '\0' || !change->preimage_exists ||
-            change->preimage_inode == 0U)
+        if (change->staged_name[0] != '\0' ||
+            change->staged_parent_path[0] != '\0' ||
+            !change->preimage_exists || change->preimage_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else {
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
@@ -230,6 +250,73 @@ static orbit_filesystem_code restore_backup(
         return ORBIT_FILESYSTEM_IO_ERROR;
     if (fsync(target_parent_fd) < 0 || fsync(backup_parent_fd) < 0)
         return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    return ORBIT_FILESYSTEM_OK;
+}
+
+orbit_filesystem_code orbit_package_filesystem_set_parent_paths(
+    orbit_package_file_change *change,
+    const char *target_parent_relative_path,
+    const char *staged_parent_relative_path) {
+    orbit_filesystem_code valid = verify_change(change);
+    if (valid != ORBIT_FILESYSTEM_OK) return valid;
+    if (!valid_parent_path(target_parent_relative_path,
+                           ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY))
+        return ORBIT_FILESYSTEM_UNSAFE_PATH;
+    if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
+        if (!valid_parent_path(staged_parent_relative_path,
+                               ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY))
+            return ORBIT_FILESYSTEM_UNSAFE_PATH;
+    } else if (!staged_parent_relative_path ||
+               staged_parent_relative_path[0] != '\0') {
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    }
+    memcpy(change->target_parent_path, target_parent_relative_path,
+           strlen(target_parent_relative_path) + 1U);
+    if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
+        memcpy(change->staged_parent_path, staged_parent_relative_path,
+               strlen(staged_parent_relative_path) + 1U);
+    }
+    return ORBIT_FILESYSTEM_OK;
+}
+
+orbit_filesystem_code orbit_package_filesystem_open_parent_directory(
+    int trusted_root_fd, const char *relative_path, int *directory_fd) {
+    if (trusted_root_fd < 0 || !directory_fd ||
+        !valid_parent_path(relative_path, ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    *directory_fd = -1;
+    int current_fd = fcntl(trusted_root_fd, F_DUPFD_CLOEXEC, 0);
+    if (current_fd < 0) return ORBIT_FILESYSTEM_IO_ERROR;
+    if (relative_path[0] == '\0') {
+        *directory_fd = current_fd;
+        return ORBIT_FILESYSTEM_OK;
+    }
+
+    char path_copy[ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY];
+    memcpy(path_copy, relative_path, strlen(relative_path) + 1U);
+    char *segment = path_copy;
+    for (;;) {
+        char *slash = strchr(segment, '/');
+        bool final_segment = slash == NULL;
+        if (slash) *slash = '\0';
+        int next_fd = openat(current_fd, segment,
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (next_fd < 0) {
+            close(current_fd);
+            return ORBIT_FILESYSTEM_IO_ERROR;
+        }
+        struct stat status;
+        if (fstat(next_fd, &status) < 0 || !S_ISDIR(status.st_mode)) {
+            close(next_fd);
+            close(current_fd);
+            return ORBIT_FILESYSTEM_CONFLICT;
+        }
+        close(current_fd);
+        current_fd = next_fd;
+        if (final_segment) break;
+        segment = slash + 1U;
+    }
+    *directory_fd = current_fd;
     return ORBIT_FILESYSTEM_OK;
 }
 

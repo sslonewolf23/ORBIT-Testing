@@ -10,6 +10,16 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+static bool valid_staging_name(const char *name) {
+    if (!name) return false;
+    const char *terminator = (const char *)memchr(
+        name, '\\0', ORBIT_STAGING_NAME_CAPACITY);
+    if (!terminator || terminator == name) return false;
+    size_t length = (size_t)(terminator - name);
+    return memchr(name, '/', length) == NULL &&
+           orbit_package_archive_path_is_safe(name);
+}
+
 static int duplicate_cloexec(int fd) {
     return fcntl(fd, F_DUPFD_CLOEXEC, 0);
 }
@@ -335,7 +345,7 @@ orbit_staging_code orbit_package_staging_finish(
 orbit_staging_code orbit_package_staging_discard(
     orbit_package_staging *staging) {
     if (!staging || staging->base_directory_fd < 0 ||
-        staging->staging_name[0] == '\0')
+        !valid_staging_name(staging->staging_name))
         return ORBIT_STAGING_INVALID_STATE;
     if (staging->active_file_fd >= 0) {
         if (close(staging->active_file_fd) < 0) return ORBIT_STAGING_IO_ERROR;
@@ -357,6 +367,17 @@ orbit_staging_code orbit_package_staging_discard(
             return close(base_fd) == 0 ? ORBIT_STAGING_OK : ORBIT_STAGING_IO_ERROR;
         }
     }
+    struct stat root_status, named_status, base_status;
+    if (fstat(staging->base_directory_fd, &base_status) < 0 ||
+        !S_ISDIR(base_status.st_mode) ||
+        fstat(staging->staging_directory_fd, &root_status) < 0 ||
+        !S_ISDIR(root_status.st_mode) ||
+        fstatat(staging->base_directory_fd, staging->staging_name,
+                &named_status, AT_SYMLINK_NOFOLLOW) < 0 ||
+        !S_ISDIR(named_status.st_mode) ||
+        root_status.st_dev != named_status.st_dev ||
+        root_status.st_ino != named_status.st_ino)
+        return ORBIT_STAGING_INVALID_STATE;
     if (!remove_directory_contents(staging->staging_directory_fd))
         return ORBIT_STAGING_IO_ERROR;
 

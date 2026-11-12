@@ -55,7 +55,7 @@ bool orbit_release_metadata_parse(const uint8_t *data,size_t length,orbit_releas
     memset(out,0,sizeof(*out));
     char *buf=(char*)malloc(length+1); if(!buf) return false;
     memcpy(buf,data,length); buf[length]='\0';
-    bool seen_date=false,seen_valid=false,seen_suite=false,seen_code=false,seen_arch=false,seen_comp=false,seen_sha=false;
+    bool seen_origin=false,seen_date=false,seen_valid=false,seen_suite=false,seen_code=false,seen_arch=false,seen_comp=false,seen_sha=false;
     bool in_sha=false,ok=true; char *cursor=buf;
     while (*cursor && ok) {
         char *end=strchr(cursor,'\n'); if(end)*end='\0';
@@ -71,7 +71,8 @@ bool orbit_release_metadata_parse(const uint8_t *data,size_t length,orbit_releas
             else {
                 size_t keylen=(size_t)(colon-cursor); char *v=colon+1; if(*v==' ')v++;
                 size_t vl=strlen(v);
-                if(keylen==4 && memcmp(cursor,"Date",4)==0) { if(seen_date++)ok=false; else ok=copy_field(out->date,sizeof(out->date),v,vl); }
+                if(keylen==6 && memcmp(cursor,"Origin",6)==0) { if(seen_origin++)ok=false; else ok=copy_field(out->origin,sizeof(out->origin),v,vl); }
+                else if(keylen==4 && memcmp(cursor,"Date",4)==0) { if(seen_date++)ok=false; else ok=copy_field(out->date,sizeof(out->date),v,vl); }
                 else if(keylen==11 && memcmp(cursor,"Valid-Until",11)==0) { if(seen_valid++)ok=false; else ok=copy_field(out->valid_until,sizeof(out->valid_until),v,vl); }
                 else if(keylen==5 && memcmp(cursor,"Suite",5)==0) { if(seen_suite++)ok=false; else ok=copy_field(out->suite,sizeof(out->suite),v,vl); }
                 else if(keylen==8 && memcmp(cursor,"Codename",8)==0) { if(seen_code++)ok=false; else ok=copy_field(out->codename,sizeof(out->codename),v,vl); }
@@ -296,6 +297,17 @@ bool orbit_release_verify_index(const orbit_release_metadata *metadata,
     (void)botan_scrub_mem(expected_digest, sizeof(expected_digest));
     (void)botan_scrub_mem(actual_digest, sizeof(actual_digest));
     return ok;
+}
+
+bool orbit_release_metadata_matches_repository_policy(
+    const orbit_release_metadata *metadata,const char *expected_origin,
+    const char *expected_suite,const char *expected_codename,
+    const char *required_architecture,const char *required_component) {
+    if(!metadata||!expected_origin||!expected_origin[0]||
+       !metadata->origin[0]||strcmp(metadata->origin,expected_origin)!=0)
+        return false;
+    return orbit_release_metadata_matches_policy(metadata,expected_suite,
+        expected_codename,required_architecture,required_component);
 }
 
 bool orbit_release_freshness_valid(uint64_t date,uint64_t valid_until,uint64_t now,uint64_t max_age,uint64_t skew) {

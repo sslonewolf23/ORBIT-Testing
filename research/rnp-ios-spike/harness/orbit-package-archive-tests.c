@@ -152,7 +152,7 @@ int main(void) {
     size_t length = make_deb(deb, "./Library/ORBIT/example.dylib", '0');
     EXPECT("valid uncompressed deb accepted",
            orbit_package_archive_inspect_deb(deb, length, &report) == ORBIT_ARCHIVE_OK);
-    EXPECT("manifest entry counted", report.entries == 1U);
+    EXPECT("control and data manifest entries counted", report.entries == 2U);
     EXPECT("normalized path remains safe",
            orbit_package_archive_path_is_safe("Library/ORBIT/example.dylib"));
     EXPECT("required deb members present",
@@ -189,7 +189,7 @@ int main(void) {
            orbit_package_archive_inspect_deb(deb, length, &report) == ORBIT_ARCHIVE_UNSUPPORTED_ENTRY);
 
     length = make_deb(deb, "Library/file", '0');
-    /* Change data member to a compressed member name: it must not be parsed. */
+    /* Unknown compression suffixes must fail closed. */
     const uint8_t *data_name = (const uint8_t *)"data.tar";
     for (size_t i = 8U; i + 60U <= length; ++i) {
         if (memcmp(deb + i, data_name, 8U) == 0) {

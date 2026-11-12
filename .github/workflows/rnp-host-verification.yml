@@ -720,6 +720,20 @@ jobs:
           "$RUNNER_TEMP/orbit-package-filesystem-journal-tests" | tee "$RUNNER_TEMP/package-filesystem-journal.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem-journal.out"
 
+      - name: Compile and run canonical filesystem journal codec tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalCodec.c \
+            research/rnp-ios-spike/harness/orbit-package-filesystem-journal-codec-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-filesystem-journal-codec-tests"
+          "$RUNNER_TEMP/orbit-package-filesystem-journal-codec-tests" \
+            | tee "$RUNNER_TEMP/package-filesystem-journal-codec.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem-journal-codec.out"
+
       - name: Fuzz package archive and decompression parsers
         shell: bash
         run: |

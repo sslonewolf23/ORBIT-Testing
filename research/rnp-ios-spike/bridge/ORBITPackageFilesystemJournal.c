@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -79,6 +80,29 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     return result;
 }
 
+static bool backup_directory_is_empty(int directory_fd) {
+    int duplicate = fcntl(directory_fd, F_DUPFD_CLOEXEC, 0);
+    if (duplicate < 0) return false;
+    DIR *directory = fdopendir(duplicate);
+    if (!directory) {
+        close(duplicate);
+        return false;
+    }
+    bool empty = true;
+    errno = 0;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        if (strcmp(entry->d_name, ".") != 0 &&
+            strcmp(entry->d_name, "..") != 0) {
+            empty = false;
+            break;
+        }
+    }
+    if (errno != 0) empty = false;
+    closedir(directory);
+    return empty;
+}
+
 orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
     int backup_base_directory_fd,
     const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
@@ -130,6 +154,10 @@ orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
         opened_status.st_uid != geteuid() ||
         (opened_status.st_mode & 0077) != 0 ||
         opened_status.st_dev != base_status.st_dev) {
+        close(fd);
+        return ORBIT_FILESYSTEM_CONFLICT;
+    }
+    if (create && !backup_directory_is_empty(fd)) {
         close(fd);
         return ORBIT_FILESYSTEM_CONFLICT;
     }

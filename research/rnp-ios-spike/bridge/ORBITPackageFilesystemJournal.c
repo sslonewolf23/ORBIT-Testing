@@ -39,7 +39,10 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     valid = orbit_package_filesystem_open_parent_directory(
         executor->install_root_fd, change->target_parent_path,
         &target_parent_fd);
-    if (valid != ORBIT_FILESYSTEM_OK) return valid;
+    if (valid != ORBIT_FILESYSTEM_OK) {
+        close(backup_parent_fd);
+        return valid;
+    }
 
     if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
         valid = orbit_package_filesystem_open_parent_directory(
@@ -60,11 +63,11 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     else if (action == ORBIT_FILE_JOURNAL_ROLLBACK)
         result = orbit_package_filesystem_rollback(
             target_parent_fd, staged_parent_fd,
-            executor->backup_root_fd, change);
+            backup_parent_fd, change);
     else if (action == ORBIT_FILE_JOURNAL_FINALIZE)
         result = orbit_package_filesystem_finalize(
             target_parent_fd, staged_parent_fd,
-            executor->backup_root_fd, change);
+            backup_parent_fd, change);
     else
         result = ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 

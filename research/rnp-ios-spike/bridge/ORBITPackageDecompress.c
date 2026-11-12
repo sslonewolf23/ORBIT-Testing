@@ -40,7 +40,12 @@ static orbit_decompress_code decode_gzip(
     stream.next_in = (Bytef *)input;
     stream.avail_in = (uInt)length;
     orbit_decompress_code result = ORBIT_DECOMPRESS_MALFORMED;
+    unsigned steps = 0U;
     for (;;) {
+        if (++steps > ORBIT_DECOMPRESS_MAX_STEPS) {
+            result = ORBIT_DECOMPRESS_LIMIT;
+            break;
+        }
         stream.next_out = out;
         stream.avail_out = ORBIT_DECOMPRESS_CHUNK_BYTES;
         int status = inflate(&stream, Z_NO_FLUSH);
@@ -143,7 +148,12 @@ static orbit_decompress_code decode_zstd(
     ZSTD_inBuffer in = { input, length, 0U };
     orbit_decompress_code result = ORBIT_DECOMPRESS_MALFORMED;
     bool ended = false;
+    unsigned steps = 0U;
     while (in.pos < in.size || !ended) {
+        if (++steps > ORBIT_DECOMPRESS_MAX_STEPS) {
+            result = ORBIT_DECOMPRESS_LIMIT;
+            break;
+        }
         ZSTD_outBuffer output = { out, ORBIT_DECOMPRESS_CHUNK_BYTES, 0U };
         size_t before = in.pos;
         status = ZSTD_decompressStream(stream, &output, &in);

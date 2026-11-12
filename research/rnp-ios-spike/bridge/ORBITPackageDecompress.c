@@ -134,7 +134,9 @@ static orbit_decompress_code decode_zstd(
     orbit_decompress_sink sink, void *context, uint64_t *total) {
     ZSTD_DStream *stream = ZSTD_createDStream();
     if (!stream) return ORBIT_DECOMPRESS_LIMIT;
-    size_t status = ZSTD_initDStream(stream);
+    size_t status = ZSTD_DCtx_setParameter(stream, ZSTD_d_windowLogMax, 26);
+    if (ZSTD_isError(status)) { ZSTD_freeDStream(stream); return ORBIT_DECOMPRESS_UNSUPPORTED; }
+    status = ZSTD_initDStream(stream);
     if (ZSTD_isError(status)) { ZSTD_freeDStream(stream); return ORBIT_DECOMPRESS_UNSUPPORTED; }
     uint8_t *out = (uint8_t *)malloc(ORBIT_DECOMPRESS_CHUNK_BYTES);
     if (!out) { ZSTD_freeDStream(stream); return ORBIT_DECOMPRESS_LIMIT; }

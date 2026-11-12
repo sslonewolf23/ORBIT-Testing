@@ -41,7 +41,7 @@ typedef struct {
  *    floor, and authorize the requested pinned primary fingerprint.
  * 2. Verify the clear-signed InRelease with that exact primary key.
  * 3. Parse only the authenticated cleartext Release payload.
- * 4. Enforce caller-pinned suite, codename, architecture, and component.
+ * 4. Enforce caller-pinned Origin, suite, codename, architecture, and component.
  * 5. Enforce Valid-Until or the caller's maximum-age policy.
  * 6. Verify the exact Packages-index path, declared byte length, and SHA-256.
  *
@@ -57,6 +57,7 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
     size_t public_key_bundle_length,
     const uint8_t *inrelease_data,
     size_t inrelease_length,
+    const char *expected_origin,
     const char *expected_suite,
     const char *expected_codename,
     const char *required_architecture,

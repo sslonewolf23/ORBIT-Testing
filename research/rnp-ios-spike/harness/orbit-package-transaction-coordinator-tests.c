@@ -107,8 +107,11 @@ int main(void) {
     orbit_transaction_package_backend pb = { &f, resolve_package, apply_package, rollback_package };
     const orbit_bootstrap_profile *profile =
         orbit_bootstrap_profile_get(ORBIT_BOOTSTRAP_PROCursus_ROOTFUL);
+    char root_apt_path[1200], status_path[1400];
+    snprintf(root_apt_path, sizeof(root_apt_path), "%s", root);
+    snprintf(status_path, sizeof(status_path), "%s/var/lib/dpkg/status", root);
     orbit_transaction_native_lock_context nc = {
-        root_fd, profile, "var/lib/dpkg", getuid()
+        root_fd, profile, root_apt_path, status_path, getuid()
     };
 
     orbit_transaction_code result = orbit_package_transaction_execute_coordinated(
@@ -119,12 +122,12 @@ int main(void) {
     expect("transaction-journal-cleared", !f.present);
 
     unsigned before = f.loads;
-    nc.observed_admin_relative = "var/lib/other";
+    snprintf(status_path, sizeof(status_path), "%s/var/lib/other/status", root);
     result = orbit_package_transaction_recover_coordinated(&nc, &jb, &pb);
     expect("apt-admin-override-rejected", result == ORBIT_TRANSACTION_INVALID_ARGUMENT);
     expect("invalid-profile-does-not-touch-journal", f.loads == before);
 
-    nc.observed_admin_relative = "var/lib/dpkg";
+    snprintf(status_path, sizeof(status_path), "%s/var/lib/dpkg/status", root);
     result = orbit_package_transaction_recover_coordinated(&nc, &jb, &pb);
     expect("coordinated-recovery-succeeds", result == ORBIT_TRANSACTION_OK);
 

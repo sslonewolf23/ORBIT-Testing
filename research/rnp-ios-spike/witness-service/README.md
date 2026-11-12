@@ -79,8 +79,8 @@ and state transitions but cannot establish Apple's trust chain.
   extension parsing against Apple's current App Attest validation guide.
 - Verify Apple's current root/intermediate certificate rotation process.
 - Validate the App Attest validation-category and bundle-version extensions.
-- Recovery credentials are now part of enrollment. The client must generate and securely preserve a uniformly random 32-byte secret and show/export it only once. The server stores only a domain-separated HMAC verifier using `ORBIT_RECOVERY_PEPPER`; the raw credential is sent only over TLS during enrollment or recovery. Recovery challenges bind the old and replacement key IDs, expire after five minutes, and are single-use. A successful recovery replaces the App Attest key while preserving the exact journal revision, digest, tombstone, and an append-only key-recovery history row. Existing installations created before this migration have no verifier and cannot self-recover; they require a separately reviewed migration/re-enrollment process.
-- This recovery flow has not yet been integrated into the iOS client, and rate limits, credential display/backup UX, secure local storage, and recovery abuse monitoring remain to be implemented and tested.
+- Recovery credentials are now part of enrollment. The client must generate and securely preserve a uniformly random 32-byte secret and show/export it only once. The server stores only a domain-separated HMAC verifier using `ORBIT_RECOVERY_PEPPER`; the raw credential is sent only over TLS during enrollment or recovery. Recovery challenges are located by the credential and bind the old and replacement key IDs server-side, expire after five minutes, and are single-use. A successful recovery replaces the App Attest key while preserving the exact journal revision, digest, tombstone, and an append-only key-recovery history row. Existing installations created before this migration have no verifier and cannot self-recover; they require a separately reviewed migration/re-enrollment process.
+- The iOS client now generates the credential, stores it in device-only Keychain storage, and sends it during enrollment and recovery. The device validation host displays it once after first enrollment. The user must save it offline: losing both the device-only Keychain copy and the offline credential makes recovery impossible. Rate limits, production recovery UX, and abuse monitoring remain to be implemented and tested.
 - SQLite is durable for process/device crashes but can itself be rolled back
   by restoring an older host/database snapshot. A production deployment needs
   an independently protected monotonic witness or strongly consistent
@@ -118,8 +118,9 @@ Place the TLS certificate at `secrets/tls.crt`, the private key at
 `secrets/apple-app-attest-root.pem`. Do not download a trust root from an
 unverified mirror.
 
-Then configure `ORBIT_APP_ID` and `ORBIT_APP_ATTEST_ENV` in the deployment
-environment and run:
+Then configure `ORBIT_APP_ID`, `ORBIT_APP_ATTEST_ENV`, and a stable random
+`ORBIT_RECOVERY_PEPPER` (at least 32 random bytes encoded as text) in the
+deployment environment and run:
 
 ```sh
 docker compose up --build -d

@@ -53,7 +53,6 @@ static int run_apt(const char *root, const char *deb, const char *log_path) {
             "-o", "Dir::Etc::sourceparts=-",
             "-o", "Dir::Etc::main=-",
             "-o", "APT::Sandbox::User=root",
-            "-o", "DPkg::Options::=--root", 
             "-o", opt_dpkg_root,
             "--assume-yes", "--no-install-recommends", "--no-download",
             "install", deb, (char *)NULL);

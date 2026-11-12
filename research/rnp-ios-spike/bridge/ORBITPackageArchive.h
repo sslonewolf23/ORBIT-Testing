@@ -22,7 +22,8 @@ typedef enum {
     ORBIT_ARCHIVE_DUPLICATE_PATH,
     ORBIT_ARCHIVE_UNSUPPORTED_ENTRY,
     ORBIT_ARCHIVE_UNSUPPORTED_COMPRESSION,
-    ORBIT_ARCHIVE_MISSING_COMPONENT
+    ORBIT_ARCHIVE_MISSING_COMPONENT,
+    ORBIT_ARCHIVE_CALLBACK_ERROR
 } orbit_archive_code;
 
 typedef struct {
@@ -40,6 +41,16 @@ typedef struct {
     bool saw_data_archive;
     orbit_archive_code code;
 } orbit_archive_report;
+
+typedef bool (*orbit_archive_entry_callback)(
+    void *context, const orbit_archive_entry *entry);
+
+/* Reports data.tar entries only. Callbacks may receive partial results before
+ * a later archive error; callers must stage and discard the whole manifest
+ * unless this function returns ORBIT_ARCHIVE_OK. */
+orbit_archive_code orbit_package_archive_inspect_deb_with_data_entries(
+    const uint8_t *deb, size_t deb_length, orbit_archive_entry_callback callback,
+    void *callback_context, orbit_archive_report *report);
 
 /* Strict inspection only. No extraction, filesystem writes, or script execution.
  * Supports uncompressed, gzip, xz, bzip2, and zstd control/data tar members.

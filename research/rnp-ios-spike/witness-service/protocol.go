@@ -19,6 +19,7 @@ type signedRequest struct {
 	KeyID     string `json:"keyID"`
 	Request   string `json:"request"`
 	Assertion string `json:"assertion"`
+	RecoveryCredential string `json:"recoveryCredential"`
 }
 
 type registerRequest struct {

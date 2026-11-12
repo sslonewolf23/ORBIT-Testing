@@ -60,6 +60,7 @@ static int run_apt(const char *root, const char *deb, const char *log_path) {
             "-o", "Dir::Etc::sourceparts=-",
             "-o", "Dir::Etc::main=-",
             "-o", root_option,
+            "-o", "APT::Sandbox::User=root",
             "--assume-yes", "--no-install-recommends", "--no-download",
             "install", deb, (char *)NULL);
         _exit(121);
@@ -83,6 +84,8 @@ int main(void) {
     char *root = mkdtemp(root_template);
     expect("temporary bootstrap root created", root != NULL);
     if (!root) return 1;
+    expect("temporary root is traversable by the test package manager",
+           chmod(root, 0755) == 0);
 
     char path[1600], package_dir[1200], deb_path[1200], log_path[1200];
     const char *dirs[] = {

@@ -43,11 +43,18 @@ test -n "$SUBKEY_FPR"
 gpg --batch --homedir "$WORK/other" --export-secret-keys "$OTHER_FPR" > "$WORK/other-secret.gpg"
 gpg --batch --homedir "$WORK/trusted" --import "$WORK/other-secret.gpg" >/dev/null 2>&1
 
-cat > "$OUT/Packages" <<'EOF'
+printf 'ORBIT disposable package payload fixture\n' > "$OUT/orbit-fixture.deb"
+DEB_SHA="$(sha256sum "$OUT/orbit-fixture.deb" | awk '{print $1}')"
+DEB_SIZE="$(wc -c < "$OUT/orbit-fixture.deb" | tr -d ' ')"
+cat > "$OUT/Packages" <<EOF
 Package: orbit-fixture
 Version: 1.0
 Architecture: iphoneos-arm64
+Filename: pool/main/o/orbit-fixture/orbit-fixture_1.0_iphoneos-arm64.deb
+Size: $DEB_SIZE
+SHA256: $DEB_SHA
 Description: ORBIT repository verification integration fixture
+ This package record is a disposable parser fixture.
 
 EOF
 
@@ -313,7 +320,7 @@ printf '%s\n' "$OLD_FPR" > "$OUT/old-signer-primary.fingerprint"
 
 (
   cd "$OUT"
-  shasum -a 256 *.InRelease *.Release *.gpg Packages emergency-activation.timestamp > SHA256SUMS
+  shasum -a 256 *.InRelease *.Release *.gpg Packages orbit-fixture.deb emergency-activation.timestamp > SHA256SUMS
 )
 
 echo "Generated disposable RNP fixtures in: $OUT"

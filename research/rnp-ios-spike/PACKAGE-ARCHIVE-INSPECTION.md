@@ -30,7 +30,7 @@ The codec adapters decode incrementally into fixed-size output chunks and feed a
 - Absolute paths, backslashes, colon characters, control/non-ASCII bytes, and traversal.
 - Duplicate manifest paths and file-versus-directory ancestor collisions.
 - Symbolic links, hard links, devices, FIFOs, sparse files, PAX, GNU long-name records, and unknown entry types.
-- Non-ustar headers, malformed octal fields/checksums, truncated members, missing end blocks, and nonzero trailing data.
+- Non-ustar headers, malformed octal fields/checksums, truncated headers or payloads, nonzero payload padding, missing end blocks, and nonzero trailing data.
 - Unsupported compression suffixes and malformed compressed streams.
 
 ## Resource limits

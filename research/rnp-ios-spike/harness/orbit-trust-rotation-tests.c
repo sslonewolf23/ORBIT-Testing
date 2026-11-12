@@ -125,6 +125,17 @@ int main(int argc, char **argv) {
     expect("initial-pin-created", orbit_repository_trust_init(&state, trusted_fpr, recovery_fpr), true);
     expect("independent-recovery-root-pinned-at-enrollment",
         strcmp(state.recovery_fingerprint,recovery_fpr)==0,true);
+    expect("offline-recovery-root-is-not-a-repository-signer",
+        orbit_repository_trust_fingerprint_allowed(&state,recovery_fpr,
+            (uint64_t)time(NULL)),false);
+    orbit_repository_trust_state recovery_as_candidate;
+    expect("recovery-root-cannot-be-enrolled-as-next-signing-key",
+        orbit_repository_trust_init(&recovery_as_candidate,trusted_fpr,candidate_fpr),true);
+    expect("recovery-root-promotion-is-rejected",
+        orbit_repository_trust_authorize_rotation(&recovery_as_candidate,
+            "orbit-official",rotation,rotation_len,trusted,trusted_len,
+            candidate,candidate_len,(uint64_t)time(NULL))
+            ==ORBIT_TRUST_CANDIDATE_KEY_REJECTED,true);
     uint64_t now = (uint64_t)time(NULL);
     expect("time-floor-initialized", orbit_repository_trust_observe_time(&state, now), true);
     expect("old-key-authorized-initially", orbit_repository_trust_fingerprint_allowed(

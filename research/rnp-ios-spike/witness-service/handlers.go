@@ -244,23 +244,14 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 	}
 	publicDER, err := s.verifyAttestation(req.NewKeyID, challenge, attestation)
 	if err != nil { jsonError(w, 403, "replacement attestation rejected"); return }
-	tx, err := s.db.Begin(); if err != nil { jsonError(w, 503, "unavailable"); return }; defer tx.Rollback()
-	var revision, headDigest []byte
-	var tombstone int
-	if err = tx.QueryRow("SELECT revision,head_digest,tombstone FROM installations WHERE key_id=? AND recovery_verifier=?", oldKeyID, verifier).Scan(&revision,&headDigest,&tombstone); err != nil || len(revision)!=8 || len(headDigest)!=32 {
-		jsonError(w, 403, "recovery rejected"); return
-	}
-	res, err := tx.Exec("UPDATE recovery_challenges SET consumed=1 WHERE digest=? AND consumed=0 AND expires_at>=?", challengeDigest[:], s.now().Unix())
-	if err != nil { jsonError(w,503,"unavailable"); return }
-	n,_ := res.RowsAffected()
-	if n!=1 { jsonError(w,409,"recovery challenge consumed"); return }
-	if _, err = tx.Exec("INSERT INTO key_recovery_history(old_key_id,new_key_id,recovered_at,prior_revision,prior_head_digest,prior_tombstone) VALUES(?,?,?,?,?,?)", oldKeyID,req.NewKeyID,s.now().Unix(),revision,headDigest,tombstone); err != nil {
-		jsonError(w,409,"recovery conflict"); return
-	}
+	tx, err := s.db.Begin()
+	if err != nil { jsonError(w, 503, "unavailable"); return }
+	defer tx.Rollback()
 	attDigest := sha256.Sum256(attestation)
-	if _, err = tx.Exec("UPDATE installations SET key_id=?,public_key=?,attestation_digest=?,assertion_counter=0 WHERE key_id=? AND recovery_verifier=?", req.NewKeyID,publicDER,attDigest[:],oldKeyID,verifier); err != nil {
-		jsonError(w,409,"recovery conflict"); return
+	if err = commitKeyRecovery(tx, oldKeyID, req.NewKeyID, verifier,
+		challengeDigest[:], publicDER, attDigest[:], s.now().Unix()); err != nil {
+		jsonError(w, 409, "recovery rejected"); return
 	}
-	if err = tx.Commit(); err != nil { jsonError(w,503,"unavailable"); return }
+	if err = tx.Commit(); err != nil { jsonError(w, 503, "unavailable"); return }
 	w.WriteHeader(http.StatusNoContent)
 }

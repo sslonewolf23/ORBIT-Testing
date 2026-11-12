@@ -413,6 +413,20 @@ int main(int argc,char **argv) {
     expect("Packages-index-missing-artifact-digest-rejected",
         !orbit_packages_index_parse((const uint8_t*)incomplete_package,
             sizeof(incomplete_package)-1U,&parsed_index),true);
+    const char duplicate_field_package[]=
+        "Package: orbit-duplicate\nPackage: orbit-second\nVersion: 1.0\n"
+        "Architecture: iphoneos-arm64\nFilename: pool/orbit.deb\nSize: 1\n"
+        "SHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\n";
+    expect("Packages-index-duplicate-field-rejected",
+        !orbit_packages_index_parse((const uint8_t*)duplicate_field_package,
+            sizeof(duplicate_field_package)-1U,&parsed_index),true);
+    const char uppercase_package[]=
+        "Package: ORBIT-BAD\nVersion: 1.0\nArchitecture: iphoneos-arm64\n"
+        "Filename: pool/orbit.deb\nSize: 1\n"
+        "SHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\n";
+    expect("Packages-index-invalid-package-name-rejected",
+        !orbit_packages_index_parse((const uint8_t*)uppercase_package,
+            sizeof(uppercase_package)-1U,&parsed_index),true);
 
     uint8_t *tampered_packages=(uint8_t*)malloc(packages_len);
     expect("tampered-index-fixture-allocation",tampered_packages!=NULL,true);

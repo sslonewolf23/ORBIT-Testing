@@ -1,4 +1,5 @@
 #include "ORBITPackagesIndex.h"
+#include <botan/ffi.h>
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -229,4 +230,43 @@ void orbit_packages_index_destroy(orbit_packages_index *index) {
         free(index->packages);
     }
     index->packages=NULL;index->count=0U;
+}
+
+bool orbit_package_verify_artifact(const orbit_package_record *package,
+                                   const uint8_t *artifact_data,
+                                   size_t artifact_length) {
+    if(!package||!artifact_data||artifact_length==0U||
+       package->size!=(uint64_t)artifact_length||
+       !valid_relative_path(package->filename)||
+       !package->sha256[0]||strlen(package->sha256)!=64U)return false;
+    uint8_t expected[32],actual[32];
+    memset(expected,0,sizeof(expected));memset(actual,0,sizeof(actual));
+    for(size_t i=0U;i<32U;++i) {
+        unsigned char a=(unsigned char)package->sha256[i*2U];
+        unsigned char b=(unsigned char)package->sha256[i*2U+1U];
+        if(!isxdigit(a)||!isxdigit(b)) {
+            (void)botan_scrub_mem(expected,sizeof(expected));
+            (void)botan_scrub_mem(actual,sizeof(actual));
+            return false;
+        }
+        unsigned high=(unsigned)(isdigit(a)?a-'0':tolower(a)-'a'+10);
+        unsigned low=(unsigned)(isdigit(b)?b-'0':tolower(b)-'a'+10);
+        expected[i]=(uint8_t)((high<<4U)|low);
+    }
+    botan_hash_t hash=NULL;
+    if(botan_hash_init(&hash,"SHA-256",0)!=BOTAN_FFI_SUCCESS||!hash) {
+        (void)botan_scrub_mem(expected,sizeof(expected));
+        (void)botan_scrub_mem(actual,sizeof(actual));
+        return false;
+    }
+    size_t output_length=0U;
+    bool ok=botan_hash_output_length(hash,&output_length)==BOTAN_FFI_SUCCESS&&
+        output_length==sizeof(actual)&&
+        botan_hash_update(hash,artifact_data,artifact_length)==BOTAN_FFI_SUCCESS&&
+        botan_hash_final(hash,actual)==BOTAN_FFI_SUCCESS&&
+        botan_constant_time_compare(expected,actual,sizeof(actual))==0;
+    (void)botan_hash_destroy(hash);
+    (void)botan_scrub_mem(expected,sizeof(expected));
+    (void)botan_scrub_mem(actual,sizeof(actual));
+    return ok;
 }

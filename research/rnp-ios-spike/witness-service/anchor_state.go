@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"math"
 )
 
 func sameCheckpointState(c anchorCheckpoint, keyID string, publicKey []byte,
@@ -53,7 +52,7 @@ func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 		}
 		return remote,nil
 	}
-	if remote.Sequence > math.MaxInt64 {
+	if remote.Sequence > uint64(^uint64(0)>>1) {
 		return checkpoint, errors.New("anchor sequence exceeds local storage range")
 	}
 	// The anchor is authoritative. A stale DB backup is advanced to its exact
@@ -72,7 +71,7 @@ func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 func (s *service) appendAnchoredState(ctx context.Context, tx *sql.Tx,
 	verifier []byte, previous anchorCheckpoint, keyID string, publicKey []byte,
 	counter uint32, head witnessHead) (anchorCheckpoint,error) {
-	if previous.Sequence == math.MaxUint64 || previous.Sequence >= math.MaxInt64 {
+	if previous.Sequence == ^uint64(0) || previous.Sequence >= uint64(^uint64(0)>>1) {
 		return anchorCheckpoint{}, errors.New("monotonic anchor sequence exhausted")
 	}
 	next := anchorCheckpoint{

@@ -219,8 +219,6 @@ static orbit_filesystem_code persist_finish(
         free(current->committed);
         current->committed = current->pending;
         current->pending = NULL;
-        current->value.committed_ownership_length =
-            current->value.pending_ownership_length;
     } else {
         free(current->pending);
         current->pending = NULL;

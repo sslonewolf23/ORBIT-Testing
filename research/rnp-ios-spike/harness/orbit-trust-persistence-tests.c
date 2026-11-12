@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 typedef struct {
     uint64_t counter;
@@ -82,19 +83,21 @@ static orbit_trust_store_backend backend_for(memory_store *m) {
     orbit_trust_store_backend b={m,begin_transaction,end_transaction,read_counter,advance_counter,read_record,write_record,test_mac};return b;
 }
 int main(int argc,char **argv) {
-    if(argc!=8) {
-        fprintf(stderr,"usage: %s trusted-fpr recovery-keyring recovery-fpr emergency.InRelease candidate-keyring candidate-fpr emergency-time\n",argv[0]);
+    if(argc!=10) {
+        fprintf(stderr,"usage: %s trusted-fpr trusted-keyring normal-rotation.InRelease recovery-keyring recovery-fpr emergency.InRelease candidate-keyring candidate-fpr emergency-time\n",argv[0]);
         return 2;
     }
-    size_t recovery_len=0,emergency_len=0,candidate_len=0;
+    size_t trusted_len=0,normal_rotation_len=0,recovery_len=0,emergency_len=0,candidate_len=0;
     char *trusted_fpr=read_fixture_text(argv[1]);
-    uint8_t *recovery=read_fixture(argv[2],&recovery_len);
-    char *recovery_fpr=read_fixture_text(argv[3]);
-    uint8_t *emergency=read_fixture(argv[4],&emergency_len);
-    uint8_t *candidate=read_fixture(argv[5],&candidate_len);
-    char *candidate_fpr=read_fixture_text(argv[6]);
-    char *time_text=read_fixture_text(argv[7]);
-    if(!trusted_fpr||!recovery||!recovery_fpr||!emergency||!candidate||!candidate_fpr||!time_text) {
+    uint8_t *trusted=read_fixture(argv[2],&trusted_len);
+    uint8_t *normal_rotation=read_fixture(argv[3],&normal_rotation_len);
+    uint8_t *recovery=read_fixture(argv[4],&recovery_len);
+    char *recovery_fpr=read_fixture_text(argv[5]);
+    uint8_t *emergency=read_fixture(argv[6],&emergency_len);
+    uint8_t *candidate=read_fixture(argv[7],&candidate_len);
+    char *candidate_fpr=read_fixture_text(argv[8]);
+    char *time_text=read_fixture_text(argv[9]);
+    if(!trusted_fpr||!trusted||!normal_rotation||!recovery||!recovery_fpr||!emergency||!candidate||!candidate_fpr||!time_text) {
         fprintf(stderr,"recovery fixture read failed\n");return 2;
     }
     trusted_fpr[strcspn(trusted_fpr,"\r\n")]='\0';

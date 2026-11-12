@@ -525,6 +525,44 @@ int main(void) {
     EXPECT("orchestration applied and finalized exactly one file",
         install_executor.apply_calls == 1U &&
         install_executor.finalize_calls == 1U);
+
+    /* Continue with a real package removal using the committed snapshot
+     * produced above. The same authenticated envelope must atomically
+     * promote the post-removal ownership database. */
+    memset(install_transaction_id, 0xB3, sizeof(install_transaction_id));
+    orbit_package_file_plan_code remove_plan_result =
+        ORBIT_PACKAGE_FILE_PLAN_INVALID_ARGUMENT;
+    orbit_filesystem_code remove_journal_result =
+        ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    EXPECT("complete package removal orchestration succeeds",
+        orbit_package_remove_transaction_execute_enveloped(
+            &committed_snapshot, &candidate,
+            install_decoded.committed_ownership,
+            install_decoded.committed_ownership_length,
+            install_transaction_id, install_fd, backup_install_fd,
+            &install_backend, execute_change, &install_executor,
+            &remove_plan_result, &remove_journal_result) ==
+                ORBIT_PACKAGE_INSTALL_TRANSACTION_OK);
+    EXPECT("removal reports successful plan and journal",
+        remove_plan_result == ORBIT_PACKAGE_FILE_PLAN_OK &&
+        remove_journal_result == ORBIT_FILESYSTEM_OK);
+    EXPECT("removal deletes only the package-owned regular file",
+        faccessat(install_library, "orbit-demo.dylib",
+                  F_OK, AT_SYMLINK_NOFOLLOW) != 0);
+    EXPECT("removal atomically commits empty package ownership",
+        decode_memory(&install_memory, &install_decoded,
+            install_journal_buffer, install_committed_buffer,
+            install_pending_buffer) &&
+        install_decoded.state == ORBIT_TRANSACTION_ENVELOPE_EMPTY &&
+        orbit_package_ownership_decode(
+            install_decoded.committed_ownership,
+            install_decoded.committed_ownership_length,
+            committed_records, 4U, &committed_snapshot) ==
+                ORBIT_OWNERSHIP_CODEC_OK &&
+        committed_snapshot.count == 0U);
+    EXPECT("install then removal applied and finalized both transactions",
+        install_executor.apply_calls == 2U &&
+        install_executor.finalize_calls == 2U);
     free(install_journal_buffer);
     free(install_committed_buffer);
     free(install_pending_buffer);

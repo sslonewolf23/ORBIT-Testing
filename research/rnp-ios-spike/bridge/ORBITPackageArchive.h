@@ -29,6 +29,7 @@ typedef enum {
 typedef struct {
     char path[ORBIT_TAR_MAX_PATH + 1U];
     uint64_t size;
+    uint32_t mode;
     bool directory;
 } orbit_archive_entry;
 

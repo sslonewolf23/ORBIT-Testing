@@ -134,6 +134,22 @@ int main(void) {
         faccessat(stage_library, "new-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0 &&
         faccessat(install_library, "new-file", F_OK, AT_SYMLINK_NOFOLLOW) != 0);
 
+    size_t remove_count = 0U;
+    orbit_package_ownership_record remove_output[8];
+    orbit_package_ownership_snapshot after_remove;
+    result = orbit_package_file_plan_build_remove(
+        &installed, &candidate, install_fd, backup_fd,
+        changes, 8U, &remove_count, remove_output, 8U, &after_remove);
+    EXPECT("package removal plan builds", result == ORBIT_PACKAGE_FILE_PLAN_OK);
+    EXPECT("removal backs up every owned regular file",
+        remove_count == 1U &&
+        changes[0].operation == ORBIT_FILESYSTEM_REMOVE &&
+        strcmp(changes[0].target_parent_path, "Library") == 0);
+    EXPECT("removal drops only the selected package ownership rows",
+        after_remove.count == 0U);
+    EXPECT("removal planning leaves the installed file untouched",
+        faccessat(install_library, "old-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0);
+
     /* The orchestration entry point must refuse a stale ownership database
      * before it can plan or invoke the authenticated journal backend. */
     const uint8_t stale_ownership[] = { 0x00U };

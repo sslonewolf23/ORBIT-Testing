@@ -30,6 +30,7 @@ OTHER_FPR="$(fingerprint_for "$WORK/other")"
 RECOVERY_FPR="$(fingerprint_for "$WORK/recovery")"
 test -n "$TRUSTED_FPR"
 test -n "$OTHER_FPR"
+test -n "$RECOVERY_FPR"
 
 # Add a dedicated signing subkey under the trusted primary.
 gpg --batch --homedir "$WORK/trusted" --pinentry-mode loopback --passphrase "" --quick-add-key "$TRUSTED_FPR" ed25519 sign 0

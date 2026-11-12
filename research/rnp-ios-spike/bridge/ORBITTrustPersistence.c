@@ -301,8 +301,7 @@ orbit_trust_store_code orbit_repository_trust_store_save_for_testing(
     backend->end_transaction(backend->context,repository_id);
     return result;
 }
-
-
+#endif
 
 orbit_trust_store_code orbit_repository_trust_load_or_initialize(
  orbit_repository_trust_state *state,const char *repository_id,const char *bootstrap_primary_fingerprint,
@@ -484,4 +483,3 @@ bool orbit_repository_trust_prune_previous_and_store(
  bool success=changed&&*store_result==ORBIT_TRUST_STORE_OK;memset(&current,0,sizeof(current));backend->end_transaction(backend->context,repository_id);return success;
 }
 
-#endif

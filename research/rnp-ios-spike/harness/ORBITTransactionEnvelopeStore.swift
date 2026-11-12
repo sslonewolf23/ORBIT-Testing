@@ -163,8 +163,12 @@ actor ORBITTransactionEnvelopeStore {
     }
 
     func initializeEmptyEnvelope(payload: Data) async throws -> Data {
-        try await commit(payload: payload, expectedRevision: 0,
-                         expectedDigest: Data(repeating: 0, count: 32))
+        guard try envelopeRevision(payload) == 1,
+              payload.count >= 44, payload[5] == 0, payload[6] == 0 else {
+            throw ORBITEnvelopeStoreError.malformedEnvelope
+        }
+        return try await commit(payload: payload, expectedRevision: 0,
+                                expectedDigest: Data(repeating: 0, count: 32))
     }
 
     /*

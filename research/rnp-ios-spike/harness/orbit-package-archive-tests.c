@@ -47,6 +47,17 @@ static size_t make_tar(uint8_t *out, const char *path, char type) {
     return 1536U;
 }
 
+static size_t make_tar_three_entries(uint8_t *out,
+                                     const char *first, char first_type,
+                                     const char *second, char second_type,
+                                     const char *third, char third_type) {
+    memset(out, 0, 2560U);
+    make_tar_header(out, first, 0U, first_type);
+    make_tar_header(out + 512U, second, 0U, second_type);
+    make_tar_header(out + 1024U, third, 0U, third_type);
+    return 2560U;
+}
+
 static size_t append_ar_member(uint8_t *out, size_t offset,
                                const char *name, const uint8_t *body,
                                size_t body_length) {
@@ -157,6 +168,24 @@ static bool reject_data_entry(void *context,const orbit_archive_entry *entry) {
 }
 
 int main(void) {
+    uint8_t collision_tar[4096];
+    size_t collision_length = make_tar_three_entries(
+        collision_tar, "a", '0', "a-b", '0', "a/x", '0');
+    EXPECT("file ancestor collision found across sorted interleaving",
+        orbit_package_archive_test_inspect_tar_chunks(
+            collision_tar, collision_length, 513U, &report) == ORBIT_ARCHIVE_UNSAFE_PATH);
+    collision_length = make_tar_three_entries(
+        collision_tar, "a", '5', "a-b", '0', "a/x", '0');
+    EXPECT("directory ancestor remains valid after sorted validation",
+        orbit_package_archive_test_inspect_tar_chunks(
+            collision_tar, collision_length, 511U, &report) == ORBIT_ARCHIVE_OK);
+    collision_length = make_tar_three_entries(
+        collision_tar, "Library/same", '0', "Library/other", '0',
+        "Library/same", '0');
+    EXPECT("duplicate manifest paths rejected after sorting",
+        orbit_package_archive_test_inspect_tar_chunks(
+            collision_tar, collision_length, 997U, &report) == ORBIT_ARCHIVE_DUPLICATE_PATH);
+
     EXPECT("normal package path accepted",
            orbit_package_archive_path_is_safe("usr/lib/orbit/example.dylib"));
     EXPECT("parent traversal rejected",

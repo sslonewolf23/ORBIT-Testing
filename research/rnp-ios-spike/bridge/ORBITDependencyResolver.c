@@ -131,14 +131,14 @@ static bool relation_atom_valid(const char *expression) {
     char *open=strchr(copy,'(');
     if(open) {
         char *close=strchr(open,')');
-        if(!close||close[1]!='\\0')return false;
-        *open='\\0';*close='\\0';
+        if(!close||close[1]!='\0')return false;
+        *open='\0';*close='\0';
         char *value=open+1;trim(value);
         char *space=value;while(*space&&!isspace((unsigned char)*space))++space;
         size_t op_length=(size_t)(space-value);
         char op[3];
         if(op_length==0U||op_length>=sizeof(op))return false;
-        memcpy(op,value,op_length);op[op_length]='\\0';
+        memcpy(op,value,op_length);op[op_length]='\0';
         if(strcmp(op,"<<")&&strcmp(op,"<=")&&strcmp(op,"=")&&strcmp(op,">=")&&strcmp(op,">>"))return false;
         while(isspace((unsigned char)*space))++space;
         int comparison=0;

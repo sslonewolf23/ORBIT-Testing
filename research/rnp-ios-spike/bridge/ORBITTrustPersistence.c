@@ -236,17 +236,7 @@ orbit_trust_store_code orbit_repository_trust_store_save(
     return result;
 }
 
-static void reload_or_invalidate_state(
-    orbit_repository_trust_state *state,const char *repository_id,
-    const orbit_trust_store_backend *backend) {
-    orbit_repository_trust_state recovered;
-    memset(&recovered,0,sizeof(recovered));
-    if(orbit_repository_trust_store_load(&recovered,repository_id,backend)==ORBIT_TRUST_STORE_OK)
-        *state=recovered;
-    else
-        memset(state,0,sizeof(*state));
-    memset(&recovered,0,sizeof(recovered));
-}
+
 
 orbit_trust_store_code orbit_repository_trust_load_or_initialize(
  orbit_repository_trust_state *state,const char *repository_id,const char *bootstrap_primary_fingerprint,const orbit_trust_store_backend *backend) {

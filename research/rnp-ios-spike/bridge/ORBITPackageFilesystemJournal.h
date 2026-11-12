@@ -63,9 +63,17 @@ typedef orbit_filesystem_code (*orbit_package_filesystem_journal_executor)(
 typedef struct {
     int install_root_fd;
     int staging_root_fd;
-    int backup_root_fd;
+    int backup_base_directory_fd;
     uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES];
 } orbit_package_filesystem_executor_context;
+
+/* Opens the private backup directory named by the 16-byte transaction ID.
+ * create=true creates it with mode 0700; an existing directory is accepted
+ * only when it is owned by the effective user and has no group/other access. */
+orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
+    int backup_base_directory_fd,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
+    bool create, int *backup_directory_fd);
 
 /* Standard descriptor-resolving executor for the journal. The backup root
  * must already be opened for the supplied transaction ID. */

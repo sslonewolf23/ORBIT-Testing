@@ -49,7 +49,8 @@ private final class ORBITNoRedirectDelegate: NSObject, URLSessionTaskDelegate {
  * The caller MUST hold ORBIT's cross-process package transaction lock across
  * every load/commit/recovery operation. This actor serializes only this
  * process. App Attest enrollment and recovery are separate, explicit flows;
- * installIdentity accepts credentials only after those flows have succeeded.
+ * installIdentity stores the generated key ID and recovery credential before
+ * registration, and the store must not be used until registration succeeds.
  *
  * Each candidate is first written as a durable pending file, then anchored by
  * App Attest CAS, then atomically promoted. Recovery can finish either side of

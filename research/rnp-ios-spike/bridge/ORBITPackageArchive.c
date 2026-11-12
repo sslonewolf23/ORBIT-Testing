@@ -13,8 +13,12 @@
 #define AR_TRAILER "`\n"
 
 typedef struct {
-    char paths[ORBIT_TAR_MAX_ENTRIES][ORBIT_TAR_MAX_PATH + 1U];
-    bool directories[ORBIT_TAR_MAX_ENTRIES];
+    char path[ORBIT_TAR_MAX_PATH + 1U];
+    bool directory;
+} path_record;
+
+typedef struct {
+    path_record records[ORBIT_TAR_MAX_ENTRIES];
     size_t count;
 } path_set;
 
@@ -145,26 +149,52 @@ static bool tar_checksum_valid(const uint8_t *header) {
     return sum == stored;
 }
 
-static orbit_archive_code check_path_collision(const path_set *set,
-                                                const char *path,
-                                                bool directory) {
-    size_t path_length = strlen(path);
+static int compare_path_records(const void *left, const void *right) {
+    const path_record *a = (const path_record *)left;
+    const path_record *b = (const path_record *)right;
+    return strcmp(a->path, b->path);
+}
+
+static size_t path_lower_bound(const path_set *set, const char *path) {
+    size_t first = 0U;
+    size_t count = set->count;
+    while (count != 0U) {
+        size_t step = count / 2U;
+        size_t index = first + step;
+        if (strcmp(set->records[index].path, path) < 0) {
+            first = index + 1U;
+            count -= step + 1U;
+        } else {
+            count = step;
+        }
+    }
+    return first;
+}
+
+static orbit_archive_code validate_path_set(path_set *set) {
+    if (!set) return ORBIT_ARCHIVE_INVALID_ARGUMENT;
+    qsort(set->records, set->count, sizeof(set->records[0]), compare_path_records);
     for (size_t i = 0U; i < set->count; ++i) {
-        const char *existing = set->paths[i];
-        size_t existing_length = strlen(existing);
-        if (strcmp(existing, path) == 0) return ORBIT_ARCHIVE_DUPLICATE_PATH;
-        if (existing_length < path_length &&
-            strncmp(path, existing, existing_length) == 0 &&
-            path[existing_length] == '/' && !set->directories[i])
-            return ORBIT_ARCHIVE_UNSAFE_PATH;
-        if (path_length < existing_length &&
-            strncmp(existing, path, path_length) == 0 &&
-            existing[path_length] == '/' && !directory)
+        const path_record *record = &set->records[i];
+        if (i != 0U &&
+            strcmp(set->records[i - 1U].path, record->path) == 0)
+            return ORBIT_ARCHIVE_DUPLICATE_PATH;
+        if (record->directory) continue;
+
+        size_t length = strlen(record->path);
+        if (length >= ORBIT_TAR_MAX_PATH) return ORBIT_ARCHIVE_UNSAFE_PATH;
+        char descendant_prefix[ORBIT_TAR_MAX_PATH + 2U];
+        memcpy(descendant_prefix, record->path, length);
+        descendant_prefix[length] = '/';
+        descendant_prefix[length + 1U] = '\\0';
+        size_t descendant = path_lower_bound(set, descendant_prefix);
+        if (descendant < set->count &&
+            strncmp(set->records[descendant].path, descendant_prefix,
+                    length + 1U) == 0)
             return ORBIT_ARCHIVE_UNSAFE_PATH;
     }
     return ORBIT_ARCHIVE_OK;
 }
-
 
 static bool member_compression(const char *name, const char *base,
                                orbit_decompress_format *format, bool *compressed) {
@@ -263,14 +293,11 @@ static orbit_archive_code tar_stream_header(tar_stream *stream) {
         stream->report->entries >= ORBIT_TAR_MAX_ENTRIES)
         return ORBIT_ARCHIVE_LIMIT;
 
-    orbit_archive_code collision =
-        check_path_collision(stream->paths, path, directory);
-    if (collision != ORBIT_ARCHIVE_OK) return collision;
     if (stream->paths->count >= ORBIT_TAR_MAX_ENTRIES)
         return ORBIT_ARCHIVE_LIMIT;
-    strcpy(stream->paths->paths[stream->paths->count], path);
-    stream->paths->directories[stream->paths->count] = directory;
-    ++stream->paths->count;
+    path_record *record = &stream->paths->records[stream->paths->count++];
+    strcpy(record->path, path);
+    record->directory = directory;
 
     if (!directory) {
         uint64_t total = 0U;
@@ -358,7 +385,7 @@ static orbit_archive_code tar_stream_finish(tar_stream *stream) {
         stream->payload_remaining != 0U || stream->padding_remaining != 0U ||
         (stream->input_bytes % TAR_BLOCK_BYTES) != 0U)
         return ORBIT_ARCHIVE_MALFORMED_TAR;
-    return ORBIT_ARCHIVE_OK;
+    return validate_path_set(stream->paths);
 }
 
 static orbit_archive_code inspect_tar_member(

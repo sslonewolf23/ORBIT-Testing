@@ -258,7 +258,8 @@ jobs:
             -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \
             $(pkg-config --static --libs json-c | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             -L"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/lib" -lbz2 -lz -lc++ \
-            -framework UIKit -framework Foundation \
+            -framework UIKit -framework Foundation -framework DeviceCheck -framework Security \
+            research/rnp-ios-spike/harness/ORBITTransactionEnvelopeStore.swift \
             research/rnp-ios-spike/harness/ORBITRNPsimulatorApp.swift \
             -o "$APP/ORBITRNPsimulator"
           plutil -lint "$APP/Info.plist"

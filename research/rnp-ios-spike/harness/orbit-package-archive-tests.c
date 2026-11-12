@@ -240,6 +240,41 @@ int main(void) {
             ORBIT_ARCHIVE_MALFORMED_TAR);
     stream_tar[512U + sizeof(payload)] = 0U;
 
+    const size_t max_manifest_entries = ORBIT_TAR_MAX_ENTRIES;
+    const size_t large_tar_capacity = (max_manifest_entries + 2U) * 512U;
+    uint8_t *large_tar = (uint8_t *)calloc(1U, large_tar_capacity);
+    EXPECT("large manifest fixture allocation succeeds", large_tar != NULL);
+    if (large_tar) {
+        char large_path[64];
+        for (size_t i = 0U; i < max_manifest_entries; ++i) {
+            (void)snprintf(large_path, sizeof(large_path),
+                           "Library/ORBIT/pkg-%04u", (unsigned)i);
+            make_tar_header(large_tar + i * 512U, large_path, 0U, '0');
+        }
+        EXPECT("maximum manifest entry count remains accepted",
+            orbit_package_archive_test_inspect_tar_chunks(
+                large_tar, large_tar_capacity, 4093U, &report) == ORBIT_ARCHIVE_OK &&
+            report.entries == max_manifest_entries);
+        free(large_tar);
+    }
+
+    const size_t over_limit_entries = ORBIT_TAR_MAX_ENTRIES + 1U;
+    const size_t over_limit_capacity = (over_limit_entries + 2U) * 512U;
+    large_tar = (uint8_t *)calloc(1U, over_limit_capacity);
+    EXPECT("over-limit manifest fixture allocation succeeds", large_tar != NULL);
+    if (large_tar) {
+        char large_path[64];
+        for (size_t i = 0U; i < over_limit_entries; ++i) {
+            (void)snprintf(large_path, sizeof(large_path),
+                           "Library/ORBIT/over-%04u", (unsigned)i);
+            make_tar_header(large_tar + i * 512U, large_path, 0U, '0');
+        }
+        EXPECT("manifest entry ceiling enforced",
+            orbit_package_archive_test_inspect_tar_chunks(
+                large_tar, over_limit_capacity, 511U, &report) == ORBIT_ARCHIVE_LIMIT);
+        free(large_tar);
+    }
+
     uint8_t deb[8192];
     size_t length = make_deb(deb, "./Library/ORBIT/example.dylib", '0');
     EXPECT("valid uncompressed deb accepted",

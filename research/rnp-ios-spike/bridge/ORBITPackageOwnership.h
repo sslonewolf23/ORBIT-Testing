@@ -38,6 +38,12 @@ orbit_ownership_code orbit_package_ownership_plan_install(
     const orbit_package_record *candidate,
     const orbit_archive_entry *entries, size_t entry_count,
     orbit_package_ownership_plan *plan);
+orbit_ownership_code orbit_package_ownership_plan_install_deb(
+    const orbit_package_ownership_snapshot *installed,
+    const orbit_package_record *candidate,
+    const uint8_t *deb, size_t deb_length,
+    orbit_package_ownership_plan *plan,
+    orbit_archive_report *archive_report);
 orbit_ownership_code orbit_package_ownership_plan_remove(
     const orbit_package_ownership_snapshot *installed,
     const orbit_package_record *package,

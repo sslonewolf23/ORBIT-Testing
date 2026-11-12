@@ -342,7 +342,9 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
         for(size_t i=0;i<r->available->count;++i) {
             if(r->state[i]!=1U||!package_arch_ok(&r->available->packages[i],r->architecture))continue;
             char copy[RELATION_MAX];strcpy(copy,item);
-            if(relation_satisfied(&r->available->packages[i],copy)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            bool malformed=false;
+            if(package_satisfies_relation(&r->available->packages[i],copy,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
         for(size_t i=0;i<r->count;++i) {
             if(!package_arch_ok(r->ordered[i],r->architecture))continue;
@@ -382,6 +384,7 @@ static bool record_rejects_candidate(resolver *r,
                 if(package_satisfies_relation(candidate,copy,&malformed)) {
                     r->error=ORBIT_DEPENDENCY_CONFLICT;return true;
                 }
+                if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return true;}
             }
         }
     }

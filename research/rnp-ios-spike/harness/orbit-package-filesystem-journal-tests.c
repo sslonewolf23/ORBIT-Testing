@@ -542,7 +542,7 @@ int main(void) {
 
     const char *target_names[] = {
         "ok-a", "ok-b", "rb-a", "rb-b", "st-a", "st-b",
-        "cl-a", "cl-b", "pf-a", "pf-b", "dup-a", "dup-b"
+        "cl-a", "cl-b", "pf-a", "pf-b", "dup-a", "dup-b", "std-target"
     };
     const char *stage_names[] = {
         "ok-a-stage", "rb-a-stage", "st-a-stage", "cl-a-stage",

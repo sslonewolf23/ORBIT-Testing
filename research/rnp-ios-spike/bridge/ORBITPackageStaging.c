@@ -187,9 +187,15 @@ orbit_staging_code orbit_package_staging_begin(
         close(base_copy);
         return ORBIT_STAGING_IO_ERROR;
     }
+    if (fsync(base_copy) < 0) {
+        (void)unlinkat(base_copy, staging_name, AT_REMOVEDIR);
+        close(base_copy);
+        return ORBIT_STAGING_IO_ERROR;
+    }
     int root_fd = openat(base_copy, staging_name,
         O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    if (root_fd < 0 || fchmod(root_fd, 0700) < 0) {
+    if (root_fd < 0 || fchmod(root_fd, 0700) < 0 ||
+        (root_fd >= 0 && fsync(root_fd) < 0)) {
         if (root_fd >= 0) close(root_fd);
         (void)unlinkat(base_copy, staging_name, AT_REMOVEDIR);
         close(base_copy);

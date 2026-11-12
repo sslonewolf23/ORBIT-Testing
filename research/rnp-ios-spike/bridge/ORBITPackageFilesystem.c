@@ -253,6 +253,11 @@ static orbit_filesystem_code restore_backup(
     return ORBIT_FILESYSTEM_OK;
 }
 
+orbit_filesystem_code orbit_package_filesystem_validate_change(
+    const orbit_package_file_change *change) {
+    return verify_change(change);
+}
+
 orbit_filesystem_code orbit_package_filesystem_set_parent_paths(
     orbit_package_file_change *change,
     const char *target_parent_relative_path,

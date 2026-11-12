@@ -34,7 +34,7 @@ int main(void) {
 
     const orbit_bootstrap_profile *profile =
         orbit_bootstrap_profile_get(ORBIT_BOOTSTRAP_DOPAMINE_ELLEKIT_ROOTLESS);
-    orbit_bootstrap_lockset lockset = { -1, 0, { { -1, 0, 0 }, { -1, 0, 0 } } };
+    orbit_bootstrap_lockset lockset = { -1, 0, 0, { { -1, 0, 0 }, { -1, 0, 0 } } };
     EXPECT("Dopamine lockset acquires frontend then dpkg locks",
         profile && orbit_bootstrap_lockset_acquire(
             root, profile, geteuid(), &lockset) == ORBIT_NATIVE_LOCK_OK);

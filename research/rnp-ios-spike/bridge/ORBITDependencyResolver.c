@@ -276,12 +276,14 @@ static bool conflict_relation_atom_valid(const char *expression) {
     for (char *p = copy; p < end; ++p) if (*p == ':') return false;
     return true;
 }
+/* Debian Multi-Arch dependency semantics. */
 static bool package_satisfies_dependency(const orbit_package_record *package,
                                          const char *expression,
-                                         const char *architecture,
+                                         const char *depender_architecture,
+                                         const char *native_architecture,
                                          bool *malformed_provides) {
     if (malformed_provides) *malformed_provides = false;
-    if (!package || !expression || !architecture) return false;
+    if (!package || !expression || !depender_architecture || !native_architecture) return false;
     char normalized[RELATION_MAX];
     if (strlen(expression) >= sizeof(normalized)) return false;
     strcpy(normalized, expression);
@@ -290,29 +292,27 @@ static bool package_satisfies_dependency(const orbit_package_record *package,
     while (*end && !isspace((unsigned char)*end) && *end != '(') ++end;
     char *colon = NULL;
     for (char *p = normalized; p < end; ++p) if (*p == ':') colon = p;
+    const char *provider_arch = strcmp(package->architecture, "all") == 0
+        ? native_architecture : package->architecture;
     if (colon) {
         *colon = '\0';
         const char *qualifier = colon + 1;
         if (strcmp(qualifier, "native") == 0) {
-            if (strcmp(package->architecture, "all") != 0 &&
-                strcmp(package->architecture, architecture) != 0) return false;
+            if (strcmp(provider_arch, native_architecture) != 0) return false;
         } else if (strcmp(qualifier, "any") == 0) {
-            if (strcmp(package->architecture, "all") != 0 &&
-                strcmp(package->architecture, architecture) != 0 &&
-                strcmp(package->multi_arch, "allowed") != 0) return false;
+            if (strcmp(package->multi_arch, "allowed") != 0) return false;
         } else {
             if (malformed_provides) *malformed_provides = true;
             return false;
         }
-        size_t suffix = strlen(end);
-        memmove(colon + strlen(normalized), end, suffix + 1U);
-    } else if (strcmp(package->architecture, "all") != 0 &&
-               strcmp(package->architecture, architecture) != 0) {
+        memmove(colon + strlen(normalized), end, strlen(end) + 1U);
+    } else if (strcmp(provider_arch, depender_architecture) != 0 &&
+               strcmp(package->multi_arch, "foreign") != 0) {
         return false;
     }
     return package_satisfies_relation(package, normalized, malformed_provides);
 }
-static bool installed_satisfies(resolver *r,const char *expression) {
+static bool installed_satisfies(resolver *r,const char *expression,const char *depender_architecture) {
     for(size_t i=0;i<r->installed_count;++i) {
         const orbit_package_record *p=r->installed[i];
         if(!p)continue;
@@ -324,12 +324,12 @@ static bool installed_satisfies(resolver *r,const char *expression) {
         if(strlen(expression)>=sizeof(copy))return false;
         strcpy(copy,expression);
         bool malformed=false;
-        if(package_satisfies_dependency(p,copy,r->architecture,&malformed))return true;
+        if(package_satisfies_dependency(p,copy,depender_architecture,r->architecture,&malformed))return true;
         if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
     }
     return false;
 }
-static bool available_candidate_satisfies(resolver *r,const char *expression,size_t *index) {
+static bool available_candidate_satisfies(resolver *r,const char *expression,const char *depender_architecture,size_t *index) {
     bool found=false;
     for(size_t i=0;i<r->available->count;++i) {
         const orbit_package_record *p=&r->available->packages[i];
@@ -342,7 +342,7 @@ static bool available_candidate_satisfies(resolver *r,const char *expression,siz
         if(strlen(expression)>=sizeof(copy))return false;
         strcpy(copy,expression);
         bool malformed=false;
-        if(!package_satisfies_dependency(p,copy,r->architecture,&malformed)) {
+        if(!package_satisfies_dependency(p,copy,depender_architecture,r->architecture,&malformed)) {
             if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
             continue;
         }
@@ -357,7 +357,7 @@ static bool available_candidate_satisfies(resolver *r,const char *expression,siz
     return found;
 }
 static bool resolve_index(resolver *r,size_t index);
-static bool resolve_relation(resolver *r,const char *relation) {
+static bool resolve_relation(resolver *r,const char *relation,const char *depender_architecture) {
     if(!relation||!*relation)return true;
     if(strlen(relation)>=RELATION_MAX){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
     char expression[RELATION_MAX];strcpy(expression,relation);
@@ -369,10 +369,10 @@ static bool resolve_relation(resolver *r,const char *relation) {
         for(char *alt=strtok_r(group,"|",&alt_save);alt;alt=strtok_r(NULL,"|",&alt_save)) {
             trim(alt);
             if(!relation_atom_valid(alt)){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
-            if(installed_satisfies(r,alt)){satisfied=true;break;}
+            if(installed_satisfies(r,alt,depender_architecture)){satisfied=true;break;}
             if(r->error!=ORBIT_DEPENDENCY_OK)return false;
             size_t candidate=0;
-            if(available_candidate_satisfies(r,alt,&candidate)) {
+            if(available_candidate_satisfies(r,alt,depender_architecture,&candidate)) {
                 if(!resolve_index(r,candidate))return false;
                 satisfied=true;break;
             }
@@ -473,7 +473,8 @@ static bool resolve_index(resolver *r,size_t index) {
     r->state[index]=1U;
     if(!reverse_conflict(r,p)||!check_conflict_relation(r,p,p->conflicts)||
        !check_conflict_relation(r,p,p->breaks))return false;
-    if(!resolve_relation(r,p->pre_depends)||!resolve_relation(r,p->depends))return false;
+    const char *depender_architecture = strcmp(p->architecture, "all") == 0 ? r->architecture : p->architecture;
+    if(!resolve_relation(r,p->pre_depends,depender_architecture)||!resolve_relation(r,p->depends,depender_architecture))return false;
     if(r->count>=ORBIT_DEPENDENCY_PLAN_MAX){r->error=ORBIT_DEPENDENCY_LIMIT;return false;}
     r->ordered[r->count++]=p;r->state[index]=2U;return true;
 }

@@ -45,9 +45,12 @@ static int open_admin_directory(int root_fd, const char *relative_path) {
 }
 
 orbit_native_lock_code orbit_bootstrap_lockset_acquire(
-    int root_fd, const orbit_bootstrap_profile *profile, uid_t expected_owner,
+    int root_fd, const orbit_bootstrap_profile *profile,
+    const char *observed_admin_relative, uid_t expected_owner,
     orbit_bootstrap_lockset *lockset) {
     if (root_fd < 0 || !profile || !lockset ||
+        !orbit_bootstrap_profile_matches_admin_directory(
+            profile, observed_admin_relative) ||
         !profile->dpkg_admin_directory_relative ||
         !profile->frontend_lock_leaf || !profile->dpkg_lock_leaf)
         return ORBIT_NATIVE_LOCK_INVALID_ARGUMENT;

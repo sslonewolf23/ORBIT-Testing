@@ -13,7 +13,7 @@
 static bool valid_staging_name(const char *name) {
     if (!name) return false;
     const char *terminator = (const char *)memchr(
-        name, '\\0', ORBIT_STAGING_NAME_CAPACITY);
+        name, '\0', ORBIT_STAGING_NAME_CAPACITY);
     if (!terminator || terminator == name) return false;
     size_t length = (size_t)(terminator - name);
     return memchr(name, '/', length) == NULL &&

@@ -168,6 +168,7 @@ static bool reject_data_entry(void *context,const orbit_archive_entry *entry) {
 }
 
 int main(void) {
+    orbit_archive_report report;
     uint8_t collision_tar[4096];
     size_t collision_length = make_tar_three_entries(
         collision_tar, "a", '0', "a-b", '0', "a/x", '0');
@@ -199,7 +200,6 @@ int main(void) {
     EXPECT("dot segment rejected",
            !orbit_package_archive_path_is_safe("usr/./lib/file"));
 
-    orbit_archive_report report;
     uint8_t stream_tar[73728];
     size_t stream_tar_length = make_tar(stream_tar, "Library/ORBIT/stream.dylib", '0');
     const size_t chunk_sizes[] = { 1U, 511U, 512U, 513U, 65519U };

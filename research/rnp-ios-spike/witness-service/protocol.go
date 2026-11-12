@@ -40,10 +40,59 @@ type witnessHead struct {
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBytes)
-	dec := json.NewDecoder(r.Body)
+	data, err := io.ReadAll(r.Body)
+	if err != nil { return err }
+	if err := rejectDuplicateJSONKeys(data); err != nil { return err }
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(target); err != nil { return err }
 	if err := dec.Decode(new(any)); err != io.EOF { return errors.New("trailing JSON data") }
+	return nil
+}
+
+// rejectDuplicateJSONKeys rejects ambiguous object encodings before the
+// request is decoded into a protocol struct. encoding/json otherwise accepts
+// duplicate names and silently keeps the last value.
+func rejectDuplicateJSONKeys(data []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if err := consumeJSONValue(dec); err != nil { return err }
+	if _, err := dec.Token(); err != io.EOF {
+		if err == nil { return errors.New("trailing JSON data") }
+		return err
+	}
+	return nil
+}
+
+func consumeJSONValue(dec *json.Decoder) error {
+	token, err := dec.Token()
+	if err != nil { return err }
+	delim, isDelim := token.(json.Delim)
+	if !isDelim { return nil }
+	switch delim {
+	case '{':
+		seen := make(map[string]struct{})
+		for dec.More() {
+			keyToken, err := dec.Token()
+			if err != nil { return err }
+			key, ok := keyToken.(string)
+			if !ok { return errors.New("invalid JSON object key") }
+			if _, exists := seen[key]; exists {
+				return errors.New("duplicate JSON object key")
+			}
+			seen[key] = struct{}{}
+			if err := consumeJSONValue(dec); err != nil { return err }
+		}
+		end, err := dec.Token()
+		if err != nil || end != json.Delim('}') { return errors.New("malformed JSON object") }
+	case '[':
+		for dec.More() {
+			if err := consumeJSONValue(dec); err != nil { return err }
+		}
+		end, err := dec.Token()
+		if err != nil || end != json.Delim(']') { return errors.New("malformed JSON array") }
+	default:
+		return errors.New("unexpected JSON delimiter")
+	}
 	return nil
 }
 

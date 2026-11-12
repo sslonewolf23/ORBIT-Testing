@@ -104,7 +104,8 @@ int main(int argc,char **argv) {
     char *time_text=read_fixture_text(argv[9]);
     size_t index_inrelease_len=0U,packages_len=0U,artifact_len=0U;
     uint8_t *index_inrelease=read_fixture(argv[10],&index_inrelease_len);
-    uint8_t *packages=read_fixture(argv[11],&packages_len);\n    uint8_t *artifact=read_fixture(argv[12],&artifact_len);
+    uint8_t *packages=read_fixture(argv[11],&packages_len);
+    uint8_t *artifact=read_fixture(argv[12],&artifact_len);
     if(!trusted_fpr||!trusted||!normal_rotation||!recovery||!recovery_fpr||!emergency||!candidate||!candidate_fpr||!time_text||!index_inrelease||!packages||!artifact) {
         fprintf(stderr,"recovery fixture read failed\n");return 2;
     }
@@ -117,7 +118,8 @@ int main(int argc,char **argv) {
     if(!time_end||*time_end!='\0'||emergency_now==0U)return 2;
 
     const char *repo="orbit-official";
-    const char *pin="0123456789ABCDEF0123456789ABCDEF01234567";\n    const char *recovery_pin="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const char *pin="0123456789ABCDEF0123456789ABCDEF01234567";
+    const char *recovery_pin="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     memory_store storage;memset(&storage,0,sizeof(storage));
     orbit_trust_store_backend backend=backend_for(&storage);
     orbit_repository_trust_state state,loaded;

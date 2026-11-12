@@ -598,7 +598,7 @@ jobs:
             "$F/recovery-primary.fingerprint" "$F/valid-emergency-rotation.InRelease" \
             "$F/other-keyring.gpg" "$F/other-primary.fingerprint" \
             "$F/emergency-activation.timestamp" \
-            "$F/valid-trusted.InRelease" "$F/Packages" \
+            "$F/valid-trusted.InRelease" "$F/Packages" "$F/orbit-fixture.deb" \
             | tee "$RUNNER_TEMP/trust-persistence.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/trust-persistence.out"
 

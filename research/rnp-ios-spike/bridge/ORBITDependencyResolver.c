@@ -125,6 +125,103 @@ static bool relation_satisfied(const orbit_package_record *p,char *expr) {
     if(strcmp(op,">=")==0)return c>=0;
     return c>0;
 }
+static bool parse_relation_fields(const char *expression,
+                                  char *name, size_t name_capacity,
+                                  char *op, char *version,
+                                  size_t version_capacity) {
+    if (!expression || !*expression) return false;
+    char copy[RELATION_MAX];
+    if (strlen(expression) >= sizeof(copy)) return false;
+    strcpy(copy, expression);
+    trim(copy);
+    char *open = strchr(copy, '(');
+    op[0] = '\\0';
+    version[0] = '\\0';
+    if (open) {
+        char *close = strchr(open, ')');
+        if (!close || close[1] != '\\0') return false;
+        *open = '\\0';
+        *close = '\\0';
+        char *value = open + 1;
+        trim(value);
+        char *space = value;
+        while (*space && !isspace((unsigned char)*space)) ++space;
+        size_t op_length = (size_t)(space - value);
+        if (op_length == 0U || op_length >= 3U) return false;
+        memcpy(op, value, op_length);
+        op[op_length] = '\\0';
+        if (strcmp(op, "<<") && strcmp(op, "<=") && strcmp(op, "=") &&
+            strcmp(op, ">=") && strcmp(op, ">>")) return false;
+        while (isspace((unsigned char)*space)) ++space;
+        if (!*space || strlen(space) >= version_capacity) return false;
+        strcpy(version, space);
+        int self = 0;
+        if (!orbit_debian_version_compare(version, version, &self)) return false;
+    } else if (strchr(copy, ')')) {
+        return false;
+    }
+    trim(copy);
+    if (!*copy || strlen(copy) >= name_capacity ||
+        !isalnum((unsigned char)copy[0])) return false;
+    for (const unsigned char *p = (const unsigned char *)copy; *p; ++p)
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') ||
+              *p == '-' || *p == '+' || *p == '.')) return false;
+    strcpy(name, copy);
+    return true;
+}
+static bool version_matches_constraint(const char *actual,
+                                       const char *op,
+                                       const char *wanted) {
+    int comparison = 0;
+    if (!orbit_debian_version_compare(actual, wanted, &comparison)) return false;
+    if (strcmp(op, "<<") == 0) return comparison < 0;
+    if (strcmp(op, "<=") == 0) return comparison <= 0;
+    if (strcmp(op, "=") == 0) return comparison == 0;
+    if (strcmp(op, ">=") == 0) return comparison >= 0;
+    if (strcmp(op, ">>") == 0) return comparison > 0;
+    return false;
+}
+/* Debian versioned Provides only permits an exact provided version. */
+static bool package_satisfies_relation(const orbit_package_record *package,
+                                       const char *expression,
+                                       bool *malformed_provides) {
+    if (malformed_provides) *malformed_provides = false;
+    char dependency_name[TOKEN_MAX], dependency_op[3], dependency_version[TOKEN_MAX];
+    if (!parse_relation_fields(expression, dependency_name, sizeof(dependency_name),
+                               dependency_op, dependency_version,
+                               sizeof(dependency_version))) return false;
+    char direct[RELATION_MAX];
+    if (strlen(expression) < sizeof(direct)) {
+        strcpy(direct, expression);
+        if (relation_satisfied(package, direct)) return true;
+    }
+    if (!package->provides[0]) return false;
+    if (strlen(package->provides) >= RELATION_MAX) {
+        if (malformed_provides) *malformed_provides = true;
+        return false;
+    }
+    char list[RELATION_MAX];
+    strcpy(list, package->provides);
+    char *save = NULL;
+    for (char *item = strtok_r(list, ",", &save); item;
+         item = strtok_r(NULL, ",", &save)) {
+        trim(item);
+        char provided_name[TOKEN_MAX], provided_op[3], provided_version[TOKEN_MAX];
+        if (!parse_relation_fields(item, provided_name, sizeof(provided_name),
+                                   provided_op, provided_version,
+                                   sizeof(provided_version)) ||
+            (provided_op[0] && strcmp(provided_op, "=") != 0)) {
+            if (malformed_provides) *malformed_provides = true;
+            return false;
+        }
+        if (strcmp(provided_name, dependency_name) != 0) continue;
+        if (!dependency_op[0]) return true;
+        if (!provided_op[0]) continue;
+        if (version_matches_constraint(provided_version, dependency_op,
+                                       dependency_version)) return true;
+    }
+    return false;
+}
 static bool relation_atom_valid(const char *expression) {
     if(!expression||!*expression||strlen(expression)>=RELATION_MAX)return false;
     char copy[RELATION_MAX];strcpy(copy,expression);trim(copy);
@@ -161,7 +258,9 @@ static bool installed_satisfies(resolver *r,const char *expression) {
         char copy[RELATION_MAX];
         if(strlen(expression)>=sizeof(copy))return false;
         strcpy(copy,expression);
-        if(relation_satisfied(p,copy))return true;
+        bool malformed=false;
+        if(package_satisfies_relation(p,copy,&malformed))return true;
+        if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
     }
     return false;
 }
@@ -177,7 +276,11 @@ static bool available_candidate_satisfies(resolver *r,const char *expression,siz
         char copy[RELATION_MAX];
         if(strlen(expression)>=sizeof(copy))return false;
         strcpy(copy,expression);
-        if(!relation_satisfied(p,copy))continue;
+        bool malformed=false;
+        if(!package_satisfies_relation(p,copy,&malformed)) {
+            if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
+            continue;
+        }
         if(!found){*index=i;found=true;continue;}
         int comparison=0;
         if(!orbit_debian_version_compare(p->version,
@@ -232,7 +335,9 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
             const orbit_package_record *q=r->installed[i];
             if(!q||!package_arch_ok(q,r->architecture))continue;
             char copy[RELATION_MAX];strcpy(copy,item);
-            if(relation_satisfied(q,copy)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            bool malformed=false;
+            if(package_satisfies_relation(q,copy,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
         for(size_t i=0;i<r->available->count;++i) {
             if(r->state[i]!=1U||!package_arch_ok(&r->available->packages[i],r->architecture))continue;
@@ -242,7 +347,9 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
         for(size_t i=0;i<r->count;++i) {
             if(!package_arch_ok(r->ordered[i],r->architecture))continue;
             char copy[RELATION_MAX];strcpy(copy,item);
-            if(relation_satisfied(r->ordered[i],copy)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            bool malformed=false;
+            if(package_satisfies_relation(r->ordered[i],copy,&malformed)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+            if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         }
     }
     (void)p;return true;
@@ -271,7 +378,8 @@ static bool record_rejects_candidate(resolver *r,
             for(char *alt=strtok_r(item,"|",&alt_save);alt;alt=strtok_r(NULL,"|",&alt_save)) {
                 trim(alt);
                 char copy[RELATION_MAX];strcpy(copy,alt);
-                if(relation_satisfied(candidate,copy)) {
+                bool malformed=false;
+                if(package_satisfies_relation(candidate,copy,&malformed)) {
                     r->error=ORBIT_DEPENDENCY_CONFLICT;return true;
                 }
             }

@@ -427,6 +427,10 @@ int main(int argc,char **argv) {
     expect("Packages-index-invalid-package-name-rejected",
         !orbit_packages_index_parse((const uint8_t*)uppercase_package,
             sizeof(uppercase_package)-1U,&parsed_index),true);
+    const char unknown_only_stanza[]="X-Unknown: value\n\n";
+    expect("Packages-index-unknown-only-stanza-rejected",
+        !orbit_packages_index_parse((const uint8_t*)unknown_only_stanza,
+            sizeof(unknown_only_stanza)-1U,&parsed_index),true);
 
     uint8_t *tampered_packages=(uint8_t*)malloc(packages_len);
     expect("tampered-index-fixture-allocation",tampered_packages!=NULL,true);

@@ -1,7 +1,7 @@
 # ORBIT installed-package file ownership policy
 
 ## Scope
-This module plans ownership changes only. It does not extract archives, mutate files, or persist an installed-package database. Inputs are a validated ownership snapshot and candidate manifest from archive inspection.
+This module plans ownership changes only. It does not extract archives, mutate files, or persist an installed-package database. Inputs are a validated ownership snapshot and candidate manifest from archive inspection. The archive API exposes a data.tar-only entry callback; the convenience planner stages every callback entry and discards the entire manifest unless the complete Debian archive validates.
 
 ## Install and upgrade rules
 - Package identity is Debian package name plus architecture; version is retained as audit metadata.
@@ -13,7 +13,7 @@ This module plans ownership changes only. It does not extract archives, mutate f
 - Bounds: 4,096 candidate paths and 8,192 installed ownership records.
 
 ## Removal rules
-A removal plan includes paths recorded for the package identity. Shared directories are omitted while another package still references them. Unknown packages cannot request a removal plan.
+A removal plan includes paths recorded for the package identity. Shared directories are omitted while another package still references them or owns a descendant path. Unknown packages cannot request a removal plan.
 
 ## Integration boundary
 The module is not yet connected to persistent package state or the transaction engine. A future installer must atomically commit ownership database changes with filesystem mutations, and remove directories only with descriptor-relative, non-following operations after confirming they are empty. Ownership must be derived from inspected data archive manifests, never package maintainer scripts.

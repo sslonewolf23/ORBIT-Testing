@@ -242,7 +242,7 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute(
     record->revision = last_revision + 1U;
     memcpy(record->transaction_id, transaction_id,
            ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES);
-    record->change_count = change_count;
+    record->change_count = (uint32_t)change_count;
     memcpy(record->changes, changes, change_count * sizeof(*changes));
     if (!record_is_valid(record)) {
         free(record);

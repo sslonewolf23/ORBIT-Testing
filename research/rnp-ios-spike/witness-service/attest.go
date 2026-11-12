@@ -6,7 +6,6 @@ import (
 	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/sha256"
-	"context"
 	"crypto/x509"
 	"database/sql"
 	"encoding/asn1"

@@ -409,6 +409,26 @@ int main(int argc,char **argv) {
     if(parsed_ok) {
         expect("downloaded-deb-size-and-SHA256-verified",
             orbit_package_verify_artifact(&parsed_index.packages[0],artifact,artifact_len),true);
+        orbit_package_artifact_verifier streaming;
+        expect("streaming-artifact-verifier-initializes",
+            orbit_package_artifact_verifier_init(&streaming,&parsed_index.packages[0]),true);
+        size_t first_chunk=artifact_len/2U;
+        expect("streaming-artifact-first-chunk-accepted",
+            orbit_package_artifact_verifier_update(&streaming,artifact,first_chunk),true);
+        expect("streaming-artifact-second-chunk-accepted",
+            orbit_package_artifact_verifier_update(&streaming,artifact+first_chunk,
+                artifact_len-first_chunk),true);
+        expect("streaming-artifact-final-digest-accepted",
+            orbit_package_artifact_verifier_finalize(&streaming),true);
+        expect("streaming-artifact-overrun-rejected",
+            orbit_package_artifact_verifier_init(&streaming,&parsed_index.packages[0]) &&
+            !orbit_package_artifact_verifier_update(&streaming,artifact,
+                artifact_len+1U),true);
+        expect("streaming-artifact-truncated-finalize-rejected",
+            orbit_package_artifact_verifier_init(&streaming,&parsed_index.packages[0]) &&
+            orbit_package_artifact_verifier_update(&streaming,artifact,
+                artifact_len-1U) &&
+            !orbit_package_artifact_verifier_finalize(&streaming),true);
         uint8_t *tampered_artifact=(uint8_t*)malloc(artifact_len);
         expect("artifact-tamper-fixture-allocation",tampered_artifact!=NULL,true);
         if(tampered_artifact!=NULL) {

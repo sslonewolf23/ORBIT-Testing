@@ -21,7 +21,8 @@ static int open_admin_directory(int root_fd, const char *relative_path) {
     if (length >= sizeof(path)) return -1;
     memcpy(path, relative_path, length + 1);
 
-    int current = dup(root_fd);
+    int current = openat(root_fd, ".",
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
     if (current < 0) return -1;
     char *component = path;
     for (char *cursor = path; ; ++cursor) {

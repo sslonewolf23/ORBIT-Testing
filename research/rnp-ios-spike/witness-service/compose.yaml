@@ -1,0 +1,29 @@
+services:
+  orbit-witness:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    read_only: true
+    user: "65532:65532"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    ports:
+      - "8443:8443"
+    environment:
+      ORBIT_APP_ID: "${ORBIT_APP_ID:?set ORBIT_APP_ID}"
+      ORBIT_APP_ATTEST_ENV: "${ORBIT_APP_ATTEST_ENV:?set development or production}"
+      ORBIT_APP_ATTEST_ROOT_PEM: /run/secrets/apple-app-attest-root.pem
+      ORBIT_DB_PATH: /var/lib/orbit/witness.sqlite
+      ORBIT_LISTEN: 0.0.0.0:8443
+      ORBIT_TLS_CERT: /run/secrets/tls.crt
+      ORBIT_TLS_KEY: /run/secrets/tls.key
+    volumes:
+      - ./data:/var/lib/orbit
+      - ./secrets/apple-app-attest-root.pem:/run/secrets/apple-app-attest-root.pem:ro
+      - ./secrets/tls.crt:/run/secrets/tls.crt:ro
+      - ./secrets/tls.key:/run/secrets/tls.key:ro

@@ -775,10 +775,27 @@ orbit_filesystem_code orbit_package_filesystem_rollback(
                 file_identity_at(backup_parent_fd, change->backup_name,
                     change->preimage_device, change->preimage_inode,
                     NULL, NULL, NULL) : FILE_ID_MISSING;
+            /* The complete plan is journaled before applying its first item.
+             * Reverse rollback can therefore encounter a later new-file entry
+             * that never started. Its original staged inode, with no target
+             * or backup anchor, is already in the pre-apply state. */
+            file_identity_result staged_original =
+                change->operation == ORBIT_FILESYSTEM_REPLACE &&
+                !change->preimage_exists ?
+                file_identity_at(staged_parent_fd, change->staged_name,
+                    change->staged_device, change->staged_inode,
+                    NULL, NULL, NULL) : FILE_ID_MISSING;
+            if (change->operation == ORBIT_FILESYSTEM_REPLACE &&
+                !change->preimage_exists &&
+                old_target == FILE_ID_MISSING &&
+                old_backup == FILE_ID_MISSING &&
+                staged_original == FILE_ID_MATCH)
+                return ORBIT_FILESYSTEM_OK;
             if (old_target == FILE_ID_MATCH && old_links == 1 &&
                 old_backup == FILE_ID_MISSING)
                 return ORBIT_FILESYSTEM_OK;
-            if (old_target == FILE_ID_ERROR || old_backup == FILE_ID_ERROR)
+            if (old_target == FILE_ID_ERROR || old_backup == FILE_ID_ERROR ||
+                staged_original == FILE_ID_ERROR)
                 return ORBIT_FILESYSTEM_IO_ERROR;
             return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
         }

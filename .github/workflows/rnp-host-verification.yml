@@ -671,6 +671,21 @@ jobs:
           "$RUNNER_TEMP/orbit-package-archive-tests" | tee "$RUNNER_TEMP/package-archive.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-archive.out"
 
+      - name: Compile and run private package staging tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/bridge/ORBITPackageStaging.c \
+            research/rnp-ios-spike/harness/orbit-package-staging-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-staging-tests"
+          "$RUNNER_TEMP/orbit-package-staging-tests" | tee "$RUNNER_TEMP/package-staging.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-staging.out"
+
       - name: Fuzz package archive and decompression parsers
         shell: bash
         run: |

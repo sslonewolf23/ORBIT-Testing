@@ -42,6 +42,9 @@ typedef struct {
 
 /* Prepare is read-only. The caller must persist the returned change record in
  * its authenticated, monotonic transaction journal before calling apply(). */
+orbit_filesystem_code orbit_package_filesystem_validate_change(
+    const orbit_package_file_change *change);
+
 orbit_filesystem_code orbit_package_filesystem_prepare_replace(
     int target_parent_fd, const char *target_name,
     int staged_parent_fd, const char *staged_name,

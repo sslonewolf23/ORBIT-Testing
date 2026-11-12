@@ -28,13 +28,6 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
         executor->staging_root_fd < 0)
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
-    char backup_name[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES * 2U + 1U];
-    static const char hex[] = "0123456789abcdef";
-    for (size_t i = 0U; i < ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES; ++i) {
-        backup_name[i * 2U] = hex[transaction_id[i] >> 4U];
-        backup_name[i * 2U + 1U] = hex[transaction_id[i] & 0x0fU];
-    }
-    backup_name[sizeof(backup_name) - 1U] = '\\0';
     int backup_parent_fd = -1;
     valid = orbit_package_filesystem_open_backup_directory(
         executor->backup_base_directory_fd, transaction_id, false,

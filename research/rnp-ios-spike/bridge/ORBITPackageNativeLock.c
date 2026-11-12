@@ -25,8 +25,14 @@ orbit_native_lock_code orbit_package_native_lock_acquire_at(
         return ORBIT_NATIVE_LOCK_IO_ERROR;
     if (!S_ISDIR(parent_status.st_mode))
         return ORBIT_NATIVE_LOCK_INVALID_ARGUMENT;
+    if (parent_status.st_uid != expected_owner ||
+        (parent_status.st_mode & 0022) != 0)
+        return ORBIT_NATIVE_LOCK_CONFLICT;
 
-    int fd = openat(parent_fd, lock_name, O_RDWR | O_CLOEXEC | O_NOFOLLOW);
+    /* APT's GetLock() creates a missing lock file with mode 0640, then
+     * obtains a whole-file F_SETLK write lock. Match that behavior. */
+    int fd = openat(parent_fd, lock_name,
+        O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW, 0640);
     if (fd < 0) return ORBIT_NATIVE_LOCK_IO_ERROR;
 
     struct stat opened, named;

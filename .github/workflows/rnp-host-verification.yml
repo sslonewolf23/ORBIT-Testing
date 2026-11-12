@@ -796,6 +796,21 @@ jobs:
             | tee "$RUNNER_TEMP/package-transaction-coordinator.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction-coordinator.out"
 
+      - name: Compile libapt-pkg adapter against Procursus-pinned APT headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch 2.9.4 https://github.com/Debian/apt.git "$RUNNER_TEMP/apt-2.9.4"
+          mkdir -p "$RUNNER_TEMP/apt-header-overlay/apt-pkg"
+          ln -s "$RUNNER_TEMP/apt-2.9.4/apt-pkg/contrib/macros.h" \
+            "$RUNNER_TEMP/apt-header-overlay/apt-pkg/macros.h"
+          clang++ -std=c++17 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/apt-header-overlay" \
+            -I"$RUNNER_TEMP/apt-2.9.4" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITAPTLibaptAdapter.cpp \
+            -o "$RUNNER_TEMP/orbit-apt-libapt-adapter.o"
+
       - name: Compile and run effective APT status path resolver tests
         shell: bash
         run: |

@@ -25,6 +25,8 @@ int main(void) {
         !resolves("/var/jb", "/var/jb2/var/lib/dpkg/status", "var/lib/dpkg"));
     expect("status outside bootstrap root rejected",
         !resolves("/var/jb", "/private/var/lib/dpkg/status", "var/lib/dpkg"));
+    expect("status shorter than bootstrap prefix rejected safely",
+        !resolves("/var/jb/long-bootstrap-root", "/x", "var/lib/dpkg"));
     expect("custom status directory resolves exactly",
         resolves("/var/jb", "/var/jb/private/dpkg/status", "private/dpkg"));
     expect("non-status filename rejected",

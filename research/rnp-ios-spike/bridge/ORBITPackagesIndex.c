@@ -39,6 +39,7 @@ static bool copy_value(char *out,size_t capacity,const char *value,size_t length
 static bool valid_token(const char *value,bool allow_plus_dot) {
     if(!value||!value[0]||!isalnum((unsigned char)value[0]))return false;
     for(const unsigned char *p=(const unsigned char *)value;*p;++p) {
+        if(*p>='A'&&*p<='Z')return false;
         if(isalnum(*p))continue;
         if(*p=='-'||(allow_plus_dot&&(*p=='+'||*p=='.')))continue;
         return false;

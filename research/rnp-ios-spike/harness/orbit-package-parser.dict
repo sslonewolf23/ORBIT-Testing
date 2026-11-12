@@ -10,8 +10,6 @@
 "data.tar.xz"
 "data.tar.bz2"
 "data.tar.zst"
-"`\n"
-"2.0\n"
 # ustar header markers and common fields
 "ustar"
 "0000644"

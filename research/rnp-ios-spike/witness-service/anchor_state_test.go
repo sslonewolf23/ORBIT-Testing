@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-type memoryAnchor struct { items map[string]anchorCheckpoint }
+type memoryAnchor struct { items map[string]anchorCheckpoint; failAppend bool }
 
 func newMemoryAnchor() *memoryAnchor { return &memoryAnchor{items: make(map[string]anchorCheckpoint)} }
 func (m *memoryAnchor) Health(_ context.Context) error { return nil }
@@ -15,6 +15,7 @@ func (m *memoryAnchor) Latest(_ context.Context,id string)(anchorCheckpoint,bool
 	c,ok:=m.items[id]; return c,ok,nil
 }
 func (m *memoryAnchor) Append(_ context.Context,id string,c anchorCheckpoint) error {
+	if m.failAppend { return errors.New("simulated anchor outage") }
 	if err:=validateCheckpoint(c); err!=nil { return err }
 	if c.InstallationID!=id { return errors.New("installation binding mismatch") }
 	prior,ok:=m.items[id]
@@ -140,4 +141,35 @@ func TestReconcileRebuildsCompletelyMissingSQLiteInstallation(t *testing.T) {
 		!equalBytes(storedVerifier,verifier) {
 		t.Fatal("missing local installation was not reconstructed from anchor")
 	}
+}
+
+func TestAnchorAppendFailureDoesNotAdvanceSQLiteCache(t *testing.T) {
+	db,err:=openDatabase(filepath.Join(t.TempDir(),"witness.sqlite"))
+	if err!=nil { t.Fatal(err) }
+	defer db.Close()
+	verifier:=make([]byte,32); verifier[0]=0xD4
+	head:=witnessHead{Revision:3,Tombstone:false}; head.Digest[0]=0x31
+	id:=installationAnchorID(verifier)
+	anchor:=newMemoryAnchor()
+	prior:=anchorCheckpoint{InstallationID:id,Sequence:1,KeyID:"key",
+		PublicKey:[]byte("public"),Counter:7,Head:head}
+	prior.Hash=checkpointHash(prior)
+	anchor.items[id]=prior
+	if _,err:=db.Exec(`INSERT INTO installations
+		(key_id,public_key,attestation_digest,assertion_counter,revision,head_digest,
+		tombstone,created_at,recovery_verifier,anchor_sequence)
+		VALUES(?,?,?,7,?,?,0,1,?,1)`,
+		"key",[]byte("public"),[]byte("att"),u64Bytes(3),head.Digest[:],verifier); err!=nil { t.Fatal(err) }
+	anchor.failAppend=true
+	s:=&service{db:db,anchor:anchor}
+	tx,err:=db.Begin(); if err!=nil { t.Fatal(err) }
+	_,err=s.appendAnchoredState(context.Background(),tx,verifier,prior,
+		"key",[]byte("public"),8,head)
+	if err==nil { _=tx.Rollback(); t.Fatal("anchor outage accepted") }
+	_ = tx.Rollback()
+	var sequence int64
+	var counter uint32
+	if err:=db.QueryRow("SELECT anchor_sequence,assertion_counter FROM installations WHERE recovery_verifier=?",verifier).
+		Scan(&sequence,&counter); err!=nil { t.Fatal(err) }
+	if sequence!=1 || counter!=7 { t.Fatal("SQLite cache advanced despite failed external anchor append") }
 }

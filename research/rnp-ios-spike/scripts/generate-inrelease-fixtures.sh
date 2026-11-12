@@ -163,10 +163,10 @@ import pathlib, sys
 src = pathlib.Path(sys.argv[1]).read_bytes()
 marker = b"-----BEGIN PGP SIGNATURE-----"
 head, sep, tail = src.partition(marker)
-if not sep or b"Origin: Cydia Successor Test" not in head:
+if not sep or b"Origin: ORBIT Test" not in head:
     raise SystemExit("Unexpected clearsigned fixture framing")
 pathlib.Path(sys.argv[2]).write_bytes(
-    head.replace(b"Origin: Cydia Successor Test", b"Origin: Tampered Repository", 1)
+    head.replace(b"Origin: ORBIT Test", b"Origin: Tampered Repository", 1)
     + sep + tail
 )
 PY

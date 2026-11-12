@@ -30,6 +30,21 @@ int main(void) {
     EXPECT("native lock fixture created", fixture >= 0);
     if (fixture >= 0) close(fixture);
 
+    orbit_package_native_lock created = { -1, 0, 0 };
+    EXPECT("missing APT-style lock file is created safely",
+        orbit_package_native_lock_acquire_at(root, "new-lock", geteuid(),
+            &created) == ORBIT_NATIVE_LOCK_OK);
+    struct stat created_status;
+    EXPECT("created lock file has APT-compatible permissions",
+        fstat(created.descriptor, &created_status) == 0 &&
+        S_ISREG(created_status.st_mode) && created_status.st_nlink == 1 &&
+        (created_status.st_mode & 0777) == 0640);
+    EXPECT("created lock released",
+        orbit_package_native_lock_release_at(root, "new-lock", &created) ==
+            ORBIT_NATIVE_LOCK_OK);
+    EXPECT("created lock fixture removed",
+        unlinkat(root, "new-lock", 0) == 0);
+
     orbit_package_native_lock held = { -1, 0, 0 };
     EXPECT("native fcntl lock acquired",
         orbit_package_native_lock_acquire_at(root, "dpkg-lock", geteuid(),

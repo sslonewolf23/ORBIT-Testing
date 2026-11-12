@@ -210,11 +210,16 @@ orbit_filesystem_code orbit_package_filesystem_prepare_replace(
             target_parent_fd, staged_parent_fd, backup_parent_fd, true))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
+    struct stat target_parent_status;
+    if (fstat(target_parent_fd, &target_parent_status) < 0 ||
+        !S_ISDIR(target_parent_status.st_mode))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
     uint64_t staged_device = 0U, staged_inode = 0U;
     nlink_t staged_links = 0;
     if (read_regular_file(staged_parent_fd, staged_name,
                           &staged_device, &staged_inode, &staged_links) != FILE_ID_MATCH ||
-        staged_links != 1)
+        staged_links != 1 || staged_device != (uint64_t)target_parent_status.st_dev)
         return ORBIT_FILESYSTEM_CONFLICT;
     if (!backup_is_missing(backup_parent_fd, backup_name))
         return ORBIT_FILESYSTEM_CONFLICT;
@@ -225,7 +230,9 @@ orbit_filesystem_code orbit_package_filesystem_prepare_replace(
         target_parent_fd, target_name,
         &preimage_device, &preimage_inode, &preimage_links);
     if (target == FILE_ID_ERROR) return ORBIT_FILESYSTEM_IO_ERROR;
-    if (target == FILE_ID_OTHER || (target == FILE_ID_MATCH && preimage_links != 1))
+    if (target == FILE_ID_OTHER || (target == FILE_ID_MATCH &&
+        (preimage_links != 1 ||
+         preimage_device != (uint64_t)target_parent_status.st_dev)))
         return ORBIT_FILESYSTEM_CONFLICT;
 
     memset(change, 0, sizeof(*change));
@@ -251,12 +258,18 @@ orbit_filesystem_code orbit_package_filesystem_prepare_remove(
         !same_volume_directories(target_parent_fd, backup_parent_fd))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
+    struct stat target_parent_status;
+    if (fstat(target_parent_fd, &target_parent_status) < 0 ||
+        !S_ISDIR(target_parent_status.st_mode))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     uint64_t preimage_device = 0U, preimage_inode = 0U;
     nlink_t preimage_links = 0;
-    if (read_regular_file(target_parent_fd, target_name,
-                          &preimage_device, &preimage_inode,
-                          &preimage_links) != FILE_ID_MATCH ||
-        preimage_links != 1)
+    file_identity_result target = read_regular_file(
+        target_parent_fd, target_name,
+        &preimage_device, &preimage_inode, &preimage_links);
+    if (target == FILE_ID_ERROR) return ORBIT_FILESYSTEM_IO_ERROR;
+    if (target != FILE_ID_MATCH || preimage_links != 1 ||
+        preimage_device != (uint64_t)target_parent_status.st_dev)
         return ORBIT_FILESYSTEM_CONFLICT;
     if (!backup_is_missing(backup_parent_fd, backup_name))
         return ORBIT_FILESYSTEM_CONFLICT;

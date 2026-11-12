@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"strconv"
+	"strings"
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -65,6 +65,9 @@ func parseAllowedBundleVersions(raw string) (map[string]struct{}, error) {
 		}
 		if _, exists := result[item]; exists { return nil, errors.New("duplicate bundle version") }
 		result[item] = struct{}{}
+	}
+	if len(result) != 1 {
+		return nil, errors.New("exactly one active bundle version must be allowlisted")
 	}
 	return result, nil
 }

@@ -136,3 +136,45 @@ The encoder uses fixed-width big-endian integers, rejects invalid state combinat
 The host harness covers canonical encode/decode, malformed/truncated/trailing data, revision jumps, rollback preservation, commit promotion, and split-brain rejection. The iOS harness now includes a Swift persistence adapter that uses a device-only Keychain identity, HMAC-SHA-256 over the complete envelope, a same-directory pending-file/atomic-rename protocol, and App Attest assertions against the existing independent freshness-witness service. A pending file is retained when the witness is unavailable so recovery can retry; the adapter never silently recreates missing identity material.
 
 Important integration boundary: the envelope codec/state validator and Swift adapter are new building blocks. The existing per-file journal backend and package transaction coordinator have **not yet been switched over** to this combined backend. The Swift adapter is currently compiled as part of the simulator harness, not wired into a production ORBIT app or privileged filesystem helper. It assumes the caller holds the package-wide cross-process lock, and App Attest enrollment/recovery plus real-device crash testing remain separate prerequisites. The envelope payload digest and server witness format must be kept byte-for-byte consistent during integration. Installation remains disabled.
+
+
+## Enveloped filesystem journal executor
+
+ORBITPackageFilesystemJournalEnvelope.h/.c now adds a combined
+execution/recovery API alongside the original journal API. It loads an
+authenticated EMPTY ORBE envelope, verifies the caller's expected committed
+ownership bytes, stages the complete replacement ownership snapshot, and
+persists APPLYING before invoking the first file executor callback.
+
+The executor then persists one of three durable paths:
+
+- Apply failure: persist ROLLING_BACK, retry reverse rollback, then atomically
+  clear the journal and discard pending ownership while preserving committed
+  ownership.
+- Apply success: persist COMMITTED, finalize every backup, then atomically clear
+  the journal and promote pending ownership to committed ownership.
+- Process interruption: recovery decodes the journal from the envelope and
+  resumes the ROLLING_BACK or COMMITTED path. APPLYING is converted to
+  ROLLING_BACK before any recovery mutation.
+
+The backend contract is one authenticated local-envelope + independent-witness
+compare-and-swap. The load callback must verify the local HMAC and return the
+digest of the complete payload-plus-HMAC file. The store_atomic callback must
+compare the expected revision and digest, atomically persist the next envelope,
+advance the external freshness witness, and return the new complete-file
+digest. A backend failure leaves the previous durable envelope authoritative;
+if the local pending-file protocol has an unresolved candidate, its own
+recovery gate must resolve it before returning a state to this C layer.
+
+The new host harness exercises successful file/ownership commit, interrupted
+rollback with ownership preservation, and interrupted committed finalization
+with delayed ownership promotion. The iOS simulator workflow cross-compiles
+the new journal executor and its filesystem/codec dependencies.
+
+Integration boundary: the new enveloped executor is available, but the legacy
+orbit_package_filesystem_journal_backend is not transparently replaced, and
+the package-level ORBITPackageTransactionCoordinator is not yet composed
+around this API. The Swift Keychain/App Attest store is a research adapter;
+a C callback bridge that implements this backend contract, initial EMPTY
+envelope provisioning, real App Attest enrollment, and physical-device
+crash-point tests are still required. Installation remains disabled.

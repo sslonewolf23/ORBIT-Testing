@@ -88,6 +88,29 @@ static bool remove_staged_anchor_fixtures(int directory_fd) {
     return ok;
 }
 
+
+static void report_directory_entries(int directory_fd, const char *label) {
+    int iterator_fd = dup(directory_fd);
+    if (iterator_fd < 0) return;
+    DIR *directory = fdopendir(iterator_fd);
+    if (!directory) { close(iterator_fd); return; }
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+        struct stat status;
+        if (fstatat(directory_fd, entry->d_name, &status, AT_SYMLINK_NOFOLLOW) == 0)
+            fprintf(stderr, "LEFTOVER %s/%s mode=%o inode=%llu nlink=%llu\\n",
+                label, entry->d_name, (unsigned)(status.st_mode & 07777),
+                (unsigned long long)status.st_ino,
+                (unsigned long long)status.st_nlink);
+        else
+            fprintf(stderr, "LEFTOVER %s/%s stat-error=%d\\n",
+                label, entry->d_name, errno);
+    }
+    closedir(directory);
+}
+
 int main(void) {
     char temporary_directory[] = "/tmp/orbit-filesystem-XXXXXX";
     char *base_path = mkdtemp(temporary_directory);
@@ -366,7 +389,20 @@ int main(void) {
     (void)unlinkat(base_fd, "stage", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "backup", AT_REMOVEDIR);
     close(base_fd);
-    EXPECT("temporary transaction root removed", rmdir(base_path) == 0);
+    if (rmdir(base_path) != 0) {
+        fprintf(stderr, "ROOT RMDIR FAILED errno=%d\\n", errno);
+        int diagnostic_fd = open(base_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (diagnostic_fd >= 0) {
+            report_directory_entries(diagnostic_fd, "root");
+            const char *dirs[] = {"target", "stage", "backup"};
+            for (size_t i = 0U; i < sizeof(dirs) / sizeof(dirs[0]); ++i) {
+                int child = openat(diagnostic_fd, dirs[i], O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+                if (child >= 0) { report_directory_entries(child, dirs[i]); close(child); }
+            }
+            close(diagnostic_fd);
+        }
+        EXPECT("temporary transaction root removed", false);
+    } else EXPECT("temporary transaction root removed", true);
 
     printf("filesystem_checks=%u failures=%u\ndecision=%s\n",
            checks, failures, failures == 0U ? "PASS" : "FAIL");

@@ -90,6 +90,18 @@ int main(void) {
     EXPECT("slash-containing lock name rejected",
         orbit_package_native_lock_acquire_at(root, "subdir/lock", geteuid(),
             &invalid) == ORBIT_NATIVE_LOCK_INVALID_ARGUMENT);
+    EXPECT("hardlink fixture created",
+        linkat(root, "dpkg-lock", root, "dpkg-lock-alias", 0) == 0);
+    EXPECT("multiply-linked native lock is rejected",
+        orbit_package_native_lock_acquire_at(root, "dpkg-lock", geteuid(),
+            &invalid) == ORBIT_NATIVE_LOCK_CONFLICT);
+    EXPECT("hardlink fixture removed",
+        unlinkat(root, "dpkg-lock-alias", 0) == 0);
+    EXPECT("writable lock parent rejected",
+        fchmod(root, 0777) == 0 &&
+        orbit_package_native_lock_acquire_at(root, "dpkg-lock", geteuid(),
+            &invalid) == ORBIT_NATIVE_LOCK_CONFLICT);
+    EXPECT("private lock parent restored", fchmod(root, 0700) == 0);
 
     EXPECT("fixtures cleaned",
         unlinkat(root, "symlink-lock", 0) == 0 &&

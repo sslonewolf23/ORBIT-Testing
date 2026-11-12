@@ -501,18 +501,6 @@ int main(void) {
         file_equals_at(target_fd, "std-target", "new-standard"));
     EXPECT("standard executor consumed staged path",
         !exists_at(stage_fd, "std-stage"));
-    uint8_t tombstone_window_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xE2U };
-    int tombstone_window_fd = -1;
-    EXPECT("simulated tombstone-to-cleanup crash leaves empty transaction directory",
-        orbit_package_filesystem_open_backup_directory(
-            base_fd, tombstone_window_id, true, &tombstone_window_fd) ==
-            ORBIT_FILESYSTEM_OK);
-    if (tombstone_window_fd >= 0) close(tombstone_window_fd);
-    EXPECT("orphan sweep recovers tombstone-to-cleanup crash window",
-        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
-            &backend, base_fd) == ORBIT_FILESYSTEM_OK);
-    EXPECT("orphan transaction directory removed after durable empty journal",
-        !exists_at(base_fd, "e2000000000000000000000000000000"));
     standard_backup_fd = -1;
     EXPECT("standard executor backup directory reopens",
         orbit_package_filesystem_open_backup_directory(
@@ -528,6 +516,19 @@ int main(void) {
     EXPECT("successful transaction removes its empty backup directory",
         fstatat(base_fd, "d1000000000000000000000000000000",
                 &(struct stat){0}, AT_SYMLINK_NOFOLLOW) < 0 && errno == ENOENT);
+
+    uint8_t tombstone_window_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xE2U };
+    int tombstone_window_fd = -1;
+    EXPECT("simulated tombstone-to-cleanup crash leaves empty transaction directory",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, tombstone_window_id, true, &tombstone_window_fd) ==
+            ORBIT_FILESYSTEM_OK);
+    if (tombstone_window_fd >= 0) close(tombstone_window_fd);
+    EXPECT("orphan sweep recovers tombstone-to-cleanup crash window",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("orphan transaction directory removed after durable empty journal",
+        !exists_at(base_fd, "e2000000000000000000000000000000"));
 
     EXPECT("case-fold duplicate fixture prepared",
         seed_pair(target_fd, stage_fd, "dup-a", "dup-a-stage", "dup-b") &&

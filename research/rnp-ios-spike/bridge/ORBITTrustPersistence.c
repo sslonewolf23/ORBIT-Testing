@@ -377,6 +377,14 @@ bool orbit_repository_trust_advance_and_store(
     uint64_t now_seconds,const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result) {
     if(!state||!store_result){return false;}
+    if(now_seconds<state->last_observed_time) {
+        *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+        return false;
+    }
+    if(state->revision==UINT64_MAX || state->generation==UINT32_MAX) {
+        *store_result=ORBIT_TRUST_STORE_REVISION_EXHAUSTED;
+        return false;
+    }
     if(!orbit_repository_trust_advance(state,now_seconds)) {
         *store_result=ORBIT_TRUST_STORE_OK;
         return false;
@@ -394,6 +402,14 @@ bool orbit_repository_trust_prune_previous_and_store(
     uint64_t now_seconds,const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result) {
     if(!state||!store_result)return false;
+    if(now_seconds<state->last_observed_time) {
+        *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+        return false;
+    }
+    if(state->revision==UINT64_MAX) {
+        *store_result=ORBIT_TRUST_STORE_REVISION_EXHAUSTED;
+        return false;
+    }
     if(!orbit_repository_trust_prune_previous(state,now_seconds)) {
         *store_result=ORBIT_TRUST_STORE_OK;
         return false;

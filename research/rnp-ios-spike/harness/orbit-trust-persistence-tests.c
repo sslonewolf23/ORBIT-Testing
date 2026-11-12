@@ -139,6 +139,13 @@ int main(int argc,char **argv) {
             "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",&backend)==ORBIT_TRUST_STORE_OK &&
         strcmp(loaded.current_fingerprint,pin)==0 &&
         strcmp(loaded.recovery_fingerprint,recovery_pin)==0,true);
+    orbit_repository_trust_state forged_recovery_root=loaded;
+    strcpy(forged_recovery_root.recovery_fingerprint,
+        "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC");
+    ++forged_recovery_root.revision;
+    expect("direct-store-cannot-replace-enrolled-recovery-root",
+        orbit_repository_trust_store_save(&forged_recovery_root,repo,&backend)
+            ==ORBIT_TRUST_STORE_RECOVERY_PIN_MISMATCH,true);
     expect("restored-revision-matches",loaded.revision==state.revision,true);
     storage.locked=true;
     expect("store-lock-contention-fails-closed",

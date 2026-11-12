@@ -881,7 +881,7 @@ jobs:
             | tee "$RUNNER_TEMP/package-filesystem-journal-codec.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem-journal-codec.out"
 
-      - name: Compile and run authenticated transaction envelope state tests
+      - name: Compile and run combined transaction envelope codec and state tests
         shell: bash
         run: |
           set -euo pipefail

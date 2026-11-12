@@ -174,6 +174,9 @@ int main(void) {
         orbit_package_staging_begin(base_fd, "../outside", &staging) ==
             ORBIT_STAGING_UNSAFE_PATH);
 
+    /* Restore the non-empty archive fixture after the zero-length case. */
+    deb_length = make_deb(deb, payload, sizeof(payload));
+
     EXPECT("late-failure staging directory created",
         orbit_package_staging_begin(base_fd, "stage-late", &staging) == ORBIT_STAGING_OK);
     uint8_t malformed_deb[sizeof(deb)];

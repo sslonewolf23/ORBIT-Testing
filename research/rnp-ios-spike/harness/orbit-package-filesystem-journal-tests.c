@@ -12,6 +12,17 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+static bool fail_next_fsync;
+int __real_fsync(int fd);
+int __wrap_fsync(int fd) {
+    if (fail_next_fsync) {
+        fail_next_fsync = false;
+        errno = EIO;
+        return -1;
+    }
+    return __real_fsync(fd);
+}
+
 static unsigned checks;
 static unsigned failures;
 #define EXPECT(label, condition) do { ++checks; if (!(condition)) { ++failures; \
@@ -614,6 +625,20 @@ int main(void) {
         (void)unlinkat(base_fd, oversized_name, AT_REMOVEDIR);
     }
 
+
+    uint8_t fsync_failure_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xA6U };
+    int fsync_failure_fd = -1;
+    EXPECT("fsync failure orphan fixture created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, fsync_failure_id, true,
+            &fsync_failure_fd) == ORBIT_FILESYSTEM_OK);
+    if (fsync_failure_fd >= 0) close(fsync_failure_fd);
+    fail_next_fsync = true;
+    EXPECT("orphan sweep reports directory fsync failure",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("fsync failure injection was consumed",
+        !fail_next_fsync);
     EXPECT("case-fold duplicate fixture prepared",
         seed_pair(target_fd, stage_fd, "dup-a", "dup-a-stage", "dup-b") &&
         prepare_pair(target_fd, stage_fd, backup_fd,

@@ -142,3 +142,47 @@ orbit_ownership_code orbit_package_ownership_plan_remove(
 fail:
     orbit_package_ownership_plan_destroy(plan); return rc;
 }
+
+typedef struct {
+    orbit_archive_entry *entries;
+    size_t count;
+    size_t capacity;
+} ownership_manifest;
+
+static bool ownership_collect_entry(void *context, const orbit_archive_entry *entry) {
+    ownership_manifest *m=(ownership_manifest *)context;
+    if(!m || !entry || m->count>=ORBIT_OWNERSHIP_MAX_PACKAGE_ENTRIES) return false;
+    if(m->count==m->capacity) {
+        size_t next=m->capacity ? m->capacity*2U : 32U;
+        if(next>ORBIT_OWNERSHIP_MAX_PACKAGE_ENTRIES) next=ORBIT_OWNERSHIP_MAX_PACKAGE_ENTRIES;
+        if(next<=m->capacity) return false;
+        void *grown=realloc(m->entries,next*sizeof(*m->entries));
+        if(!grown) return false;
+        m->entries=(orbit_archive_entry *)grown; m->capacity=next;
+    }
+    m->entries[m->count++]=*entry; return true;
+}
+
+orbit_ownership_code orbit_package_ownership_plan_install_deb(
+    const orbit_package_ownership_snapshot *installed,
+    const orbit_package_record *candidate,
+    const uint8_t *deb,size_t deb_length,
+    orbit_package_ownership_plan *plan,
+    orbit_archive_report *archive_report) {
+    if(!plan || !archive_report || !deb || deb_length==0U)
+        return ORBIT_OWNERSHIP_INVALID_ARGUMENT;
+    ownership_manifest manifest; memset(&manifest,0,sizeof(manifest));
+    orbit_archive_code archive=orbit_package_archive_inspect_deb_with_data_entries(
+        deb,deb_length,ownership_collect_entry,&manifest,archive_report);
+    if(archive!=ORBIT_ARCHIVE_OK) {
+        free(manifest.entries);
+        memset(plan,0,sizeof(*plan));
+        return archive==ORBIT_ARCHIVE_LIMIT ? ORBIT_OWNERSHIP_LIMIT :
+               archive==ORBIT_ARCHIVE_UNSAFE_PATH ? ORBIT_OWNERSHIP_UNSAFE_PATH :
+               ORBIT_OWNERSHIP_INVALID_ARGUMENT;
+    }
+    orbit_ownership_code result=orbit_package_ownership_plan_install(
+        installed,candidate,manifest.entries,manifest.count,plan);
+    free(manifest.entries);
+    return result;
+}

@@ -29,7 +29,7 @@ Apply/rollback/finalize infer progress from target, stage, and backup inode iden
 
 The caller must hold an exclusive package filesystem transaction lock from preparation through finalization or rollback. All parent descriptors must remain open and refer to the intended directories. Staging, target, and backup must be on the same volume. Hard-link support is required; unsupported filesystems fail closed.
 
-The version-2 fixed-size change record includes target/stage relative parent locators and is a recovery payload, not a self-authenticating journal. The caller must encode and persist it using the authenticated, monotonic journal backend; do not write a raw C struct as an unauthenticated file. No adapter currently connects these per-file records to the existing package transaction journal, so durable per-file recovery is not yet integrated.
+The version-2 fixed-size change record includes target/stage relative parent locators and is a recovery payload, not a self-authenticating journal. The caller must encode and persist it using the authenticated, monotonic journal backend; do not write a raw C struct as an unauthenticated file. The per-file journal now coordinates these records and exposes a descriptor-resolving executor. Its backup directory is named from the transaction ID, opened with no-follow semantics, and accepted only when it is a private directory owned by the effective user. The caller must create that directory before starting a new transaction; recovery reopens the existing directory.
 
 ## Per-file write-ahead journal
 
@@ -41,7 +41,7 @@ The version-2 fixed-size change record includes target/stage relative parent loc
 
 The record carries each target/stage parent path relative to trusted install/staging roots, plus the exact file identities. The executor resolves those paths with no-follow descriptor traversal and derives the private backup root from the transaction ID. The journal rejects duplicate targets, including ASCII case-folded duplicates.
 
-The backend contract requires authenticated loads, atomic stores, a monotonic revision retained even after clear, and compare-by-revision clearing. It must encode fields canonically; raw C struct persistence is not acceptable. The host harness uses an in-memory backend only. No production iOS persistence adapter is connected yet.
+The backend contract requires authenticated loads, atomic stores, a monotonic revision retained even after clear, and compare-by-revision clearing. It must encode fields canonically; raw C struct persistence is not acceptable. The host harness uses an in-memory backend only. No production iOS persistence adapter is connected yet. The caller must hold the package-wide exclusive transaction lock across journal execution or recovery, backup-directory creation, and cleanup.
 
 ## Limitations
 

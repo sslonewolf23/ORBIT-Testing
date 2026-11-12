@@ -67,7 +67,8 @@ static void check_format(const char *label, orbit_decompress_format format,
     static const uint8_t plain[] = "ORBIT bounded streaming decompression";
     uint8_t compressed[256];
     size_t compressed_length = compressor(plain, sizeof(plain), compressed, sizeof(compressed));
-    EXPECT("fixture compression succeeds", compressed_length > 0U);\n    compressed[compressed_length] = 0U;
+    EXPECT("fixture compression succeeds", compressed_length > 0U);
+    compressed[compressed_length] = 0U;
     if (compressed_length == 0U) return;
 
     sink_buffer sink = {{0}, 0U};

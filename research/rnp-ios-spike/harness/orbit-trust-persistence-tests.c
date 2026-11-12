@@ -371,7 +371,32 @@ int main(int argc,char **argv) {
         verify_code==ORBIT_REPOSITORY_VERIFY_VALID &&
         verify_result.signature.code==ORBIT_RNP_VERIFY_VALID &&
         verify_result.verified_index_bytes==packages_len &&
+        verify_result.package_count==1U &&
         verify_state.last_observed_time==verify_now,true);
+    orbit_packages_index parsed_index;memset(&parsed_index,0,sizeof(parsed_index));
+    expect("verified-Packages-index-parses-to-catalog",
+        orbit_packages_index_parse(packages,packages_len,&parsed_index) &&
+        parsed_index.count==1U &&
+        strcmp(parsed_index.packages[0].name,"orbit-fixture")==0 &&
+        strcmp(parsed_index.packages[0].architecture,"iphoneos-arm64")==0 &&
+        parsed_index.packages[0].size>0U &&
+        strlen(parsed_index.packages[0].sha256)==64U &&
+        strstr(parsed_index.packages[0].description,"disposable parser fixture")!=NULL,true);
+    orbit_packages_index_destroy(&parsed_index);
+    const char unsafe_package[]=
+        "Package: orbit-bad\nVersion: 1.0\nArchitecture: iphoneos-arm64\n"
+        "Filename: ../escape.deb\nSize: 1\n"
+        "SHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\n";
+    expect("Packages-index-path-traversal-rejected",
+        !orbit_packages_index_parse((const uint8_t*)unsafe_package,
+            sizeof(unsafe_package)-1U,&parsed_index),true);
+    const char incomplete_package[]=
+        "Package: orbit-incomplete\nVersion: 1.0\nArchitecture: iphoneos-arm64\n"
+        "Filename: pool/orbit.deb\nSize: 1\n\n";
+    expect("Packages-index-missing-artifact-digest-rejected",
+        !orbit_packages_index_parse((const uint8_t*)incomplete_package,
+            sizeof(incomplete_package)-1U,&parsed_index),true);
+
     uint8_t *tampered_packages=(uint8_t*)malloc(packages_len);
     expect("tampered-index-fixture-allocation",tampered_packages!=NULL,true);
     if(tampered_packages!=NULL) {

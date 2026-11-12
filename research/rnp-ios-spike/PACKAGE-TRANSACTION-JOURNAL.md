@@ -45,3 +45,16 @@ Maintainer scripts and arbitrary package code remain disabled. A production pack
 ## Verification
 
 `orbit-package-transaction-tests.c` exercises successful commit, mixed install/remove actions, failure rollback, journal write failure after an apply, recovery of an in-flight operation, empty recovery, and corrupt-journal rejection. These tests are wired into the host verification workflow but have not yet been run.
+
+
+## Ownership integration status
+
+The package ownership layer now builds complete replacement snapshots for install/upgrade and removal, and has a canonical bounded codec. Those pieces are host-tested, but this coordinator still has no ownership-snapshot field or atomic ownership-store operation. Do not treat a successful package-level journal commit as proof that an installed-file ownership database was committed.
+
+The next integration must place the pending ownership snapshot, committed ownership snapshot, and active file journal in one authenticated durable envelope. A rollback must discard only the pending snapshot; a committed transaction may promote it only after file backup finalization succeeds. The envelope's revision and anti-rollback freshness anchor must cover all three pieces together. A separate ownership file or independent commit callback would create a split-brain crash window and is not acceptable.
+
+The current package-level coordinator and per-file filesystem journal are distinct layers. They must be explicitly composed so the package journal cannot report success while file changes or ownership promotion remain incomplete. Production installation remains disabled until this composition, its crash-point tests, and the device persistence adapter are complete.
+
+## Verification status update
+
+The host transaction-coordinator tests are wired into CI and have passed on the feature branch. This confirms the current coordinator's tested behavior only; it does not validate the not-yet-implemented ownership integration or a production persistence backend.

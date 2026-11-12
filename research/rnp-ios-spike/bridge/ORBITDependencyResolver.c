@@ -125,10 +125,39 @@ static bool relation_satisfied(const orbit_package_record *p,char *expr) {
     if(strcmp(op,">=")==0)return c>=0;
     return c>0;
 }
+static bool relation_atom_valid(const char *expression) {
+    if(!expression||!*expression||strlen(expression)>=RELATION_MAX)return false;
+    char copy[RELATION_MAX];strcpy(copy,expression);trim(copy);
+    char *open=strchr(copy,'(');
+    if(open) {
+        char *close=strchr(open,')');
+        if(!close||close[1]!='\\0')return false;
+        *open='\\0';*close='\\0';
+        char *value=open+1;trim(value);
+        char *space=value;while(*space&&!isspace((unsigned char)*space))++space;
+        size_t op_length=(size_t)(space-value);
+        char op[3];
+        if(op_length==0U||op_length>=sizeof(op))return false;
+        memcpy(op,value,op_length);op[op_length]='\\0';
+        if(strcmp(op,"<<")&&strcmp(op,"<=")&&strcmp(op,"=")&&strcmp(op,">=")&&strcmp(op,">>"))return false;
+        while(isspace((unsigned char)*space))++space;
+        int comparison=0;
+        if(!*space||!orbit_debian_version_compare(space,space,&comparison))return false;
+    } else if(strchr(copy,')'))return false;
+    trim(copy);
+    if(!*copy)return false;
+    for(const unsigned char *p=(const unsigned char*)copy;*p;++p)
+        if(!((*p>='a'&&*p<='z')||(*p>='0'&&*p<='9')||*p=='-'||*p=='+'||*p=='.'))return false;
+    return true;
+}
 static bool installed_satisfies(resolver *r,const char *expression) {
     for(size_t i=0;i<r->installed_count;++i) {
         const orbit_package_record *p=r->installed[i];
         if(!p||!package_arch_ok(p,r->architecture))continue;
+        int self_check=0;
+        if(!orbit_debian_version_compare(p->version,p->version,&self_check)) {
+            r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;
+        }
         char copy[RELATION_MAX];
         if(strlen(expression)>=sizeof(copy))return false;
         strcpy(copy,expression);
@@ -171,6 +200,7 @@ static bool resolve_relation(resolver *r,const char *relation) {
         char *alt_save=NULL;
         for(char *alt=strtok_r(group,"|",&alt_save);alt;alt=strtok_r(NULL,"|",&alt_save)) {
             trim(alt);
+            if(!relation_atom_valid(alt)){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
             if(installed_satisfies(r,alt)){satisfied=true;break;}
             size_t candidate=0;
             if(available_candidate_satisfies(r,alt,&candidate)) {
@@ -194,6 +224,12 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
     char buffer[RELATION_MAX];strcpy(buffer,relations);char *save=NULL;
     for(char *item=strtok_r(buffer,",",&save);item;item=strtok_r(NULL,",",&save)) {
         trim(item);
+        char validation[RELATION_MAX];strcpy(validation,item);
+        char *validation_save=NULL;
+        for(char *atom=strtok_r(validation,"|",&validation_save);atom;atom=strtok_r(NULL,"|",&validation_save)) {
+            trim(atom);
+            if(!relation_atom_valid(atom)){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
+        }
         for(size_t i=0;i<r->installed_count;++i) {
             const orbit_package_record *q=r->installed[i];
             if(!q||!package_arch_ok(q,r->architecture))continue;
@@ -225,6 +261,12 @@ static bool record_rejects_candidate(resolver *r,
         char *save=NULL;
         for(char *item=strtok_r(buffer,",",&save);item;item=strtok_r(NULL,",",&save)) {
             trim(item);
+            char validation[RELATION_MAX];strcpy(validation,item);
+            char *validation_save=NULL;
+            for(char *atom=strtok_r(validation,"|",&validation_save);atom;atom=strtok_r(NULL,"|",&validation_save)) {
+                trim(atom);
+                if(!relation_atom_valid(atom)){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return true;}
+            }
             char *alt_save=NULL;
             for(char *alt=strtok_r(item,"|",&alt_save);alt;alt=strtok_r(NULL,"|",&alt_save)) {
                 trim(alt);

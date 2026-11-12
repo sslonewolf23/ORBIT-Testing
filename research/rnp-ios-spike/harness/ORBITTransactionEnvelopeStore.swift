@@ -89,11 +89,11 @@ actor ORBITTransactionEnvelopeStore {
     }
 
     /*
-     * Call only after App Attest registration has bound keyID and the
-     * uniformly random 32-byte recovery credential to this installation.
-     * The returned MAC key is never exported. A missing Keychain identity
-     * during normal operation is an error; this method never silently
-     * replaces an existing identity.
+     * Call after generating the App Attest key and random 32-byte recovery
+     * credential, but BEFORE sending registration to the witness. This stores
+     * the credential and MAC key device-only so a registration retry can use
+     * the same identity. Expose the store for transactions only after server
+     * registration succeeds. A missing identity is never silently recreated.
      */
     static func installIdentity(keyID: String,
                                 recoveryCredential: Data,
@@ -133,6 +133,9 @@ actor ORBITTransactionEnvelopeStore {
         ]
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
+            if status == errSecDuplicateItem {
+                throw ORBITEnvelopeStoreError.identityAlreadyExists
+            }
             throw ORBITEnvelopeStoreError.keychain(status)
         }
     }

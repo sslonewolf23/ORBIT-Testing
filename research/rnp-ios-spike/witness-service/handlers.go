@@ -7,8 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"crypto/hmac"
-	"errors"
+		"errors"
 	"net/http"
 	"time"
 )
@@ -224,7 +223,7 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := decodeAppAttestKeyID(req.NewKeyID); err != nil { jsonError(w, 400, "invalid replacement key"); return }
 	challenge, err := decodeB64(req.Challenge, 32, 32); if err != nil { jsonError(w, 400, "invalid recovery request"); return }
-	proof, err := decodeB64(req.Proof, 32, 32); if err != nil { jsonError(w, 400, "invalid recovery request"); return }
+	credential, err := decodeB64(req.RecoveryCredential, 32, 32); if err != nil { jsonError(w, 400, "invalid recovery request"); return }
 	attestation, err := decodeB64(req.Attestation, 1, 512<<10); if err != nil { jsonError(w, 400, "invalid recovery request"); return }
 	challengeDigest := sha256.Sum256(challenge)
 	var verifier []byte
@@ -233,12 +232,12 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 	var consumed int
 	err = s.db.QueryRow("SELECT c.old_key_id,c.new_key_id,c.expires_at,c.consumed,i.recovery_verifier FROM recovery_challenges c JOIN installations i ON i.key_id=c.old_key_id WHERE c.digest=?", challengeDigest[:]).Scan(&storedOld,&storedNew,&expires,&consumed,&verifier)
 	if err != nil || consumed != 0 || expires < s.now().Unix() || storedOld != req.OldKeyID || storedNew != req.NewKeyID || len(verifier) != 32 { jsonError(w, 409, "recovery rejected"); return }
-	// The proof is checked against the stored verifier by recomputing it from
-	// the supplied credential only on enrollment; recovery sends HMAC proof.
-	// Verify the proof with a keyed derivation that can be reproduced from the
-	// verifier rather than retaining the raw credential.
-	expected := recoveryProofFromVerifier(verifier, challenge, req.OldKeyID, req.NewKeyID)
-	if !hmac.Equal(expected, proof) { jsonError(w, 403, "recovery rejected"); return }
+	// The 256-bit credential is sent only over TLS. The server stores only
+	// HMAC(serverPepper, credential), never the reusable raw credential.
+	suppliedVerifier, verifyErr := s.recoveryVerifier(credential)
+	if verifyErr != nil || !equalBytes(suppliedVerifier, verifier) {
+		jsonError(w, 403, "recovery rejected"); return
+	}
 	publicDER, err := s.verifyAttestation(req.NewKeyID, challenge, attestation)
 	if err != nil { jsonError(w, 403, "replacement attestation rejected"); return }
 	tx, err := s.db.Begin(); if err != nil { jsonError(w, 503, "unavailable"); return }; defer tx.Rollback()

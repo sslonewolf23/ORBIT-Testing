@@ -382,6 +382,18 @@ int main(void) {
     EXPECT("control and data manifest entries counted", report.entries == 2U);
     EXPECT("normalized path remains safe",
            orbit_package_archive_path_is_safe("Library/ORBIT/example.dylib"));
+    EXPECT("absolute archive paths rejected",
+           !orbit_package_archive_path_is_safe("/Library/ORBIT/payload.dylib"));
+    EXPECT("backslash path separators rejected",
+           !orbit_package_archive_path_is_safe("Library\\\\ORBIT/payload.dylib"));
+    EXPECT("empty path components rejected",
+           !orbit_package_archive_path_is_safe("Library//ORBIT/payload.dylib"));
+    EXPECT("dot path components rejected",
+           !orbit_package_archive_path_is_safe("Library/./payload.dylib"));
+    EXPECT("parent traversal components rejected",
+           !orbit_package_archive_path_is_safe("Library/../payload.dylib"));
+    EXPECT("colon path components rejected",
+           !orbit_package_archive_path_is_safe("Library/ORBIT:payload.dylib"));
     EXPECT("required deb members present",
            report.saw_debian_binary && report.saw_control_archive && report.saw_data_archive);
 

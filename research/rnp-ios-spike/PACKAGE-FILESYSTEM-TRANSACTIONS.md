@@ -90,16 +90,14 @@ Payload format v1 is:
 The decoder requires an exact payload length, rejects unknown versions,
 invalid booleans, embedded NULs, nonzero in-memory string tails, malformed
 changes, and trailing bytes. The outer authenticated envelope supplies the
-revision to the decoder. The codec is wired into host verification but has
-not been run yet. It is not yet connected to the Swift persistence actor or
-the production transaction executor.
+revision to the decoder. The codec is wired into host verification. A research Swift persistence adapter now consumes the combined ORBE envelope, but it is not yet connected to the production transaction executor or privileged helper.
 
 
 ## Ownership state must share the journal's commit boundary
 
 The ownership planner now exposes complete replacement-snapshot builders for install/upgrade and removal. The canonical ownership codec can encode/decode that snapshot, and both are covered by host CI. They are still in-memory planning/codec components; they are not a persistent ownership database.
 
-The next transaction-layer change must make the **active file journal, pending ownership snapshot, and committed ownership snapshot one authenticated durable state envelope**. Do not implement ownership persistence as a second independent file or a second callback that can commit separately from the file journal.
+The **active file journal, pending ownership snapshot, and committed ownership snapshot must share one authenticated durable state envelope**. The ORBE codec and Swift adapter now provide initial building blocks for that envelope, but the existing file-journal backend is not yet switched over. Do not implement ownership persistence as a second independent file or a second callback that can commit separately from the file journal.
 
 Required backend semantics:
 
@@ -113,7 +111,7 @@ Required backend semantics:
 
 The backend API should express this as one atomic envelope operation with explicit active/pending/committed state. Avoid adding a raw struct pointer to the journal record or relying on a process-local callback to remember the pending snapshot; recovery must reconstruct all required state after process death. The implementation must define ownership of allocated buffers and enforce the existing ownership codec payload bound before writing.
 
-This is a design requirement, not an implemented feature. The current file-journal backend contract and in-memory test backend do not yet persist ownership state. Production installation remains disabled.
+The combined envelope codec and research Swift adapter are implemented, but the current file-journal backend contract and in-memory test backend do not yet persist ownership state through that envelope. Production installation remains disabled.
 
 ## Verification status update
 

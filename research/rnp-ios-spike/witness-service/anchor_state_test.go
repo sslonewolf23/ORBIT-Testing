@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -106,4 +105,37 @@ func TestReconcileRejectsLocalStateAheadOfAnchor(t *testing.T) {
 	if err==nil { t.Fatal("local state ahead of external anchor accepted") }
 }
 
-var _ *sql.DB
+
+func TestReconcileRebuildsCompletelyMissingSQLiteInstallation(t *testing.T) {
+	db,err:=openDatabase(filepath.Join(t.TempDir(),"witness.sqlite"))
+	if err!=nil { t.Fatal(err) }
+	defer db.Close()
+	verifier:=make([]byte,32); verifier[0]=0xC3
+	head:=witnessHead{Revision:9,Tombstone:false}; head.Digest[0]=0x91
+	anchor:=newMemoryAnchor()
+	c:=anchorCheckpoint{Sequence:7,KeyID:"restored-key",PublicKey:[]byte("attested-public"),
+		Counter:19,Head:head}
+	c.Hash=checkpointHash(c)
+	anchor.items[installationAnchorID(verifier)]=c
+	s:=&service{db:db,anchor:anchor}
+	tx,err:=db.Begin(); if err!=nil { t.Fatal(err) }
+	got,err:=s.reconcileAnchoredInstallation(context.Background(),tx,verifier)
+	if err!=nil { _=tx.Rollback(); t.Fatal(err) }
+	if got.Hash!=c.Hash { _=tx.Rollback(); t.Fatal("wrong checkpoint reconstructed") }
+	if err:=tx.Commit(); err!=nil { t.Fatal(err) }
+	var keyID string
+	var sequence int64
+	var counter uint32
+	var revision,digest,storedVerifier []byte
+	var tombstone int
+	if err:=db.QueryRow(`SELECT key_id,anchor_sequence,assertion_counter,revision,
+		head_digest,tombstone,recovery_verifier FROM installations WHERE recovery_verifier=?`,
+		verifier).Scan(&keyID,&sequence,&counter,&revision,&digest,&tombstone,&storedVerifier); err!=nil {
+		t.Fatal(err)
+	}
+	if keyID!="restored-key" || sequence!=7 || counter!=19 ||
+		binaryRevision(revision)!=9 || digest[0]!=0x91 || tombstone!=0 ||
+		!equalBytes(storedVerifier,verifier) {
+		t.Fatal("missing local installation was not reconstructed from anchor")
+	}
+}

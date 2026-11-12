@@ -42,11 +42,13 @@ int orbit_apt_resolve_admin_directory(
         return 0;
 
     size_t root_length = strlen(bootstrap_root_apt_path);
+    size_t status_path_length = strlen(effective_status_path);
     const char *relative_status = NULL;
     if (root_length == 1U && bootstrap_root_apt_path[0] == '/') {
         relative_status = effective_status_path + 1U;
     } else {
-        if (strncmp(effective_status_path, bootstrap_root_apt_path,
+        if (status_path_length <= root_length ||
+            strncmp(effective_status_path, bootstrap_root_apt_path,
                     root_length) != 0 ||
             effective_status_path[root_length] != '/')
             return 0;

@@ -749,6 +749,19 @@ jobs:
           "$RUNNER_TEMP/orbit-package-native-lock-tests" | tee "$RUNNER_TEMP/package-native-lock.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-native-lock.out"
 
+      - name: Compile and run bootstrap compatibility profile tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapProfile.c \
+            research/rnp-ios-spike/harness/orbit-package-bootstrap-profile-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-bootstrap-profile-tests"
+          "$RUNNER_TEMP/orbit-package-bootstrap-profile-tests" | tee "$RUNNER_TEMP/package-bootstrap-profile.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-bootstrap-profile.out"
+
       - name: Compile and run canonical filesystem journal codec tests
         shell: bash
         run: |

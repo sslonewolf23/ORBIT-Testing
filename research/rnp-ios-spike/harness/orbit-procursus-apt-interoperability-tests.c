@@ -118,7 +118,7 @@ int main(void) {
     expect("local package payload created", write_text(path, "installed\n"));
 
     snprintf(package_dir, sizeof(package_dir), "%s/tmp-pkg", root);
-    snprintf(deb_path, sizeof(deb_path), "%s/var/cache/apt/archives/orbit-lock-probe.deb", root);
+    snprintf(deb_path, sizeof(deb_path), "%s/var/cache/apt/archives/orbit-lock-probe_1.0_all.deb", root);
     pid_t build = fork();
     if (build == 0) {
         execlp("dpkg-deb", "dpkg-deb", "--build", package_dir, deb_path, (char *)NULL);

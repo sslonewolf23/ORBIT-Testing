@@ -88,7 +88,7 @@ static orbit_trust_store_backend backend_for(memory_store *m) {
 }
 int main(int argc,char **argv) {
     if(argc!=13) {
-        fprintf(stderr,"usage: %s trusted-fpr trusted-keyring normal-rotation.InRelease recovery-keyring recovery-fpr emergency.InRelease candidate-keyring candidate-fpr emergency-time valid-trusted.InRelease Packages\n",argv[0]);
+        fprintf(stderr,"usage: %s trusted-fpr trusted-keyring normal-rotation.InRelease recovery-keyring recovery-fpr emergency.InRelease candidate-keyring candidate-fpr emergency-time valid-trusted.InRelease Packages orbit-fixture.deb\n",argv[0]);
         return 2;
     }
     size_t trusted_len=0,normal_rotation_len=0,recovery_len=0,emergency_len=0,candidate_len=0;

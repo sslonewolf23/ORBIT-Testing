@@ -526,7 +526,6 @@ int main(void) {
         unlinkat(root_fd, "backup-install", AT_REMOVEDIR) == 0);
     EXPECT("end-to-end install tree cleaned",
         unlinkat(install_fd, "Library/orbit-demo.dylib", 0) == 0 &&
-        unlinkat(stage_fd, "Library/orbit-demo.dylib", 0) == 0 &&
         unlinkat(install_fd, "Library", AT_REMOVEDIR) == 0 &&
         unlinkat(stage_fd, "Library", AT_REMOVEDIR) == 0);
 

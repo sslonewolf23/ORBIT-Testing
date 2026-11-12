@@ -32,6 +32,7 @@ typedef struct {
     size_t fail_apply_call;
     bool fail_after_apply;
     bool fail_rollback_once;
+    bool fail_finalize_once;
 } filesystem_executor;
 
 static orbit_file_journal_load_result memory_load(
@@ -153,10 +154,15 @@ static orbit_filesystem_code execute_change(
             executor->target_fd, executor->stage_fd,
             executor->backup_fd, change);
     }
-    if (action == ORBIT_FILE_JOURNAL_FINALIZE)
+    if (action == ORBIT_FILE_JOURNAL_FINALIZE) {
+        if (executor->fail_finalize_once) {
+            executor->fail_finalize_once = false;
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        }
         return orbit_package_filesystem_finalize(
             executor->target_fd, executor->stage_fd,
             executor->backup_fd, change);
+    }
     return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 }
 
@@ -225,7 +231,7 @@ int main(void) {
         prepare_pair(target_fd, stage_fd, backup_fd,
             "ok-a", "ok-a-stage", "ok-a-backup",
             "ok-b", "ok-b-backup", changes));
-    filesystem_executor executor = { target_fd, stage_fd, backup_fd, 0U, 0U, false, false };
+    filesystem_executor executor = { target_fd, stage_fd, backup_fd, 0U, 0U, false, false, false };
     EXPECT("complete file transaction applies commits and clears journal",
         orbit_package_filesystem_journal_execute(
             &backend, transaction_id, changes, 2U,
@@ -292,6 +298,30 @@ int main(void) {
         file_equals_at(target_fd, "st-a", "old-a") &&
         file_equals_at(target_fd, "st-b", "old-b"));
 
+    EXPECT("partial-finalization fixtures created",
+        seed_pair(target_fd, stage_fd, "pf-a", "pf-a-stage", "pf-b"));
+    EXPECT("partial-finalization plan prepared",
+        prepare_pair(target_fd, stage_fd, backup_fd,
+            "pf-a", "pf-a-stage", "pf-a-backup",
+            "pf-b", "pf-b-backup", changes));
+    executor.apply_calls = 0U;
+    executor.fail_finalize_once = true;
+    EXPECT("interrupted committed cleanup retains journal",
+        orbit_package_filesystem_journal_execute(
+            &backend, transaction_id, changes, 2U,
+            execute_change, &executor) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("partial cleanup remains in committed phase",
+        memory.record != NULL &&
+        memory.record->phase == ORBIT_FILE_JOURNAL_COMMITTED);
+    EXPECT("committed recovery completes remaining backup cleanup",
+        orbit_package_filesystem_journal_recover(
+            &backend, execute_change, &executor) == ORBIT_FILESYSTEM_OK);
+    EXPECT("partial-finalization recovery preserves committed package state",
+        file_equals_at(target_fd, "pf-a", "new-a") &&
+        !exists_at(target_fd, "pf-b") &&
+        !exists_at(backup_fd, "pf-a-backup") &&
+        !exists_at(backup_fd, "pf-b-backup"));
+
     EXPECT("clear-failure fixtures created",
         seed_pair(target_fd, stage_fd, "cl-a", "cl-a-stage", "cl-b"));
     EXPECT("clear-failure plan prepared",
@@ -350,14 +380,16 @@ int main(void) {
 
     const char *target_names[] = {
         "ok-a", "ok-b", "rb-a", "rb-b", "st-a", "st-b",
-        "cl-a", "cl-b", "dup-a", "dup-b"
+        "cl-a", "cl-b", "pf-a", "pf-b", "dup-a", "dup-b"
     };
     const char *stage_names[] = {
-        "ok-a-stage", "rb-a-stage", "st-a-stage", "cl-a-stage", "dup-a-stage"
+        "ok-a-stage", "rb-a-stage", "st-a-stage", "cl-a-stage",
+        "pf-a-stage", "dup-a-stage"
     };
     const char *backup_names[] = {
         "ok-a-backup", "ok-b-backup", "rb-a-backup", "rb-b-backup",
         "st-a-backup", "st-b-backup", "cl-a-backup", "cl-b-backup",
+        "pf-a-backup", "pf-b-backup",
         "dup-a-backup", "dup-b-backup"
     };
     cleanup_names(target_fd, target_names, sizeof(target_names) / sizeof(target_names[0]));

@@ -27,8 +27,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.23.x"
-          cache: true
-          cache-dependency-path: research/rnp-ios-spike/witness-service/go.sum
+          cache: false
 
       - name: Verify App Attest witness protocol and state machine
         working-directory: research/rnp-ios-spike/witness-service

@@ -359,7 +359,8 @@ orbit_filesystem_code orbit_package_filesystem_lock_acquire(
     int trusted_root_fd, orbit_package_filesystem_lock *lock) {
     if (trusted_root_fd < 0 || !lock)
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
-    lock->descriptor = -1;
+    /* The caller initializes descriptor to -1; never overwrite a live handle. */
+    if (lock->descriptor >= 0) return ORBIT_FILESYSTEM_BUSY;
     struct stat root_status;
     if (fstat(trusted_root_fd, &root_status) < 0)
         return ORBIT_FILESYSTEM_IO_ERROR;

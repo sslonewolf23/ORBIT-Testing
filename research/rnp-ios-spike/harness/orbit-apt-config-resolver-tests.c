@@ -37,6 +37,10 @@ int main(void) {
         !resolves("/var/jb", "/var/jb//var/lib/dpkg/status", "var/lib/dpkg"));
     expect("noncanonical root rejected",
         !resolves("/var/jb/", "/var/jb/var/lib/dpkg/status", "var/lib/dpkg"));
+    expect("terminal dot-dot root segment rejected",
+        !resolves("/var/jb/..", "/var/jb/../var/lib/dpkg/status", "var/lib/dpkg"));
+    expect("terminal dot root segment rejected",
+        !resolves("/var/jb/.", "/var/jb/./var/lib/dpkg/status", "var/lib/dpkg"));
     expect("empty admin directory rejected",
         !resolves("/var/jb", "/var/jb/status", ""));
     char small[4];

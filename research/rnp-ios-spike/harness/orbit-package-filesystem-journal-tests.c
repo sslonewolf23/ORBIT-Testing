@@ -1,0 +1,363 @@
+#define _XOPEN_SOURCE 700
+#define _POSIX_C_SOURCE 200809L
+
+#include "ORBITPackageFilesystemJournal.h"
+
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+static unsigned checks;
+static unsigned failures;
+#define EXPECT(label, condition) do { ++checks; if (!(condition)) { ++failures; \
+    fprintf(stderr, "FAIL: %s\\n", label); } } while (0)
+
+typedef struct {
+    orbit_package_filesystem_journal_record *record;
+    uint64_t last_revision;
+    size_t store_calls;
+    size_t fail_store_call;
+    bool fail_clear_once;
+} memory_journal;
+
+typedef struct {
+    int target_fd;
+    int stage_fd;
+    int backup_fd;
+    size_t apply_calls;
+    size_t fail_apply_call;
+    bool fail_after_apply;
+    bool fail_rollback_once;
+} filesystem_executor;
+
+static orbit_file_journal_load_result memory_load(
+    void *context, orbit_package_filesystem_journal_record *record,
+    uint64_t *last_revision) {
+    memory_journal *memory = (memory_journal *)context;
+    if (!memory || !record || !last_revision)
+        return ORBIT_FILE_JOURNAL_LOAD_ERROR;
+    *last_revision = memory->last_revision;
+    if (!memory->record) return ORBIT_FILE_JOURNAL_LOAD_EMPTY;
+    memcpy(record, memory->record, sizeof(*record));
+    return ORBIT_FILE_JOURNAL_LOAD_PRESENT;
+}
+
+static bool memory_store(
+    void *context, const orbit_package_filesystem_journal_record *record) {
+    memory_journal *memory = (memory_journal *)context;
+    if (!memory || !record || record->revision != memory->last_revision + 1U)
+        return false;
+    if (memory->record && memory->record->revision != memory->last_revision)
+        return false;
+    ++memory->store_calls;
+    if (memory->fail_store_call != 0U &&
+        memory->store_calls == memory->fail_store_call)
+        return false;
+    orbit_package_filesystem_journal_record *copy =
+        (orbit_package_filesystem_journal_record *)malloc(sizeof(*copy));
+    if (!copy) return false;
+    memcpy(copy, record, sizeof(*copy));
+    free(memory->record);
+    memory->record = copy;
+    memory->last_revision = record->revision;
+    return true;
+}
+
+static bool memory_clear(void *context, uint64_t expected_revision) {
+    memory_journal *memory = (memory_journal *)context;
+    if (!memory || !memory->record ||
+        memory->record->revision != expected_revision ||
+        memory->last_revision != expected_revision)
+        return false;
+    if (memory->fail_clear_once) {
+        memory->fail_clear_once = false;
+        return false;
+    }
+    free(memory->record);
+    memory->record = NULL;
+    return true;
+}
+
+static bool write_file_at(int directory_fd, const char *name,
+                          const char *contents) {
+    int fd = openat(directory_fd, name,
+        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    if (fd < 0) return false;
+    size_t length = strlen(contents), offset = 0U;
+    while (offset < length) {
+        ssize_t amount = write(fd, contents + offset, length - offset);
+        if (amount < 0 && errno == EINTR) continue;
+        if (amount <= 0) { close(fd); return false; }
+        offset += (size_t)amount;
+    }
+    bool synced = fsync(fd) == 0;
+    bool closed = close(fd) == 0;
+    return synced && closed;
+}
+
+static bool file_equals_at(int directory_fd, const char *name,
+                           const char *expected) {
+    int fd = openat(directory_fd, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return false;
+    char buffer[128];
+    size_t used = 0U;
+    for (;;) {
+        ssize_t amount = read(fd, buffer + used, sizeof(buffer) - used);
+        if (amount < 0 && errno == EINTR) continue;
+        if (amount < 0) { close(fd); return false; }
+        if (amount == 0) break;
+        used += (size_t)amount;
+        if (used == sizeof(buffer)) { close(fd); return false; }
+    }
+    close(fd);
+    return used == strlen(expected) && memcmp(buffer, expected, used) == 0;
+}
+
+static bool exists_at(int directory_fd, const char *name) {
+    struct stat status;
+    return fstatat(directory_fd, name, &status, AT_SYMLINK_NOFOLLOW) == 0;
+}
+
+static orbit_filesystem_code execute_change(
+    void *context,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
+    orbit_file_journal_action action,
+    const orbit_package_file_change *change) {
+    (void)transaction_id;
+    filesystem_executor *executor = (filesystem_executor *)context;
+    if (!executor || !change) return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    if (action == ORBIT_FILE_JOURNAL_APPLY) {
+        ++executor->apply_calls;
+        if (executor->fail_apply_call == executor->apply_calls &&
+            !executor->fail_after_apply)
+            return ORBIT_FILESYSTEM_IO_ERROR;
+        orbit_filesystem_code result = orbit_package_filesystem_apply(
+            executor->target_fd, executor->stage_fd,
+            executor->backup_fd, change);
+        if (result == ORBIT_FILESYSTEM_OK &&
+            executor->fail_apply_call == executor->apply_calls &&
+            executor->fail_after_apply)
+            return ORBIT_FILESYSTEM_IO_ERROR;
+        return result;
+    }
+    if (action == ORBIT_FILE_JOURNAL_ROLLBACK) {
+        if (executor->fail_rollback_once) {
+            executor->fail_rollback_once = false;
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        }
+        return orbit_package_filesystem_rollback(
+            executor->target_fd, executor->stage_fd,
+            executor->backup_fd, change);
+    }
+    if (action == ORBIT_FILE_JOURNAL_FINALIZE)
+        return orbit_package_filesystem_finalize(
+            executor->target_fd, executor->stage_fd,
+            executor->backup_fd, change);
+    return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+}
+
+static bool prepare_pair(
+    int target_fd, int stage_fd, int backup_fd,
+    const char *target_a, const char *stage_a, const char *backup_a,
+    const char *target_b, const char *backup_b,
+    orbit_package_file_change changes[2]) {
+    if (orbit_package_filesystem_prepare_replace(
+            target_fd, target_a, stage_fd, stage_a, backup_fd, backup_a,
+            &changes[0]) != ORBIT_FILESYSTEM_OK)
+        return false;
+    if (orbit_package_filesystem_prepare_remove(
+            target_fd, target_b, backup_fd, backup_b,
+            &changes[1]) != ORBIT_FILESYSTEM_OK)
+        return false;
+    return true;
+}
+
+static bool seed_pair(
+    int target_fd, int stage_fd,
+    const char *target_a, const char *stage_a, const char *target_b) {
+    return write_file_at(target_fd, target_a, "old-a") &&
+           write_file_at(stage_fd, stage_a, "new-a") &&
+           write_file_at(target_fd, target_b, "old-b");
+}
+
+static void cleanup_names(int directory_fd, const char *const *names,
+                          size_t count) {
+    for (size_t i = 0U; i < count; ++i)
+        (void)unlinkat(directory_fd, names[i], 0);
+}
+
+int main(void) {
+    char temporary_directory[] = "/tmp/orbit-file-journal-XXXXXX";
+    char *base_path = mkdtemp(temporary_directory);
+    EXPECT("temporary journal root created", base_path != NULL);
+    if (!base_path) return EXIT_FAILURE;
+    int base_fd = open(base_path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    EXPECT("journal root opened", base_fd >= 0);
+    if (base_fd < 0) { (void)rmdir(base_path); return EXIT_FAILURE; }
+
+    EXPECT("target directory created", mkdirat(base_fd, "target", 0700) == 0);
+    EXPECT("stage directory created", mkdirat(base_fd, "stage", 0700) == 0);
+    EXPECT("backup directory created", mkdirat(base_fd, "backup", 0700) == 0);
+    int target_fd = openat(base_fd, "target", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    int stage_fd = openat(base_fd, "stage", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    int backup_fd = openat(base_fd, "backup", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    EXPECT("transaction roots opened",
+        target_fd >= 0 && stage_fd >= 0 && backup_fd >= 0);
+    if (target_fd < 0 || stage_fd < 0 || backup_fd < 0) return EXIT_FAILURE;
+
+    orbit_package_filesystem_journal_backend backend;
+    memory_journal memory;
+    memset(&memory, 0, sizeof(memory));
+    backend.context = &memory;
+    backend.load = memory_load;
+    backend.store_atomic = memory_store;
+    backend.clear_atomic = memory_clear;
+
+    uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xA1U };
+    orbit_package_file_change changes[2];
+    EXPECT("successful transaction fixtures created",
+        seed_pair(target_fd, stage_fd, "ok-a", "ok-a-stage", "ok-b"));
+    EXPECT("successful transaction plan prepared",
+        prepare_pair(target_fd, stage_fd, backup_fd,
+            "ok-a", "ok-a-stage", "ok-a-backup",
+            "ok-b", "ok-b-backup", changes));
+    filesystem_executor executor = { target_fd, stage_fd, backup_fd, 0U, 0U, false, false };
+    EXPECT("complete file transaction applies commits and clears journal",
+        orbit_package_filesystem_journal_execute(
+            &backend, transaction_id, changes, 2U,
+            execute_change, &executor) == ORBIT_FILESYSTEM_OK);
+    EXPECT("successful transaction installed first file",
+        file_equals_at(target_fd, "ok-a", "new-a"));
+    EXPECT("successful transaction removed second file",
+        !exists_at(target_fd, "ok-b"));
+    EXPECT("successful transaction cleared preimage backups",
+        !exists_at(backup_fd, "ok-a-backup") &&
+        !exists_at(backup_fd, "ok-b-backup"));
+    EXPECT("empty journal recovery is a no-op",
+        orbit_package_filesystem_journal_recover(
+            &backend, execute_change, &executor) == ORBIT_FILESYSTEM_OK);
+
+    EXPECT("rollback transaction fixtures created",
+        seed_pair(target_fd, stage_fd, "rb-a", "rb-a-stage", "rb-b"));
+    EXPECT("rollback transaction plan prepared",
+        prepare_pair(target_fd, stage_fd, backup_fd,
+            "rb-a", "rb-a-stage", "rb-a-backup",
+            "rb-b", "rb-b-backup", changes));
+    executor.apply_calls = 0U;
+    executor.fail_apply_call = 2U;
+    executor.fail_after_apply = true;
+    executor.fail_rollback_once = true;
+    EXPECT("failed apply with rollback interruption retains journal",
+        orbit_package_filesystem_journal_execute(
+            &backend, transaction_id, changes, 2U,
+            execute_change, &executor) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("rollback interruption leaves durable rolling-back phase",
+        memory.record != NULL &&
+        memory.record->phase == ORBIT_FILE_JOURNAL_ROLLING_BACK);
+    executor.fail_apply_call = 0U;
+    executor.fail_after_apply = false;
+    EXPECT("recovery retries reverse rollback and clears journal",
+        orbit_package_filesystem_journal_recover(
+            &backend, execute_change, &executor) == ORBIT_FILESYSTEM_OK);
+    EXPECT("recovery restored first preimage",
+        file_equals_at(target_fd, "rb-a", "old-a"));
+    EXPECT("recovery restored second preimage",
+        file_equals_at(target_fd, "rb-b", "old-b"));
+
+    EXPECT("commit-store-failure fixtures created",
+        seed_pair(target_fd, stage_fd, "st-a", "st-a-stage", "st-b"));
+    EXPECT("commit-store-failure plan prepared",
+        prepare_pair(target_fd, stage_fd, backup_fd,
+            "st-a", "st-a-stage", "st-a-backup",
+            "st-b", "st-b-backup", changes));
+    executor.apply_calls = 0U;
+    executor.fail_rollback_once = false;
+    memory.fail_store_call = memory.store_calls + 2U;
+    EXPECT("failed COMMITTED journal write leaves APPLYING record",
+        orbit_package_filesystem_journal_execute(
+            &backend, transaction_id, changes, 2U,
+            execute_change, &executor) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("failed commit transition remains recoverable as APPLYING",
+        memory.record != NULL &&
+        memory.record->phase == ORBIT_FILE_JOURNAL_APPLYING);
+    memory.fail_store_call = 0U;
+    EXPECT("APPLYING recovery rolls back all file changes",
+        orbit_package_filesystem_journal_recover(
+            &backend, execute_change, &executor) == ORBIT_FILESYSTEM_OK);
+    EXPECT("APPLYING recovery restored both preimages",
+        file_equals_at(target_fd, "st-a", "old-a") &&
+        file_equals_at(target_fd, "st-b", "old-b"));
+
+    EXPECT("clear-failure fixtures created",
+        seed_pair(target_fd, stage_fd, "cl-a", "cl-a-stage", "cl-b"));
+    EXPECT("clear-failure plan prepared",
+        prepare_pair(target_fd, stage_fd, backup_fd,
+            "cl-a", "cl-a-stage", "cl-a-backup",
+            "cl-b", "cl-b-backup", changes));
+    executor.apply_calls = 0U;
+    memory.fail_clear_once = true;
+    EXPECT("failed journal clear retains COMMITTED record",
+        orbit_package_filesystem_journal_execute(
+            &backend, transaction_id, changes, 2U,
+            execute_change, &executor) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("clear failure leaves committed phase",
+        memory.record != NULL &&
+        memory.record->phase == ORBIT_FILE_JOURNAL_COMMITTED);
+    EXPECT("committed recovery retries finalization and clears",
+        orbit_package_filesystem_journal_recover(
+            &backend, execute_change, &executor) == ORBIT_FILESYSTEM_OK);
+    EXPECT("committed recovery leaves installed result",
+        file_equals_at(target_fd, "cl-a", "new-a") &&
+        !exists_at(target_fd, "cl-b"));
+    EXPECT("committed recovery removes backup links",
+        !exists_at(backup_fd, "cl-a-backup") &&
+        !exists_at(backup_fd, "cl-b-backup"));
+
+    EXPECT("case-fold duplicate fixture prepared",
+        seed_pair(target_fd, stage_fd, "dup-a", "dup-a-stage", "dup-b") &&
+        prepare_pair(target_fd, stage_fd, backup_fd,
+            "dup-a", "dup-a-stage", "dup-a-backup",
+            "dup-b", "dup-b-backup", changes));
+    orbit_package_file_change duplicate_changes[2];
+    duplicate_changes[0] = changes[0];
+    duplicate_changes[1] = changes[0];
+    memcpy(duplicate_changes[1].target_name, "DUP-A", 6U);
+    EXPECT("case-folded duplicate targets rejected before journaling",
+        orbit_package_filesystem_journal_execute(
+            &backend, transaction_id, duplicate_changes, 2U,
+            execute_change, &executor) == ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+    EXPECT("duplicate plan did not create journal", memory.record == NULL);
+
+    const char *target_names[] = {
+        "ok-a", "ok-b", "rb-a", "rb-b", "st-a", "st-b",
+        "cl-a", "cl-b", "dup-a", "dup-b"
+    };
+    const char *stage_names[] = {
+        "ok-a-stage", "rb-a-stage", "st-a-stage", "cl-a-stage", "dup-a-stage"
+    };
+    const char *backup_names[] = {
+        "ok-a-backup", "ok-b-backup", "rb-a-backup", "rb-b-backup",
+        "st-a-backup", "st-b-backup", "cl-a-backup", "cl-b-backup",
+        "dup-a-backup", "dup-b-backup"
+    };
+    cleanup_names(target_fd, target_names, sizeof(target_names) / sizeof(target_names[0]));
+    cleanup_names(stage_fd, stage_names, sizeof(stage_names) / sizeof(stage_names[0]));
+    cleanup_names(backup_fd, backup_names, sizeof(backup_names) / sizeof(backup_names[0]));
+    close(backup_fd);
+    close(stage_fd);
+    close(target_fd);
+    (void)unlinkat(base_fd, "target", AT_REMOVEDIR);
+    (void)unlinkat(base_fd, "stage", AT_REMOVEDIR);
+    (void)unlinkat(base_fd, "backup", AT_REMOVEDIR);
+    close(base_fd);
+    EXPECT("temporary journal root removed", rmdir(base_path) == 0);
+
+    free(memory.record);
+    printf("filesystem_journal_checks=%u failures=%u\\ndecision=%s\\n",
+           checks, failures, failures == 0U ? "PASS" : "FAIL");
+    return failures == 0U ? EXIT_SUCCESS : EXIT_FAILURE;
+}

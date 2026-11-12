@@ -1,5 +1,4 @@
 # Debian ar container and member names
-" !<arch>\n"
 "!<arch>\n"
 "debian-binary/"
 "control.tar"

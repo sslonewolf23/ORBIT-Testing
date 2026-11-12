@@ -25,16 +25,15 @@ static int write_text(const char *path, const char *value) {
     return ok;
 }
 static int run_apt(const char *root, const char *deb, const char *log_path) {
-    char opt_root[1400], opt_status[1400], opt_state[1400], opt_cache[1400];
+    char opt_status[1400], opt_state[1400], opt_cache[1400];
     char opt_lists[1400], opt_logs[1400], opt_source[1400], opt_dpkg_root[1400];
-    snprintf(opt_root, sizeof(opt_root), "Dir::Root=%s", root);
     snprintf(opt_dpkg_root, sizeof(opt_dpkg_root), "DPkg::Options::=--root=%s", root);
-    snprintf(opt_status, sizeof(opt_status), "Dir::State::status=/var/lib/dpkg/status");
-    snprintf(opt_state, sizeof(opt_state), "Dir::State=/var/lib/apt");
-    snprintf(opt_cache, sizeof(opt_cache), "Dir::Cache=/var/cache/apt");
-    snprintf(opt_lists, sizeof(opt_lists), "Dir::State::lists=/var/lib/apt/lists");
-    snprintf(opt_logs, sizeof(opt_logs), "Dir::Log=/var/log/apt");
-    snprintf(opt_source, sizeof(opt_source), "Dir::Etc::sourcelist=/etc/apt/sources.list");
+    snprintf(opt_status, sizeof(opt_status), "Dir::State::status=%s/var/lib/dpkg/status", root);
+    snprintf(opt_state, sizeof(opt_state), "Dir::State=%s/var/lib/apt", root);
+    snprintf(opt_cache, sizeof(opt_cache), "Dir::Cache=%s/var/cache/apt", root);
+    snprintf(opt_lists, sizeof(opt_lists), "Dir::State::lists=%s/var/lib/apt/lists", root);
+    snprintf(opt_logs, sizeof(opt_logs), "Dir::Log=%s/var/log/apt", root);
+    snprintf(opt_source, sizeof(opt_source), "Dir::Etc::sourcelist=%s/etc/apt/sources.list", root);
 
     pid_t child = fork();
     if (child < 0) return -1;
@@ -45,7 +44,6 @@ static int run_apt(const char *root, const char *deb, const char *log_path) {
         dup2(fd, STDERR_FILENO);
         close(fd);
         execlp("apt-get", "apt-get",
-            "-o", opt_root,
             "-o", opt_status,
             "-o", opt_state,
             "-o", opt_cache,

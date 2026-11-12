@@ -226,7 +226,7 @@ static orbit_archive_code tar_stream_header(tar_stream *stream) {
     if (stream->zero_blocks != 0U) return ORBIT_ARCHIVE_MALFORMED_TAR;
     if (!tar_checksum_valid(h)) return ORBIT_ARCHIVE_MALFORMED_TAR;
     if (memcmp(h + 257U, "ustar", 5U) != 0 ||
-        (h[262U] != '\\0' && h[262U] != ' '))
+        (h[262U] != '\0' && h[262U] != ' '))
         return ORBIT_ARCHIVE_UNSUPPORTED_ENTRY;
 
     char path[ORBIT_TAR_MAX_PATH + 1U];
@@ -244,13 +244,13 @@ static orbit_archive_code tar_stream_header(tar_stream *stream) {
         memmove(path, path + 2U, strlen(path + 2U) + 1U);
     size_t path_length = strlen(path);
     if (directory && path_length > 0U && path[path_length - 1U] == '/')
-        path[path_length - 1U] = '\\0';
+        path[path_length - 1U] = '\0';
     if (!orbit_package_archive_path_is_safe(path)) return ORBIT_ARCHIVE_UNSAFE_PATH;
 
     uint64_t file_size = 0U;
     if (!parse_octal(h + 124U, 12U, &file_size))
         return ORBIT_ARCHIVE_MALFORMED_TAR;
-    if (!(type == '\\0' || type == '0' || directory) ||
+    if (!(type == '\0' || type == '0' || directory) ||
         (directory && file_size != 0U))
         return ORBIT_ARCHIVE_UNSUPPORTED_ENTRY;
     if (file_size > ORBIT_TAR_MAX_FILE_BYTES ||

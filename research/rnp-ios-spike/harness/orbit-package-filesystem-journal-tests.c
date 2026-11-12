@@ -205,6 +205,36 @@ int main(void) {
     EXPECT("journal root opened", base_fd >= 0);
     if (base_fd < 0) { (void)rmdir(base_path); return EXIT_FAILURE; }
 
+    uint8_t backup_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xA1U };
+    int transaction_backup_fd = -1;
+    EXPECT("transaction backup directory created with private identity",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, backup_transaction_id, true,
+            &transaction_backup_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("transaction backup directory descriptor returned",
+        transaction_backup_fd >= 0);
+    if (transaction_backup_fd >= 0) close(transaction_backup_fd);
+    transaction_backup_fd = -1;
+    EXPECT("transaction backup directory reopens without creation",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, backup_transaction_id, false,
+            &transaction_backup_fd) == ORBIT_FILESYSTEM_OK);
+    if (transaction_backup_fd >= 0) close(transaction_backup_fd);
+    uint8_t empty_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0U };
+    EXPECT("zero transaction ID cannot open a backup directory",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, empty_transaction_id, true,
+            &transaction_backup_fd) == ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+    uint8_t symlink_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xB1U };
+    EXPECT("transaction backup symlink fixture created",
+        symlinkat("target", base_fd,
+            "b1000000000000000000000000000000") == 0);
+    EXPECT("transaction backup opener refuses symlink directory",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, symlink_transaction_id, false,
+            &transaction_backup_fd) != ORBIT_FILESYSTEM_OK);
+    (void)unlinkat(base_fd, "b1000000000000000000000000000000", 0);
+
     EXPECT("target directory created", mkdirat(base_fd, "target", 0700) == 0);
     EXPECT("stage directory created", mkdirat(base_fd, "stage", 0700) == 0);
     EXPECT("backup directory created", mkdirat(base_fd, "backup", 0700) == 0);
@@ -401,6 +431,7 @@ int main(void) {
     (void)unlinkat(base_fd, "target", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "stage", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "backup", AT_REMOVEDIR);
+    (void)unlinkat(base_fd, "a1000000000000000000000000000000", AT_REMOVEDIR);
     close(base_fd);
     EXPECT("temporary journal root removed", rmdir(base_path) == 0);
 

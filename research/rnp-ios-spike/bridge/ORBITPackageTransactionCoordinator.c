@@ -31,8 +31,10 @@ static orbit_transaction_code native_enter(
 
     atomic_flag_clear_explicit(&g_native_transaction_gate,
                                memory_order_release);
-    return acquired == ORBIT_NATIVE_LOCK_BUSY ?
-        ORBIT_TRANSACTION_BUSY : ORBIT_TRANSACTION_NATIVE_LOCK_ERROR;
+    if (acquired == ORBIT_NATIVE_LOCK_BUSY) return ORBIT_TRANSACTION_BUSY;
+    if (acquired == ORBIT_NATIVE_LOCK_INVALID_ARGUMENT)
+        return ORBIT_TRANSACTION_INVALID_ARGUMENT;
+    return ORBIT_TRANSACTION_NATIVE_LOCK_ERROR;
 }
 
 static orbit_transaction_code native_leave(

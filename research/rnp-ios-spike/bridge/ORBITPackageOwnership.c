@@ -53,6 +53,10 @@ static orbit_ownership_code validate(const orbit_package_ownership_snapshot *s) 
         if(!valid_record(a)) return ORBIT_OWNERSHIP_CORRUPT_DATABASE;
         for(size_t j=0;j<i;j++) {
             const orbit_package_ownership_record *b=&s->records[j];
+            if(strcmp(a->package_name,b->package_name)==0 &&
+               strcmp(a->architecture,b->architecture)==0 &&
+               strcmp(a->package_version,b->package_version)!=0)
+                return ORBIT_OWNERSHIP_CORRUPT_DATABASE;
             if(strcmp(a->path,b->path)==0 && same_package(a,b))
                 return ORBIT_OWNERSHIP_CORRUPT_DATABASE;
             if(strcmp(a->path,b->path)==0 && (!a->directory || !b->directory))
@@ -177,9 +181,10 @@ orbit_ownership_code orbit_package_ownership_plan_install_deb(
     if(archive!=ORBIT_ARCHIVE_OK) {
         free(manifest.entries);
         memset(plan,0,sizeof(*plan));
-        return archive==ORBIT_ARCHIVE_LIMIT ? ORBIT_OWNERSHIP_LIMIT :
+        return archive==ORBIT_ARCHIVE_LIMIT || archive==ORBIT_ARCHIVE_CALLBACK_ERROR ?
+               ORBIT_OWNERSHIP_LIMIT :
                archive==ORBIT_ARCHIVE_UNSAFE_PATH ? ORBIT_OWNERSHIP_UNSAFE_PATH :
-               ORBIT_OWNERSHIP_INVALID_ARGUMENT;
+               ORBIT_OWNERSHIP_ARCHIVE_REJECTED;
     }
     orbit_ownership_code result=orbit_package_ownership_plan_install(
         installed,candidate,manifest.entries,manifest.count,plan);

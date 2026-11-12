@@ -2,7 +2,7 @@
 
 ## Production parser bounds
 
-The package archive path validator no longer performs a full pairwise path comparison while streaming each tar header. It stages at most 4,096 bounded path records, sorts them once, rejects adjacent duplicates, and uses binary lower-bound searches to detect regular files that would be ancestors of another entry. This keeps collision validation at bounded sort/search complexity rather than quadratic scans over every path pair.
+The package archive path validator no longer performs a full pairwise path comparison while streaming each tar header. It stages at most 4,096 bounded path records, sorts them once with an in-place heapsort, rejects adjacent duplicates, and uses binary lower-bound searches to detect regular files that would be ancestors of another entry. This keeps collision validation at bounded sort/search complexity rather than quadratic scans over every path pair.
 
 The decompression layer applies these ceilings before or during decoding:
 

@@ -94,7 +94,11 @@ func (s *service) head(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.db.Begin()
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
-	verifier, checkpoint, err := s.reconcileByKeyID(context.Background(), tx, req.KeyID)
+	credential, credErr := decodeB64(req.RecoveryCredential,32,32)
+	if credErr != nil { jsonError(w,400,"invalid request"); return }
+	verifier, verifyErr := s.recoveryVerifier(credential)
+	if verifyErr != nil { jsonError(w,403,"request rejected"); return }
+	checkpoint, err := s.reconcileAnchoredInstallation(context.Background(),tx,verifier)
 	if err != nil || checkpoint.KeyID != req.KeyID { jsonError(w, 503, "witness anchor unavailable"); return }
 	stored, counter, err := s.authenticateAssertion(tx, req.KeyID, raw, assertion)
 	if err != nil { jsonError(w, 403, "request rejected"); return }
@@ -120,7 +124,11 @@ func (s *service) compareAndSwap(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.db.Begin()
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
-	verifier, checkpoint, err := s.reconcileByKeyID(context.Background(), tx, req.KeyID)
+	credential, credErr := decodeB64(req.RecoveryCredential,32,32)
+	if credErr != nil { jsonError(w,400,"invalid request"); return }
+	verifier, verifyErr := s.recoveryVerifier(credential)
+	if verifyErr != nil { jsonError(w,403,"request rejected"); return }
+	checkpoint, err := s.reconcileAnchoredInstallation(context.Background(),tx,verifier)
 	if err != nil || checkpoint.KeyID != req.KeyID { jsonError(w, 503, "witness anchor unavailable"); return }
 	stored, counter, err := s.authenticateAssertion(tx, req.KeyID, raw, assertion)
 	if err != nil { jsonError(w, 403, "request rejected"); return }
@@ -310,12 +318,3 @@ func commitKeyRecovery(tx *sql.Tx, oldKeyID, newKeyID string, verifier,
 }
 
 
-func (s *service) reconcileByKeyID(ctx context.Context, tx *sql.Tx, keyID string) ([]byte,anchorCheckpoint,error) {
-	var verifier []byte
-	if err := tx.QueryRow("SELECT recovery_verifier FROM installations WHERE key_id=?",keyID).Scan(&verifier); err != nil {
-		return nil,anchorCheckpoint{},err
-	}
-	if len(verifier)!=32 { return nil,anchorCheckpoint{},errors.New("installation has no recovery verifier") }
-	checkpoint,err := s.reconcileAnchoredInstallation(ctx,tx,verifier)
-	return verifier,checkpoint,err
-}

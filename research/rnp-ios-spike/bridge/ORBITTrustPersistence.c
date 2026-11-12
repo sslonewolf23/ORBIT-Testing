@@ -362,11 +362,60 @@ bool orbit_repository_trust_fingerprint_allowed_and_store(
     const char *primary_fingerprint,uint64_t now_seconds,
     const orbit_trust_store_backend *backend,
     orbit_trust_store_code *store_result) {
-    if(!state||!primary_fingerprint||!store_result)return false;
-    if(!orbit_repository_trust_observe_time_and_store(
-        state,repository_id,now_seconds,backend,store_result))return false;
-    return orbit_repository_trust_fingerprint_allowed(
-        state,primary_fingerprint,now_seconds);
+    if(!state||!primary_fingerprint||!store_result||
+       !valid_repo(repository_id)||!backend_valid(backend)) {
+        if(store_result)*store_result=ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+        return false;
+    }
+    if(!backend->begin_transaction(backend->context,repository_id)) {
+        memset(state,0,sizeof(*state));
+        *store_result=ORBIT_TRUST_STORE_IO_ERROR;
+        return false;
+    }
+    orbit_repository_trust_state current;
+    memset(&current,0,sizeof(current));
+    orbit_trust_store_code loaded=store_load_locked(&current,repository_id,backend);
+    if(loaded!=ORBIT_TRUST_STORE_OK) {
+        memset(state,0,sizeof(*state));
+        *store_result=loaded;
+        backend->end_transaction(backend->context,repository_id);
+        return false;
+    }
+    if(now_seconds<current.last_observed_time) {
+        *state=current;
+        *store_result=ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
+        memset(&current,0,sizeof(current));
+        backend->end_transaction(backend->context,repository_id);
+        return false;
+    }
+    if(!orbit_repository_trust_observe_time(&current,now_seconds)) {
+        *state=current;
+        *store_result=ORBIT_TRUST_STORE_REVISION_EXHAUSTED;
+        memset(&current,0,sizeof(current));
+        backend->end_transaction(backend->context,repository_id);
+        return false;
+    }
+    orbit_trust_store_code saved=store_save_locked(&current,repository_id,backend);
+    if(saved!=ORBIT_TRUST_STORE_OK) {
+        orbit_repository_trust_state recovered;
+        memset(&recovered,0,sizeof(recovered));
+        if(store_load_locked(&recovered,repository_id,backend)==ORBIT_TRUST_STORE_OK)
+            *state=recovered;
+        else
+            memset(state,0,sizeof(*state));
+        memset(&recovered,0,sizeof(recovered));
+        *store_result=saved;
+        memset(&current,0,sizeof(current));
+        backend->end_transaction(backend->context,repository_id);
+        return false;
+    }
+    *state=current;
+    bool allowed=orbit_repository_trust_fingerprint_allowed(
+        &current,primary_fingerprint,now_seconds);
+    *store_result=ORBIT_TRUST_STORE_OK;
+    memset(&current,0,sizeof(current));
+    backend->end_transaction(backend->context,repository_id);
+    return allowed;
 }
 
 bool orbit_repository_trust_advance_and_store(

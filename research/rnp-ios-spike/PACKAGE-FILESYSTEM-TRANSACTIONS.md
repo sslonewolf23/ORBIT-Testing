@@ -65,3 +65,31 @@ The caller must hold the package-wide exclusive transaction lock across preparat
 - The host harness is authored and wired under AddressSanitizer/UndefinedBehaviorSanitizer, but has not been run.
 
 Installation remains disabled.
+
+
+## Canonical journal payload codec
+
+`ORBITPackageFilesystemJournalCodec.h/.c` provides a bounded canonical
+binary encoding for the per-file journal record. It deliberately excludes
+compiler padding and the revision field (the authenticated outer journal
+envelope owns the revision). All integers are unsigned big-endian; strings
+are explicit 16-bit byte lengths followed by UTF-8/ASCII bytes without a NUL
+terminator; unused in-memory string bytes must be zero.
+
+Payload format v1 is:
+
+- 4-byte magic `ORJP`;
+- 1-byte codec version;
+- 4-byte phase;
+- 16-byte nonzero transaction identifier;
+- 4-byte change count;
+- each change: version and operation (4 bytes each), five length-prefixed
+  strings (target, staged, backup, target parent, staged parent), one boolean
+  byte, then four 64-bit device/inode values.
+
+The decoder requires an exact payload length, rejects unknown versions,
+invalid booleans, embedded NULs, nonzero in-memory string tails, malformed
+changes, and trailing bytes. The outer authenticated envelope supplies the
+revision to the decoder. The codec is wired into host verification but has
+not been run yet. It is not yet connected to the Swift persistence actor or
+the production transaction executor.

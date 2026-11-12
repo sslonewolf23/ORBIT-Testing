@@ -255,7 +255,7 @@ func (s *service) verifyAssertion(publicDER, clientData, assertion []byte) (uint
 func (s *service) recoveryVerifier(credential []byte) ([]byte, error) {
 	if len(credential) != 32 || len(s.recoveryPepper) < 32 { return nil, errors.New("invalid recovery credential configuration") }
 	mac := hmac.New(sha256.New, s.recoveryPepper)
-	mac.Write([]byte("ORBIT-RECOVERY-VERIFIER-V1\\x00"))
+	mac.Write([]byte("ORBIT-RECOVERY-VERIFIER-V1\x00"))
 	mac.Write(credential)
 	return mac.Sum(nil), nil
 }

@@ -219,6 +219,12 @@ int main(void) {
 
     orbit_package_filesystem_lock lock_one = { -1 };
     orbit_package_filesystem_lock lock_two = { -1 };
+    EXPECT("group/world-writable transaction root is rejected",
+        fchmod(base_fd, 0777) == 0 &&
+        orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
+            ORBIT_FILESYSTEM_CONFLICT);
+    EXPECT("private transaction root permissions restored",
+        fchmod(base_fd, 0700) == 0);
     EXPECT("exclusive package lock acquired",
         orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
             ORBIT_FILESYSTEM_OK);

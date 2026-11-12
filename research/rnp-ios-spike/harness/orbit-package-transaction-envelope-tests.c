@@ -27,8 +27,17 @@ static const uint8_t ownership_new[] = {
     0U
 };
 static const uint8_t journal_payload[] = {
-    'O','R','J','P',1U,0U,0U,0U,1U,0U,0U,0U,0U,0U,0U,0U,
-    0U,0U,0U,0U,0U,0U,0U,0U,0U,0U,0U,0U,0U
+    'O','R','J','P',1U, 0U,0U,0U,1U,
+    0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,
+    0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,
+    0U,0U,0U,1U,
+    0U,0U,0U,2U, 0U,0U,0U,1U,
+    0U,1U,'t', 0U,1U,'s', 0U,1U,'b', 0U,0U, 0U,0U,
+    0U,
+    0U,0U,0U,0U,0U,0U,0U,0U,
+    0U,0U,0U,0U,0U,0U,0U,0U,
+    0U,0U,0U,0U,0U,0U,0U,1U,
+    0U,0U,0U,0U,0U,0U,0U,2U
 };
 
 int main(void) {

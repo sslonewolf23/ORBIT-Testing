@@ -895,6 +895,26 @@ jobs:
             | tee "$RUNNER_TEMP/package-transaction-envelope.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction-envelope.out"
 
+      - name: Compile and run atomic ownership plus filesystem journal tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalEnvelope.c \
+            research/rnp-ios-spike/harness/orbit-package-filesystem-journal-envelope-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-filesystem-journal-envelope-tests"
+          "$RUNNER_TEMP/orbit-package-filesystem-journal-envelope-tests" \
+            | tee "$RUNNER_TEMP/package-filesystem-journal-envelope.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem-journal-envelope.out"
+
       - name: Fuzz package archive and decompression parsers
         shell: bash
         run: |

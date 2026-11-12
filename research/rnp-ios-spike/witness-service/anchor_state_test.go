@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 type memoryAnchor struct { items map[string]anchorCheckpoint; failAppend bool }
@@ -72,7 +73,7 @@ func TestReconcileRepairsRolledBackSQLiteStateFromExternalAnchor(t *testing.T) {
 	second.Hash=checkpointHash(second)
 	id:=installationAnchorID(verifier)
 	anchor.items[id]=second
-	s:=&service{db:db,anchor:anchor}
+	s:=&service{db:db,anchor:anchor,now:time.Now}
 	tx,err:=db.Begin(); if err!=nil { t.Fatal(err) }
 	got,err:=s.reconcileAnchoredInstallation(context.Background(),tx,verifier)
 	if err!=nil { _=tx.Rollback(); t.Fatal(err) }

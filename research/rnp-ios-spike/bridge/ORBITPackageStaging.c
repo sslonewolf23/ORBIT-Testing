@@ -116,7 +116,8 @@ static int open_parent_directory(orbit_package_staging *staging,
 }
 
 static bool remove_directory_contents(int directory_fd) {
-    int scan_fd = duplicate_cloexec(directory_fd);
+    int scan_fd = openat(directory_fd, ".",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (scan_fd < 0) return false;
     DIR *directory = fdopendir(scan_fd);
     if (!directory) {

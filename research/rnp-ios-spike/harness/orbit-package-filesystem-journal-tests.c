@@ -255,6 +255,10 @@ int main(void) {
         orbit_package_filesystem_open_backup_directory(
             base_fd, stale_transaction_id, true,
             &transaction_backup_fd) == ORBIT_FILESYSTEM_CONFLICT);
+    EXPECT("repeated emptiness inspection still detects stale contents",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, stale_transaction_id, true,
+            &transaction_backup_fd) == ORBIT_FILESYSTEM_CONFLICT);
     int stale_directory_fd = openat(base_fd,
         "c1000000000000000000000000000000",
         O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -459,7 +463,13 @@ int main(void) {
     EXPECT("standard executor finalized preimage backup",
         standard_backup_fd >= 0 && !exists_at(standard_backup_fd, "std-backup"));
     if (standard_backup_fd >= 0) close(standard_backup_fd);
-    (void)unlinkat(base_fd, "d1000000000000000000000000000000", AT_REMOVEDIR);
+    EXPECT("backup cleanup refuses while an authenticated journal is active",
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, standard_transaction_id) ==
+            ORBIT_FILESYSTEM_OK);
+    EXPECT("successful transaction removes its empty backup directory",
+        fstatat(base_fd, "d1000000000000000000000000000000",
+                &(struct stat){0}, AT_SYMLINK_NOFOLLOW) < 0 && errno == ENOENT);
 
     EXPECT("case-fold duplicate fixture prepared",
         seed_pair(target_fd, stage_fd, "dup-a", "dup-a-stage", "dup-b") &&

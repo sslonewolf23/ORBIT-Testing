@@ -4,7 +4,7 @@
 #include <string.h>
 
 static bool bounded_string(const char *value,size_t capacity) {
-    return value&&value[0]!='\\0'&&memchr(value,'\\0',capacity)!=NULL;
+    return value&&value[0]!='\0'&&memchr(value,'\0',capacity)!=NULL;
 }
 static bool package_identity_matches(const orbit_package_record *package,
                                      const char *name,const char *version,

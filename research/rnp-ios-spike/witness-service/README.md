@@ -28,6 +28,8 @@ Required environment variables:
 - `ORBIT_RECOVERY_PEPPER`: at least 32 characters of independently generated random server secret; keep it outside the database, back it up separately, and retain the same value across restarts and restores
 - `AWS_REGION`: AWS region containing the independent anchor table
 - `ORBIT_ANCHOR_TABLE`: DynamoDB table with partition key `installation_id` (String) and sort key `sequence` (Number)
+- `ORBIT_APP_ATTEST_ALLOWED_CATEGORIES`: comma-separated, explicit allowlist of Apple validation-category integers (1–255)
+- `ORBIT_APP_ATTEST_ALLOWED_BUNDLE_VERSIONS`: comma-separated, exact bundle-version strings accepted by this deployment; update deliberately for each release
 - `ORBIT_LISTEN`: optional bind address; defaults to `127.0.0.1:8443`
 
 The service refuses to start without TLS credentials and the trust root. Place
@@ -82,9 +84,14 @@ and state transitions but cannot establish Apple's trust chain.
 - Recovery credentials are now part of enrollment. The client generates and securely preserves a uniformly random 32-byte secret and the device validation host shows it once. The server stores only a domain-separated HMAC verifier using `ORBIT_RECOVERY_PEPPER`; the raw credential is sent only over TLS during enrollment, recovery, and signed head/CAS requests (as an unsigned JSON wrapper field; the App Attest assertion still signs only the exact request bytes). Recovery challenges are located by the credential and bind the old and replacement key IDs server-side, expire after five minutes, and are single-use. A successful recovery replaces the App Attest key while preserving the exact journal revision, digest, tombstone, and an append-only key-recovery history row. Existing installations created before this migration have no verifier and cannot self-recover; they require a separately reviewed migration/re-enrollment process.
 - The iOS client now generates the credential, stores it in device-only Keychain storage, and sends it during enrollment, recovery, and every signed head/CAS request so the server can locate the installation anchor after a local database restore. The device validation host displays it once after first enrollment. The user must save it offline: losing both the device-only Keychain copy and the offline credential makes recovery impossible. The server pepper is part of the verifier derivation and must remain stable; changing it without a controlled migration invalidates every stored recovery verifier. Rate limits, production recovery UX, and abuse monitoring remain to be implemented and tested.
 - The DynamoDB anchor is a reference implementation of the independent monotonic witness. Production still requires an AWS account/table, least-privilege task role, table deletion/restore protections, independent account-level administration, monitoring, and a tested disaster-recovery plan. The service fails closed if the anchor is unavailable. A missing or stale SQLite row can be reconstructed from the latest external checkpoint when the client supplies its recovery credential; a local state ahead of the anchor is rejected.
-- The service checks the App Attest validation-category and bundle-version
-  extension structure, but does not yet enforce an operator-configured
-  allowlist or bind later assertions to the exact enrolled bundle version.
+- The service now enforces operator-configured validation-category and
+  bundle-version allowlists during both enrollment and every assertion. The
+  allowlists must be explicit and non-empty at startup. The current reference
+  implementation does not yet persist the exact enrolled extension values per
+  installation; therefore, if multiple bundle versions are allowlisted at once,
+  an assertion carrying any currently allowlisted version can pass this policy.
+  Production policy should allow only the intended active version and should
+  add per-installation exact-version binding before multi-version rollout.
 - Add challenge and installation rate limits and expired-challenge cleanup.
 - Add durable audit logs, database backup/restore drills, and operational
   alerting.

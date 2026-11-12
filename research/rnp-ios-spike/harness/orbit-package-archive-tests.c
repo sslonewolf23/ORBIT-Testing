@@ -155,6 +155,51 @@ static size_t make_tar_with_payload(uint8_t *out, const char *path,
     return total;
 }
 
+static size_t make_deb_with_payload(uint8_t *out, const char *path,
+                                    const uint8_t *payload, size_t payload_length) {
+    uint8_t control_tar[1536], data_tar[4096];
+    size_t control_length = make_tar(control_tar, "control", '0');
+    size_t data_length = make_tar_with_payload(
+        data_tar, path, payload, payload_length);
+    memcpy(out, "!<arch>\\n", 8U);
+    size_t offset = 8U;
+    static const uint8_t version[] = "2.0\\n";
+    offset = append_ar_member(out, offset, "debian-binary", version, 4U);
+    offset = append_ar_member(out, offset, "control.tar", control_tar, control_length);
+    offset = append_ar_member(out, offset, "data.tar", data_tar, data_length);
+    return offset;
+}
+
+static size_t make_deb_compressed_payload(
+    uint8_t *out, const char *path, const uint8_t *payload, size_t payload_length,
+    orbit_decompress_format format, const char *suffix) {
+    uint8_t control_tar[1536], data_tar[4096];
+    uint8_t compressed_control[4096], compressed_data[4096];
+    size_t control_length = make_tar(control_tar, "control", '0');
+    size_t data_length = make_tar_with_payload(
+        data_tar, path, payload, payload_length);
+    size_t compressed_control_length = compress_fixture(
+        format, control_tar, control_length,
+        compressed_control, sizeof(compressed_control));
+    size_t compressed_data_length = compress_fixture(
+        format, data_tar, data_length,
+        compressed_data, sizeof(compressed_data));
+    if (compressed_control_length == 0U || compressed_data_length == 0U)
+        return 0U;
+    char control_name[32], data_name[32];
+    (void)snprintf(control_name, sizeof(control_name), "control.tar%s", suffix);
+    (void)snprintf(data_name, sizeof(data_name), "data.tar%s", suffix);
+    memcpy(out, "!<arch>\\n", 8U);
+    size_t offset = 8U;
+    static const uint8_t version[] = "2.0\\n";
+    offset = append_ar_member(out, offset, "debian-binary", version, 4U);
+    offset = append_ar_member(out, offset, control_name,
+                              compressed_control, compressed_control_length);
+    offset = append_ar_member(out, offset, data_name,
+                              compressed_data, compressed_data_length);
+    return offset;
+}
+
 
 typedef struct { size_t count; char first_path[ORBIT_TAR_MAX_PATH + 1U]; } entry_capture;
 static bool capture_data_entry(void *context,const orbit_archive_entry *entry) {
@@ -165,6 +210,35 @@ static bool capture_data_entry(void *context,const orbit_archive_entry *entry) {
 }
 static bool reject_data_entry(void *context,const orbit_archive_entry *entry) {
     (void)context; (void)entry; return false;
+}
+
+typedef struct {
+    uint8_t bytes[128];
+    size_t length;
+    bool saw_final;
+} payload_capture;
+
+static bool capture_payload_chunk(void *context, const char *path,
+                                  uint64_t offset, const uint8_t *bytes,
+                                  size_t length, bool final_chunk) {
+    payload_capture *capture = (payload_capture *)context;
+    if (!capture || !path || strcmp(path, "Library/ORBIT/stream.bin") != 0 ||
+        offset != capture->length || (length != 0U && !bytes) ||
+        length > sizeof(capture->bytes) - capture->length || capture->saw_final)
+        return false;
+    if (length != 0U)
+        memcpy(capture->bytes + capture->length, bytes, length);
+    capture->length += length;
+    if (final_chunk) capture->saw_final = true;
+    return true;
+}
+
+static bool reject_payload_chunk(void *context, const char *path,
+                                 uint64_t offset, const uint8_t *bytes,
+                                 size_t length, bool final_chunk) {
+    (void)context; (void)path; (void)offset; (void)bytes;
+    (void)length; (void)final_chunk;
+    return false;
 }
 
 int main(void) {
@@ -296,6 +370,22 @@ int main(void) {
         orbit_package_archive_inspect_deb_with_data_entries(
             deb,length,reject_data_entry,NULL,&report)==ORBIT_ARCHIVE_CALLBACK_ERROR);
 
+    static const uint8_t payload_fixture[] = "ORBIT streaming payload callback";
+    length = make_deb_with_payload(
+        deb, "Library/ORBIT/stream.bin", payload_fixture, sizeof(payload_fixture));
+    payload_capture payload_result;
+    memset(&payload_result, 0, sizeof(payload_result));
+    EXPECT("uncompressed data.tar payload is streamed with offsets and final marker",
+        orbit_package_archive_inspect_deb_with_data(
+            deb, length, NULL, NULL, capture_payload_chunk,
+            &payload_result, &report) == ORBIT_ARCHIVE_OK &&
+        payload_result.saw_final &&
+        payload_result.length == sizeof(payload_fixture) &&
+        memcmp(payload_result.bytes, payload_fixture, sizeof(payload_fixture)) == 0);
+    EXPECT("payload callback failure aborts archive inspection",
+        orbit_package_archive_inspect_deb_with_data(
+            deb, length, NULL, NULL, reject_payload_chunk,
+            NULL, &report) == ORBIT_ARCHIVE_CALLBACK_ERROR);
 
     const struct {
         orbit_decompress_format format;
@@ -314,6 +404,19 @@ int main(void) {
         EXPECT("compressed Debian fixture generated", length > 0U);
         EXPECT(compressed_formats[i].label,
                orbit_package_archive_inspect_deb(deb, length, &report) == ORBIT_ARCHIVE_OK);
+
+        length = make_deb_compressed_payload(
+            deb, "Library/ORBIT/stream.bin", payload_fixture, sizeof(payload_fixture),
+            compressed_formats[i].format, compressed_formats[i].suffix);
+        memset(&payload_result, 0, sizeof(payload_result));
+        EXPECT("compressed data.tar payload streams through callback",
+            length > 0U &&
+            orbit_package_archive_inspect_deb_with_data(
+                deb, length, NULL, NULL, capture_payload_chunk,
+                &payload_result, &report) == ORBIT_ARCHIVE_OK &&
+            payload_result.saw_final &&
+            payload_result.length == sizeof(payload_fixture) &&
+            memcmp(payload_result.bytes, payload_fixture, sizeof(payload_fixture)) == 0);
     }
 
     length = make_deb(deb, "../escape", '0');

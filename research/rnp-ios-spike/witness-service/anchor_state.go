@@ -17,24 +17,24 @@ func sameCheckpointState(c anchorCheckpoint, keyID string, publicKey []byte,
 // closed if SQLite claims a state newer than the external checkpoint.
 func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 	verifier []byte) (anchorCheckpoint, error) {
-	var checkpoint anchorCheckpoint
+	var zero anchorCheckpoint
 	installationID := installationAnchorID(verifier)
 	remote, found, err := s.anchor.Latest(ctx, installationID)
-	if err != nil { return checkpoint, err }
-	if !found { return checkpoint, errors.New("independent monotonic anchor missing") }
-	if err := validateCheckpoint(remote); err != nil { return checkpoint, err }
-	if remote.InstallationID != installationID { return checkpoint, errors.New("external anchor installation mismatch") }
-	if remote.Sequence > uint64(^uint64(0)>>1) { return checkpoint, errors.New("anchor sequence exceeds local storage range") }
+	if err != nil { return zero, err }
+	if !found { return zero, errors.New("independent monotonic anchor missing") }
+	if err := validateCheckpoint(remote); err != nil { return zero, err }
+	if remote.InstallationID != installationID { return zero, errors.New("external anchor installation mismatch") }
+	if remote.Sequence > uint64(^uint64(0)>>1) { return zero, errors.New("anchor sequence exceeds local storage range") }
 
 	var keyID string
-	var publicKey, revision, digest, storedVerifier []byte
+	var publicKey, revision, digest []byte
 	var counter uint32
 	var tombstone int
 	var sequence int64
 	err = tx.QueryRow(`SELECT key_id,public_key,assertion_counter,revision,
-		head_digest,tombstone,anchor_sequence,recovery_verifier FROM installations
+		head_digest,tombstone,anchor_sequence FROM installations
 		WHERE recovery_verifier=?`, verifier).Scan(
-		&keyID,&publicKey,&counter,&revision,&digest,&tombstone,&sequence,&storedVerifier)
+		&keyID,&publicKey,&counter,&revision,&digest,&tombstone,&sequence)
 	if err == sql.ErrNoRows {
 		// A full SQLite restore may predate this installation. The client-held
 		// recovery credential selects the independent anchor; rebuild the cache
@@ -42,14 +42,14 @@ func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 		var existingVerifier []byte
 		err = tx.QueryRow("SELECT recovery_verifier FROM installations WHERE key_id=?",remote.KeyID).Scan(&existingVerifier)
 		if err == nil && len(existingVerifier) != 0 && !equalBytes(existingVerifier,verifier) {
-			return checkpoint, errors.New("anchor key is bound to a different local installation")
+			return zero, errors.New("anchor key is bound to a different local installation")
 		}
-		if err != nil && err != sql.ErrNoRows { return checkpoint, err }
+		if err != nil && err != sql.ErrNoRows { return zero, err }
 		if err == sql.ErrNoRows {
 			_, err = tx.Exec(`INSERT INTO installations
 				(key_id,public_key,attestation_digest,assertion_counter,revision,head_digest,
 				tombstone,created_at,recovery_verifier,anchor_sequence)
-				VALUES(?,?,?, ?,?,?, ?,?,?,?)`, remote.KeyID,remote.PublicKey,
+				VALUES(?,?,?,?,?,?,?,?,?,?)`, remote.KeyID,remote.PublicKey,
 				make([]byte,32),remote.Counter,u64Bytes(remote.Head.Revision),
 				remote.Head.Digest[:],boolInt(remote.Head.Tombstone),s.now().Unix(),
 				verifier,int64(remote.Sequence))
@@ -57,31 +57,25 @@ func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 			_, err = tx.Exec("UPDATE installations SET recovery_verifier=? WHERE key_id=? AND (recovery_verifier IS NULL OR recovery_verifier=?)",
 				verifier,remote.KeyID,verifier)
 		}
-		if err != nil { return checkpoint, err }
+		if err != nil { return zero, err }
 		return remote,nil
 	}
-	if err != nil { return checkpoint, err }
-	if !equalBytes(storedVerifier,verifier) { return checkpoint, errors.New("local installation credential mismatch") }
+	if err != nil { return zero, err }
 	if sequence < 0 || len(revision)!=8 || len(digest)!=32 ||
 		(tombstone!=0 && tombstone!=1) {
-		return checkpoint, errors.New("invalid local witness state")
+		return zero, errors.New("invalid local witness state")
 	}
 	var localHead witnessHead
 	localHead.Revision = binaryRevision(revision)
 	copy(localHead.Digest[:], digest)
 	localHead.Tombstone = tombstone == 1
 
-	installationID := installationAnchorID(verifier)
-	remote, found, err := s.anchor.Latest(ctx, installationID)
-	if err != nil { return checkpoint, err }
-	if !found { return checkpoint, errors.New("independent monotonic anchor missing") }
-	if err := validateCheckpoint(remote); err != nil { return checkpoint, err }
 	if uint64(sequence) > remote.Sequence {
-		return checkpoint, errors.New("local witness state is ahead of independent anchor")
+		return zero, errors.New("local witness state is ahead of independent anchor")
 	}
 	if uint64(sequence) == remote.Sequence {
 		if !sameCheckpointState(remote,keyID,publicKey,counter,localHead) {
-			return checkpoint, errors.New("local and independent witness states disagree")
+			return zero, errors.New("local and independent witness states disagree")
 		}
 		return remote,nil
 	}
@@ -92,9 +86,9 @@ func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 		WHERE recovery_verifier=?`, remote.KeyID,remote.PublicKey,remote.Counter,
 		u64Bytes(remote.Head.Revision),remote.Head.Digest[:],boolInt(remote.Head.Tombstone),
 		int64(remote.Sequence),verifier)
-	if err != nil { return checkpoint, err }
+	if err != nil { return zero, err }
 	changed, err := res.RowsAffected()
-	if err != nil || changed != 1 { return checkpoint, errors.New("failed to reconcile local witness state") }
+	if err != nil || changed != 1 { return zero, errors.New("failed to reconcile local witness state") }
 	return remote,nil
 }
 

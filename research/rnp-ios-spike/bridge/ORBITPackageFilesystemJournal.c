@@ -11,8 +11,7 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     orbit_package_filesystem_executor_context *executor =
         (orbit_package_filesystem_executor_context *)context;
     if (!executor || !transaction_id || !change ||
-        executor->install_root_fd < 0 || executor->staging_root_fd < 0 ||
-        executor->backup_root_fd < 0 ||
+        executor->install_root_fd < 0 || executor->backup_root_fd < 0 ||
         memcmp(executor->transaction_id, transaction_id,
                ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES) != 0)
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
@@ -20,6 +19,9 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     orbit_filesystem_code valid =
         orbit_package_filesystem_validate_change(change);
     if (valid != ORBIT_FILESYSTEM_OK) return valid;
+    if (change->operation == ORBIT_FILESYSTEM_REPLACE &&
+        executor->staging_root_fd < 0)
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
     int target_parent_fd = -1;
     int staged_parent_fd = -1;

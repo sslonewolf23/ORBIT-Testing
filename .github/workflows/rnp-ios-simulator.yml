@@ -160,6 +160,7 @@ jobs:
             ORBITPackageFilesystemJournalCodec \
             ORBITPackageOwnership \
             ORBITPackageOwnershipCodec \
+            ORBITPackageFilePlan \
             ORBITPackageFilesystemJournalEnvelope; do
             clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
               -I"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/include" \
@@ -273,6 +274,7 @@ jobs:
             "$RUNNER_TEMP/ORBITPackageFilesystemJournalCodec-ios.o" \
             "$RUNNER_TEMP/ORBITPackageOwnership-ios.o" \
             "$RUNNER_TEMP/ORBITPackageOwnershipCodec-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageFilePlan-ios.o" \
             "$RUNNER_TEMP/ORBITPackageFilesystemJournalEnvelope-ios.o" \
             $(pkg-config --static --libs librnp | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             $(pkg-config --static --libs botan-3 | sed -e 's/-stdlib=libc++//g' -e 's/-fstack-protector//g' -e 's/-pthread//g') \

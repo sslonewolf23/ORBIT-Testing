@@ -144,6 +144,32 @@ int main(void) {
     EXPECT("discard removed staging directory",
         !path_exists_at(base_fd, "stage-good"));
 
+    size_t empty_deb_length = make_deb(deb, NULL, 0U);
+    EXPECT("zero-length file staging directory created",
+        orbit_package_staging_begin(base_fd, "stage-empty", &staging) == ORBIT_STAGING_OK);
+    EXPECT("zero-length package file is finalized by empty final chunk",
+        orbit_package_archive_inspect_deb_with_data(
+            deb, empty_deb_length,
+            orbit_package_staging_entry_callback, &staging,
+            orbit_package_staging_data_callback, &staging,
+            &(orbit_archive_report){0}) == ORBIT_ARCHIVE_OK &&
+        orbit_package_staging_finish(&staging) == ORBIT_STAGING_OK);
+    int empty_library_fd = openat(staging.staging_directory_fd, "Library",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int empty_orbit_fd = empty_library_fd >= 0 ? openat(empty_library_fd, "ORBIT",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) : -1;
+    int empty_file_fd = empty_orbit_fd >= 0 ? openat(empty_orbit_fd, "staged.bin",
+        O_RDONLY | O_NOFOLLOW | O_CLOEXEC) : -1;
+    struct stat empty_status;
+    EXPECT("zero-length staged file exists",
+        empty_file_fd >= 0 && fstat(empty_file_fd, &empty_status) == 0 &&
+        empty_status.st_size == 0);
+    if (empty_file_fd >= 0) close(empty_file_fd);
+    if (empty_orbit_fd >= 0) close(empty_orbit_fd);
+    if (empty_library_fd >= 0) close(empty_library_fd);
+    EXPECT("zero-length stage discarded",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK);
+
     EXPECT("unsafe staging name rejected",
         orbit_package_staging_begin(base_fd, "../outside", &staging) ==
             ORBIT_STAGING_UNSAFE_PATH);

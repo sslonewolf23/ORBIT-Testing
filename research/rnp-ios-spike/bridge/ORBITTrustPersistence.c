@@ -1,5 +1,7 @@
 #include "ORBITTrustPersistence.h"
+#ifdef ORBIT_TRUST_PERSISTENCE_TESTING
 #include "ORBITTrustPersistenceTesting.h"
+#endif
 
 #include <ctype.h>
 #include <string.h>
@@ -287,6 +289,7 @@ orbit_trust_store_code orbit_repository_trust_store_load(
     return result;
 }
 
+#ifdef ORBIT_TRUST_PERSISTENCE_TESTING
 orbit_trust_store_code orbit_repository_trust_store_save_for_testing(
     const orbit_repository_trust_state *state,const char *repository_id,
     const orbit_trust_store_backend *backend) {
@@ -480,3 +483,5 @@ bool orbit_repository_trust_prune_previous_and_store(
  else if(*store_result!=ORBIT_TRUST_STORE_OK){memset(&current,0,sizeof(current));if(store_load_locked(&current,repository_id,backend)==ORBIT_TRUST_STORE_OK)*state=current;else memset(state,0,sizeof(*state));}
  bool success=changed&&*store_result==ORBIT_TRUST_STORE_OK;memset(&current,0,sizeof(current));backend->end_transaction(backend->context,repository_id);return success;
 }
+
+#endif

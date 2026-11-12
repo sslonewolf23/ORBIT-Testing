@@ -148,6 +148,22 @@ int main(void) {
         orbit_package_staging_begin(base_fd, "../outside", &staging) ==
             ORBIT_STAGING_UNSAFE_PATH);
 
+    EXPECT("late-failure staging directory created",
+        orbit_package_staging_begin(base_fd, "stage-late", &staging) == ORBIT_STAGING_OK);
+    uint8_t malformed_deb[sizeof(deb)];
+    memcpy(malformed_deb, deb, deb_length);
+    malformed_deb[deb_length - 1U] = 1U;
+    EXPECT("late archive corruption is reported after staged payload callback",
+        orbit_package_archive_inspect_deb_with_data(
+            malformed_deb, deb_length,
+            orbit_package_staging_entry_callback, &staging,
+            orbit_package_staging_data_callback, &staging,
+            &(orbit_archive_report){0}) == ORBIT_ARCHIVE_MALFORMED_TAR);
+    EXPECT("partial stage after late archive failure is discarded",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK);
+    EXPECT("late-failure staging directory removed",
+        !path_exists_at(base_fd, "stage-late"));
+
     EXPECT("symlink staging directory created",
         orbit_package_staging_begin(base_fd, "stage-link", &staging) == ORBIT_STAGING_OK);
     EXPECT("test symlink inserted into private stage",

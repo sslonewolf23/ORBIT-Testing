@@ -6,22 +6,27 @@ static int canonical_absolute_path(const char *path) {
     if (!path || path[0] != '/') return 0;
     size_t length = strlen(path);
     if (length == 0U || length >= ORBIT_APT_PATH_CAPACITY) return 0;
-    if (length > 1U && path[length - 1U] == '/') return 0;
+    if (length == 1U) return 1;
+    if (path[length - 1U] == '/') return 0;
 
+    size_t component_start = 1U;
+    for (size_t i = 1U; i <= length; ++i) {
+        if (i < length) {
+            unsigned char ch = (unsigned char)path[i];
+            if (ch < 0x20U || ch == 0x7fU) return 0;
+            if (ch != '/') continue;
+        }
+        size_t component_length = i - component_start;
+        if (component_length == 0U ||
+            (component_length == 1U && path[component_start] == '.') ||
+            (component_length == 2U && path[component_start] == '.' &&
+             path[component_start + 1U] == '.'))
+            return 0;
+        component_start = i + 1U;
+    }
     for (size_t i = 0; i < length; ++i) {
         unsigned char ch = (unsigned char)path[i];
         if (ch < 0x20U || ch == 0x7fU) return 0;
-        if (ch == '/') {
-            if (i + 1U < length && path[i + 1U] == '/') return 0;
-            size_t start = i + 1U;
-            size_t end = start;
-            while (end < length && path[end] != '/') ++end;
-            size_t component_length = end - start;
-            if ((component_length == 1U && path[start] == '.') ||
-                (component_length == 2U && path[start] == '.' &&
-                 path[start + 1U] == '.'))
-                return 0;
-        }
     }
     return 1;
 }

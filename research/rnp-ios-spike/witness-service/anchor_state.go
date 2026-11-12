@@ -23,6 +23,7 @@ func (s *service) reconcileAnchoredInstallation(ctx context.Context, tx *sql.Tx,
 	if err != nil { return checkpoint, err }
 	if !found { return checkpoint, errors.New("independent monotonic anchor missing") }
 	if err := validateCheckpoint(remote); err != nil { return checkpoint, err }
+	if remote.InstallationID != installationID { return checkpoint, errors.New("external anchor installation mismatch") }
 	if remote.Sequence > uint64(^uint64(0)>>1) { return checkpoint, errors.New("anchor sequence exceeds local storage range") }
 
 	var keyID string

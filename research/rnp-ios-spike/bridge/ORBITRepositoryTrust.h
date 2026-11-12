@@ -55,6 +55,7 @@ typedef enum {
 bool orbit_trust_rotation_proof_parse(const uint8_t *data, size_t length,
                                       orbit_trust_rotation_proof *proof);
 
+/* Enrollment requires distinct repository-signing and offline-recovery pins. */
 bool orbit_repository_trust_init(orbit_repository_trust_state *state,
                                  const char *pinned_primary_fingerprint,
                                  const char *pinned_recovery_fingerprint);

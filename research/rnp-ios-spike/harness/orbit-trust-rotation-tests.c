@@ -283,6 +283,25 @@ int main(int argc, char **argv) {
             &wrong_candidate_recovery_state,"orbit-official",emergency,emergency_len,
             recovery,recovery_len,recovery_fpr,trusted,trusted_len,emergency_now)
             == ORBIT_TRUST_CANDIDATE_KEY_REJECTED,true);
+    orbit_repository_trust_state stale_recovery_state;
+    expect("stale-recovery-state-init",orbit_repository_trust_init(
+        &stale_recovery_state,trusted_fpr),true);
+    expect("recovery-time-floor-advanced",
+        orbit_repository_trust_observe_time(&stale_recovery_state,emergency_now+1U),true);
+    expect("replayed-recovery-proof-rejected",
+        orbit_repository_trust_authorize_recovery_rotation(
+            &stale_recovery_state,"orbit-official",emergency,emergency_len,
+            recovery,recovery_len,recovery_fpr,candidate,candidate_len,emergency_now+1U)
+            == ORBIT_TRUST_ROTATION_WINDOW_REJECTED,true);
+    orbit_repository_trust_state expired_recovery_state;
+    expect("expired-recovery-state-init",orbit_repository_trust_init(
+        &expired_recovery_state,trusted_fpr),true);
+    expect("recovery-statement-age-bounded",
+        orbit_repository_trust_authorize_recovery_rotation(
+            &expired_recovery_state,"orbit-official",emergency,emergency_len,
+            recovery,recovery_len,recovery_fpr,candidate,candidate_len,
+            emergency_now+ORBIT_TRUST_MAX_EMERGENCY_STATEMENT_AGE_SECONDS+1U)
+            == ORBIT_TRUST_RECOVERY_POLICY_REJECTED,true);
     orbit_repository_trust_state non_independent_recovery_state;
     expect("non-independent-recovery-state-init",orbit_repository_trust_init(
         &non_independent_recovery_state,trusted_fpr),true);

@@ -63,7 +63,8 @@ func checkpointHash(c anchorCheckpoint) [32]byte {
 }
 
 func validateCheckpoint(c anchorCheckpoint) error {
-	if len(c.InstallationID) != 64 || c.Sequence == 0 || c.KeyID == "" || len(c.KeyID) > 128 ||
+	_, idErr := hex.DecodeString(c.InstallationID)
+	if idErr != nil || len(c.InstallationID) != 64 || c.Sequence == 0 || c.KeyID == "" || len(c.KeyID) > 128 ||
 		len(c.PublicKey) == 0 || len(c.PublicKey) > 4096 ||
 		c.Hash != checkpointHash(c) {
 		return errors.New("invalid monotonic checkpoint")

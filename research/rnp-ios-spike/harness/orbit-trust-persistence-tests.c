@@ -200,19 +200,28 @@ int main(int argc,char **argv) {
     expect("clock-floor-persisted-before-signer-authorization",
         orbit_repository_trust_fingerprint_allowed_and_store(&lifecycle_state,repo,pin,50U,
             &lifecycle_backend,&lifecycle_store_result),true);
+    orbit_repository_trust_state stale_lifecycle_state=lifecycle_state;
+    expect("clock-floor-advances-from-stored-state",
+        orbit_repository_trust_observe_time_and_store(&lifecycle_state,repo,60U,
+            &lifecycle_backend,&lifecycle_store_result),true);
+    expect("stale-caller-reloads-latest-trust-state",
+        !orbit_repository_trust_observe_time_and_store(&stale_lifecycle_state,repo,55U,
+            &lifecycle_backend,&lifecycle_store_result) &&
+        lifecycle_store_result==ORBIT_TRUST_STORE_ROLLBACK_DETECTED &&
+        stale_lifecycle_state.last_observed_time==60U,true);
     expect("clock-floor-survives-reload",
         orbit_repository_trust_store_load(&loaded,repo,&lifecycle_backend)==ORBIT_TRUST_STORE_OK &&
-        loaded.last_observed_time==50U,true);
+        loaded.last_observed_time==60U,true);
     expect("clock-rollback-rejected",
-        !orbit_repository_trust_observe_time_and_store(&lifecycle_state,repo,49U,
+        !orbit_repository_trust_observe_time_and_store(&lifecycle_state,repo,59U,
             &lifecycle_backend,&lifecycle_store_result) &&
         lifecycle_store_result==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);
     expect("clock-floor-rejects-older-key-check-time",
-        !orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,49U),true);
+        !orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,59U),true);
     expect("clock-floor-allows-exact-observed-time",
-        orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,50U),true);
+        orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,60U),true);
     expect("transition-wrapper-rejects-backward-clock",
-        !orbit_repository_trust_advance_and_store(&lifecycle_state,repo,49U,
+        !orbit_repository_trust_advance_and_store(&lifecycle_state,repo,59U,
             &lifecycle_backend,&lifecycle_store_result) &&
         lifecycle_store_result==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);
     strcpy(lifecycle_state.pending_fingerprint,

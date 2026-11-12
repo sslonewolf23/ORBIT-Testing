@@ -152,6 +152,9 @@ static bool capture_data_entry(void *context,const orbit_archive_entry *entry) {
     if(capture->count==0U) snprintf(capture->first_path,sizeof(capture->first_path),"%s",entry->path);
     ++capture->count; return true;
 }
+static bool reject_data_entry(void *context,const orbit_archive_entry *entry) {
+    (void)context; (void)entry; return false;
+}
 
 int main(void) {
     EXPECT("normal package path accepted",
@@ -224,6 +227,10 @@ int main(void) {
             deb,length,capture_data_entry,&capture,&report)==ORBIT_ARCHIVE_OK &&
         capture.count==1U &&
         strcmp(capture.first_path,"Library/ORBIT/example.dylib")==0);
+
+    EXPECT("callback failure aborts archive inspection",
+        orbit_package_archive_inspect_deb_with_data_entries(
+            deb,length,reject_data_entry,NULL,&report)==ORBIT_ARCHIVE_CALLBACK_ERROR);
 
 
     const struct {

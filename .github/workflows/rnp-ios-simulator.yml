@@ -248,7 +248,7 @@ jobs:
             -Iresearch/rnp-ios-spike/bridge \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-ios.o" \
             "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o" \
-            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs librnp | sed 's/-stdlib=libc++//g') \
             $(pkg-config --static --libs botan-3 | sed -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \
             $(pkg-config --static --libs json-c) \

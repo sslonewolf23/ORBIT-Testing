@@ -167,14 +167,19 @@ if the local pending-file protocol has an unresolved candidate, its own
 recovery gate must resolve it before returning a state to this C layer.
 
 The new host harness exercises successful file/ownership commit, interrupted
-rollback with ownership preservation, and interrupted committed finalization
-with delayed ownership promotion. The iOS simulator workflow cross-compiles
-the new journal executor and its filesystem/codec dependencies.
+rollback with ownership preservation, interrupted committed finalization
+with delayed ownership promotion, and a failed APPLYING store that proves no
+file callback runs before durable write-ahead succeeds. The iOS simulator
+workflow cross-compiles and links the journal executor and its
+filesystem/codec dependencies.
 
 Integration boundary: the new enveloped executor is available, but the legacy
 orbit_package_filesystem_journal_backend is not transparently replaced, and
 the package-level ORBITPackageTransactionCoordinator is not yet composed
-around this API. The Swift Keychain/App Attest store is a research adapter;
-a C callback bridge that implements this backend contract, initial EMPTY
-envelope provisioning, real App Attest enrollment, and physical-device
-crash-point tests are still required. Installation remains disabled.
+around this API. The Swift Keychain/App Attest store and C callback bridge now implement the
+backend contract in the simulator harness, including revision/digest
+compare-and-swap and an explicit initial EMPTY-envelope provisioning method.
+They are still research code, not wired into a production ORBIT app or
+privileged helper. Real App Attest enrollment, physical-device crash-point
+tests, and independent security review remain required. Installation remains
+disabled.

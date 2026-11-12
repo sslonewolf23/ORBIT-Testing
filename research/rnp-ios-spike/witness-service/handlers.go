@@ -68,7 +68,7 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	publicDER, err := s.verifyAttestation(req.KeyID, challenge, attestation)
 	if err != nil { jsonError(w, 403, "attestation rejected"); return }
 
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
 	res, err := tx.Exec("UPDATE challenges SET consumed=1 WHERE digest=? AND consumed=0 AND expires_at>=?",
@@ -109,7 +109,7 @@ func (s *service) head(w http.ResponseWriter, r *http.Request) {
 	req, raw, assertion, ok := s.readSigned(w, r)
 	if !ok { return }
 	if parseHeadRequest(raw, req.KeyID) != nil { jsonError(w, 400, "invalid request"); return }
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
 	credential, credErr := decodeB64(req.RecoveryCredential,32,32)
@@ -139,7 +139,7 @@ func (s *service) compareAndSwap(w http.ResponseWriter, r *http.Request) {
 	if !ok { return }
 	old, next, err := parseCASRequest(raw, req.KeyID)
 	if err != nil || !validTransition(old, next) { jsonError(w, 400, "invalid transition"); return }
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
 	credential, credErr := decodeB64(req.RecoveryCredential,32,32)
@@ -246,7 +246,7 @@ func (s *service) recoveryChallenge(w http.ResponseWriter, r *http.Request) {
 	if err != nil { jsonError(w, 400, "recovery unavailable"); return }
 	verifier, err := s.recoveryVerifier(credential)
 	if err != nil { jsonError(w, 503, "unavailable"); return }
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil { jsonError(w,503,"unavailable"); return }
 	defer tx.Rollback()
 	checkpoint, err := s.reconcileAnchoredInstallation(r.Context(),tx,verifier)
@@ -289,7 +289,7 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 	}
 	publicDER, err := s.verifyAttestation(req.NewKeyID, challenge, attestation)
 	if err != nil { jsonError(w, 403, "replacement attestation rejected"); return }
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(r.Context(), nil)
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
 	checkpoint, err := s.reconcileAnchoredInstallation(r.Context(),tx,verifier)

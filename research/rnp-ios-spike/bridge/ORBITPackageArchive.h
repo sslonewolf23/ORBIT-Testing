@@ -48,6 +48,13 @@ typedef struct {
 orbit_archive_code orbit_package_archive_inspect_deb(
     const uint8_t *deb, size_t deb_length, orbit_archive_report *report);
 
+#ifdef ORBIT_PACKAGE_ARCHIVE_TESTING
+/* Harness-only entry point for exercising arbitrary decompressor chunk boundaries. */
+orbit_archive_code orbit_package_archive_test_inspect_tar_chunks(
+    const uint8_t *tar, size_t tar_length, size_t chunk_size,
+    orbit_archive_report *report);
+#endif
+
 /* Validate a single archive path using the same policy as the tar inspector. */
 bool orbit_package_archive_path_is_safe(const char *path);
 

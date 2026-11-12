@@ -43,7 +43,7 @@ static size_t make_deb(unsigned char *deb,const char *path){
 
 int main(void){
  orbit_package_record a=pkg("orbit-core","2","iphoneos-arm64"), b=pkg("other","1","iphoneos-arm64");
- orbit_archive_entry files[]={{"Library/ORBIT",0,true},{"Library/ORBIT/core.dylib",4096,false}};
+ orbit_archive_entry files[]={{"Library/ORBIT",0,0U,true},{"Library/ORBIT/core.dylib",4096,0U,false}};
  orbit_package_ownership_record old[]={own("Library/ORBIT","old-core",true),own("Library/ORBIT/old.dylib","old-core",false)};
  orbit_package_ownership_snapshot s={old,2};orbit_package_ownership_plan p={0};
  EXPECT("shared directory accepted",orbit_package_ownership_plan_install(&s,&a,files,2,&p)==ORBIT_OWNERSHIP_OK && p.count==2);
@@ -53,19 +53,19 @@ int main(void){
  EXPECT("foreign file overwrite blocked",orbit_package_ownership_plan_install(&cs,&a,files,2,&p)==ORBIT_OWNERSHIP_FILE_CONFLICT);
  orbit_package_ownership_record case_clash=own("library/orbit/CORE.dylib","other",false);
  orbit_package_ownership_snapshot case_snapshot={&case_clash,1};
- orbit_archive_entry case_candidate[]={{"Library/ORBIT/core.dylib",4096,false}};
+ orbit_archive_entry case_candidate[]={{"Library/ORBIT/core.dylib",4096,0U,false}};
  EXPECT("case-folded foreign file collision blocked",
    orbit_package_ownership_plan_install(&case_snapshot,&a,case_candidate,1,&p)==ORBIT_OWNERSHIP_FILE_CONFLICT);
  orbit_package_ownership_record self=own("Library/ORBIT/core.dylib","orbit-core",false);
  orbit_package_ownership_snapshot ss={&self,1};
  EXPECT("same package upgrade accepted",orbit_package_ownership_plan_install(&ss,&a,files,2,&p)==ORBIT_OWNERSHIP_OK);
  orbit_package_ownership_plan_destroy(&p);
- orbit_archive_entry dup[]={{"usr/lib/a",1,false},{"usr/lib/a",1,false}};
+ orbit_archive_entry dup[]={{"usr/lib/a",1,0U,false},{"usr/lib/a",1,0U,false}};
  EXPECT("duplicate candidate rejected",orbit_package_ownership_plan_install(&s,&a,dup,2,&p)==ORBIT_OWNERSHIP_DUPLICATE_CANDIDATE);
- orbit_archive_entry case_dup[]={{"usr/lib/ORBIT.dylib",1,false},{"usr/lib/orbit.dylib",1,false}};
+ orbit_archive_entry case_dup[]={{"usr/lib/ORBIT.dylib",1,0U,false},{"usr/lib/orbit.dylib",1,0U,false}};
  EXPECT("case-folded duplicate candidate rejected",
    orbit_package_ownership_plan_install(&s,&a,case_dup,2,&p)==ORBIT_OWNERSHIP_DUPLICATE_CANDIDATE);
- orbit_archive_entry ancestor_files[]={{"usr/file",1,false},{"usr/file/child",1,false}};
+ orbit_archive_entry ancestor_files[]={{"usr/file",1,0U,false},{"usr/file/child",1,0U,false}};
  EXPECT("file ancestor collision blocked",orbit_package_ownership_plan_install(&s,&a,ancestor_files,2,&p)==ORBIT_OWNERSHIP_ANCESTOR_CONFLICT);
  orbit_package_ownership_record shared[]={own("Library/Shared","pkg-a",true),own("Library/Shared","pkg-b",true),own("Library/Shared/a.dylib","pkg-a",false)};
  orbit_package_ownership_snapshot sh={shared,3};orbit_package_record pa=pkg("pkg-a","1","iphoneos-arm64");

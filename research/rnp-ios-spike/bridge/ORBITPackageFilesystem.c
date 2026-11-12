@@ -19,10 +19,17 @@ typedef enum {
 
 static bool valid_component(const char *name, size_t capacity) {
     if (!name) return false;
+    size_t length = strlen(name);
+    return length != 0U && length < capacity &&
+           strchr(name, '/') == NULL && orbit_package_archive_path_is_safe(name);
+}
+
+static bool valid_stored_component(const char *name, size_t capacity) {
+    if (!name) return false;
     const char *terminator = (const char *)memchr(name, '\0', capacity);
     if (!terminator || terminator == name) return false;
     size_t length = (size_t)(terminator - name);
-    return length < capacity && memchr(name, '/', length) == NULL &&
+    return memchr(name, '/', length) == NULL &&
            orbit_package_archive_path_is_safe(name);
 }
 
@@ -99,11 +106,11 @@ static bool backup_is_missing(int backup_parent_fd, const char *backup_name) {
 static orbit_filesystem_code verify_change(
     const orbit_package_file_change *change) {
     if (!change || change->version != ORBIT_FILESYSTEM_CHANGE_VERSION ||
-        !valid_component(change->target_name, sizeof(change->target_name)) ||
-        !valid_component(change->backup_name, sizeof(change->backup_name)))
+        !valid_stored_component(change->target_name, sizeof(change->target_name)) ||
+        !valid_stored_component(change->backup_name, sizeof(change->backup_name)))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
-        if (!valid_component(change->staged_name, sizeof(change->staged_name)) ||
+        if (!valid_stored_component(change->staged_name, sizeof(change->staged_name)) ||
             change->staged_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else if (change->operation == ORBIT_FILESYSTEM_REMOVE) {

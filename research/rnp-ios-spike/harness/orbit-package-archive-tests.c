@@ -161,9 +161,9 @@ static size_t make_deb_with_payload(uint8_t *out, const char *path,
     size_t control_length = make_tar(control_tar, "control", '0');
     size_t data_length = make_tar_with_payload(
         data_tar, path, payload, payload_length);
-    memcpy(out, "!<arch>\\n", 8U);
+    memcpy(out, "!<arch>\n", 8U);
     size_t offset = 8U;
-    static const uint8_t version[] = "2.0\\n";
+    static const uint8_t version[] = "2.0\n";
     offset = append_ar_member(out, offset, "debian-binary", version, 4U);
     offset = append_ar_member(out, offset, "control.tar", control_tar, control_length);
     offset = append_ar_member(out, offset, "data.tar", data_tar, data_length);
@@ -189,9 +189,9 @@ static size_t make_deb_compressed_payload(
     char control_name[32], data_name[32];
     (void)snprintf(control_name, sizeof(control_name), "control.tar%s", suffix);
     (void)snprintf(data_name, sizeof(data_name), "data.tar%s", suffix);
-    memcpy(out, "!<arch>\\n", 8U);
+    memcpy(out, "!<arch>\n", 8U);
     size_t offset = 8U;
-    static const uint8_t version[] = "2.0\\n";
+    static const uint8_t version[] = "2.0\n";
     offset = append_ar_member(out, offset, "debian-binary", version, 4U);
     offset = append_ar_member(out, offset, control_name,
                               compressed_control, compressed_control_length);

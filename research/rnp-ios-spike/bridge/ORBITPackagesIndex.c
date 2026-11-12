@@ -41,8 +41,7 @@ static bool copy_value(char *out,size_t capacity,const char *value,size_t length
 static bool valid_token(const char *value,bool allow_plus_dot) {
     if(!value||!value[0]||!isalnum((unsigned char)value[0]))return false;
     for(const unsigned char *p=(const unsigned char *)value;*p;++p) {
-        if(*p>='A'&&*p<='Z')return false;
-        if(isalnum(*p))continue;
+        if((*p>='a'&&*p<='z')||(*p>='0'&&*p<='9'))continue;
         if(*p=='-'||(allow_plus_dot&&(*p=='+'||*p=='.')))continue;
         return false;
     }
@@ -132,7 +131,8 @@ static bool parse_field(package_stanza *stanza,char *line) {
     if(name_length>=FIELD_NAME_MAX)return false;
     for(size_t i=0U;i<name_length;++i) {
         unsigned char c=(unsigned char)line[i];
-        if(!isalnum(c)&&c!='-')return false;
+        if(!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||
+             (c>='0'&&c<='9')||c=='-'))return false;
     }
     char field[FIELD_NAME_MAX];
     memcpy(field,line,name_length);field[name_length]='\0';

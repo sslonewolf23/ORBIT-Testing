@@ -181,6 +181,27 @@ static orbit_filesystem_code execute_change(
     (void)transaction_id;
     envelope_executor *executor = (envelope_executor *)context;
     if (!executor || !change) return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    /* Journal entries store safe relative parent locators, not descriptors.
+     * Reopen each parent beneath its trusted root for every apply/rollback/
+     * finalize callback so nested package paths are executed at the intended
+     * location and recovery does not depend on process-local descriptors. */
+    int target_parent_fd = -1;
+    int staged_parent_fd = -1;
+    orbit_filesystem_code result =
+        orbit_package_filesystem_open_parent_directory(
+            executor->target_fd, change->target_parent_path,
+            &target_parent_fd);
+    bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE;
+    if (result == ORBIT_FILESYSTEM_OK && needs_staged)
+        result = orbit_package_filesystem_open_parent_directory(
+            executor->stage_fd, change->staged_parent_path,
+            &staged_parent_fd);
+    if (result != ORBIT_FILESYSTEM_OK) {
+        if (target_parent_fd >= 0) (void)close(target_parent_fd);
+        return result;
+    }
+
     if (action == ORBIT_FILE_JOURNAL_APPLY) {
         ++executor->apply_calls;
         if (executor->fail_apply_once ||
@@ -188,30 +209,43 @@ static orbit_filesystem_code execute_change(
              executor->apply_calls == executor->fail_apply_at_call)) {
             executor->fail_apply_once = false;
             executor->fail_apply_at_call = 0U;
-            return ORBIT_FILESYSTEM_IO_ERROR;
+            result = ORBIT_FILESYSTEM_IO_ERROR;
+        } else {
+            result = orbit_package_filesystem_apply(
+                target_parent_fd, staged_parent_fd,
+                executor->backup_fd, change);
         }
-        return orbit_package_filesystem_apply(
-            executor->target_fd, executor->stage_fd, executor->backup_fd, change);
-    }
-    if (action == ORBIT_FILE_JOURNAL_ROLLBACK) {
+    } else if (action == ORBIT_FILE_JOURNAL_ROLLBACK) {
         ++executor->rollback_calls;
         if (executor->fail_rollback_once) {
             executor->fail_rollback_once = false;
-            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+            result = ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        } else {
+            result = orbit_package_filesystem_rollback(
+                target_parent_fd, staged_parent_fd,
+                executor->backup_fd, change);
         }
-        return orbit_package_filesystem_rollback(
-            executor->target_fd, executor->stage_fd, executor->backup_fd, change);
-    }
-    if (action == ORBIT_FILE_JOURNAL_FINALIZE) {
+    } else if (action == ORBIT_FILE_JOURNAL_FINALIZE) {
         ++executor->finalize_calls;
         if (executor->fail_finalize_once) {
             executor->fail_finalize_once = false;
-            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+            result = ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        } else {
+            result = orbit_package_filesystem_finalize(
+                target_parent_fd, staged_parent_fd,
+                executor->backup_fd, change);
         }
-        return orbit_package_filesystem_finalize(
-            executor->target_fd, executor->stage_fd, executor->backup_fd, change);
+    } else {
+        result = ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     }
-    return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    bool staged_closed = staged_parent_fd < 0 ||
+        close(staged_parent_fd) == 0;
+    bool target_closed = close(target_parent_fd) == 0;
+    if ((!staged_closed || !target_closed) &&
+        result == ORBIT_FILESYSTEM_OK)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    return result;
 }
 
 static bool decode_memory(memory_envelope *memory,

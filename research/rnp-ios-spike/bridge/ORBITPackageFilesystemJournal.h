@@ -100,6 +100,14 @@ orbit_filesystem_code orbit_package_filesystem_journal_recover(
     orbit_package_filesystem_journal_executor executor,
     void *executor_context);
 
+/* Sweep canonical, empty transaction backup directories left behind if the
+ * process crashed after the authenticated journal tombstone but before directory
+ * removal. Requires the package filesystem lock. Refuses to proceed if a journal
+ * is active, a candidate is unsafe/nonempty, or more than 4096 candidates exist. */
+orbit_filesystem_code orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+    const orbit_package_filesystem_journal_backend *backend,
+    int backup_base_directory_fd);
+
 /* Remove the transaction-scoped backup directory only after the authenticated
  * journal reports EMPTY and the directory is verified empty. Caller must hold
  * the package filesystem transaction lock across this check and cleanup. */

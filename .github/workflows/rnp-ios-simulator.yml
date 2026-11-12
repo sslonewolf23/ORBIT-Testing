@@ -18,7 +18,7 @@ jobs:
       VCPKG_COMMIT: e54ef0fcc9a82033a61e51002552a910a5d57282
       VCPKG_DISABLE_METRICS: "1"
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache-ios
-      IOS_DEPLOYMENT_TARGET: "15.0"
+      IOS_DEPLOYMENT_TARGET: "18.5"
     steps:
       - name: Checkout project
         uses: actions/checkout@v4
@@ -198,7 +198,7 @@ jobs:
             "$RUNNER_TEMP/ORBITRepositoryVerifier-ios.o" \
             "$RUNNER_TEMP/ORBITPackagesIndex-ios.o" \
             $(pkg-config --static --libs librnp) \
-            $(pkg-config --static --libs botan-3) \
+            $(pkg-config --static --libs botan-3 | sed 's/-fstack-protector//g') \
             -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \
             $(pkg-config --static --libs json-c) \
             -L"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/lib" -lbz2 -lz \

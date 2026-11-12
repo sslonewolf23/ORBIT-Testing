@@ -332,6 +332,22 @@ int main(void) {
             execute_change, &executor) == ORBIT_FILESYSTEM_INVALID_ARGUMENT);
     EXPECT("duplicate plan did not create journal", memory.record == NULL);
 
+    duplicate_changes[1] = changes[0];
+    (void)strcpy(duplicate_changes[1].target_name, "dup-other-target");
+    (void)strcpy(duplicate_changes[1].staged_name, "dup-other-stage");
+    EXPECT("duplicate backup locators rejected before journaling",
+        orbit_package_filesystem_journal_execute(
+            &backend, transaction_id, duplicate_changes, 2U,
+            execute_change, &executor) == ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+    duplicate_changes[1] = changes[0];
+    (void)strcpy(duplicate_changes[1].target_name, "dup-other-target");
+    (void)strcpy(duplicate_changes[1].backup_name, "dup-other-backup");
+    EXPECT("duplicate staged locators rejected before journaling",
+        orbit_package_filesystem_journal_execute(
+            &backend, transaction_id, duplicate_changes, 2U,
+            execute_change, &executor) == ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+    EXPECT("all duplicate plans leave journal empty", memory.record == NULL);
+
     const char *target_names[] = {
         "ok-a", "ok-b", "rb-a", "rb-b", "st-a", "st-b",
         "cl-a", "cl-b", "dup-a", "dup-b"

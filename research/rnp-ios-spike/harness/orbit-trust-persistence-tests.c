@@ -372,7 +372,12 @@ int main(int argc,char **argv) {
         verify_result.signature.code==ORBIT_RNP_VERIFY_VALID &&
         verify_result.verified_index_bytes==packages_len &&
         verify_result.package_count==1U &&
+        verify_result.packages.count==1U &&
+        strcmp(verify_result.packages.packages[0].name,"orbit-fixture")==0 &&
         verify_state.last_observed_time==verify_now,true);
+    expect("pipeline-returns-verified-deb-record",
+        orbit_package_verify_artifact(&verify_result.packages.packages[0],
+            artifact,artifact_len),true);
     orbit_packages_index parsed_index;memset(&parsed_index,0,sizeof(parsed_index));
     bool parsed_ok=orbit_packages_index_parse(packages,packages_len,&parsed_index);
     expect("verified-Packages-index-parses-to-catalog",
@@ -400,6 +405,7 @@ int main(int argc,char **argv) {
                 artifact_len-1U),true);
     }
     orbit_packages_index_destroy(&parsed_index);
+    orbit_repository_verify_result_destroy(&verify_result);
     const char unsafe_package[]=
         "Package: orbit-bad\nVersion: 1.0\nArchitecture: iphoneos-arm64\n"
         "Filename: ../escape.deb\nSize: 1\n"

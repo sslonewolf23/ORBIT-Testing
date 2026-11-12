@@ -314,9 +314,23 @@ orbit_dependency_code orbit_dependency_plan_build(
        !requested||!*requested||!architecture||!*architecture||
        (installed_count>0U&&!installed))return ORBIT_DEPENDENCY_INVALID_ARGUMENT;
     size_t root=SIZE_MAX;
-    for(size_t i=0;i<available->count;++i)
-        if(strcmp(available->packages[i].name,requested)==0&&
-           package_arch_ok(&available->packages[i],architecture)){root=i;break;}
+    for(size_t i=0;i<available->count;++i) {
+        const orbit_package_record *candidate=&available->packages[i];
+        if(strcmp(candidate->name,requested)!=0||
+           !package_arch_ok(candidate,architecture))continue;
+        int self_check=0;
+        if(!orbit_debian_version_compare(candidate->version,candidate->version,&self_check))
+            return ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;
+        if(root==SIZE_MAX){root=i;continue;}
+        const orbit_package_record *current=&available->packages[root];
+        bool candidate_exact=strcmp(candidate->architecture,architecture)==0;
+        bool current_exact=strcmp(current->architecture,architecture)==0;
+        int comparison=0;
+        if(!orbit_debian_version_compare(candidate->version,current->version,&comparison))
+            return ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;
+        if((candidate_exact&&!current_exact)||
+           (candidate_exact==current_exact&&comparison>0))root=i;
+    }
     if(root==SIZE_MAX)return ORBIT_DEPENDENCY_PACKAGE_NOT_FOUND;
     int root_version_check=0;
     if(!orbit_debian_version_compare(available->packages[root].version,

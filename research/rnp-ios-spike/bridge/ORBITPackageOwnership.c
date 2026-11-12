@@ -21,9 +21,22 @@ static bool same_identity(const orbit_package_ownership_record *a,
     return strcmp(a->package_name,b->name)==0 &&
            strcmp(a->architecture,b->architecture)==0;
 }
+static unsigned char fold_ascii(unsigned char c) {
+    return c >= 'A' && c <= 'Z' ? (unsigned char)(c + ('a' - 'A')) : c;
+}
+static bool path_equal(const char *a,const char *b) {
+    while(*a && *b) {
+        if(fold_ascii((unsigned char)*a)!=fold_ascii((unsigned char)*b)) return false;
+        ++a; ++b;
+    }
+    return *a=='\\0' && *b=='\\0';
+}
 static bool ancestor(const char *a,const char *p) {
     size_t n=strlen(a);
-    return strlen(p)>n && strncmp(a,p,n)==0 && p[n]=='/';
+    if(strlen(p)<=n || p[n]!='/') return false;
+    for(size_t i=0;i<n;i++)
+        if(fold_ascii((unsigned char)a[i])!=fold_ascii((unsigned char)p[i])) return false;
+    return true;
 }
 static bool append(orbit_package_ownership_plan *p,
                    const orbit_package_ownership_record *r) {
@@ -62,7 +75,7 @@ static orbit_ownership_code validate(const orbit_package_ownership_snapshot *s) 
                strcmp(a->architecture,b->architecture)==0 &&
                strcmp(a->package_version,b->package_version)!=0)
                 return ORBIT_OWNERSHIP_CORRUPT_DATABASE;
-            if(strcmp(a->path,b->path)==0 && same_package(a,b))
+            if(path_equal(a->path,b->path) && same_package(a,b))
                 return ORBIT_OWNERSHIP_CORRUPT_DATABASE;
             if(strcmp(a->path,b->path)==0 && (!a->directory || !b->directory))
                 return ORBIT_OWNERSHIP_CORRUPT_DATABASE;
@@ -93,7 +106,7 @@ orbit_ownership_code orbit_package_ownership_plan_install(
         if(!bounded_string(e->path,sizeof(e->path)) ||
            !orbit_package_archive_path_is_safe(e->path)) { rc=ORBIT_OWNERSHIP_UNSAFE_PATH; goto fail; }
         for(size_t j=0;j<i;j++) {
-            if(strcmp(e->path,entries[j].path)==0) { rc=ORBIT_OWNERSHIP_DUPLICATE_CANDIDATE; goto fail; }
+            if(path_equal(e->path,entries[j].path)) { rc=ORBIT_OWNERSHIP_DUPLICATE_CANDIDATE; goto fail; }
             if((ancestor(e->path,entries[j].path) && !e->directory) ||
                (ancestor(entries[j].path,e->path) && !entries[j].directory)) {
                 rc=ORBIT_OWNERSHIP_ANCESTOR_CONFLICT; goto fail;
@@ -102,7 +115,7 @@ orbit_ownership_code orbit_package_ownership_plan_install(
         for(size_t j=0;j<installed->count;j++) {
             const orbit_package_ownership_record *o=&installed->records[j];
             bool own=same_identity(o,candidate);
-            if(strcmp(e->path,o->path)==0) {
+            if(path_equal(e->path,o->path)) {
                 if((!e->directory || !o->directory) && !own) {
                     rc=ORBIT_OWNERSHIP_FILE_CONFLICT; goto fail;
                 }
@@ -141,7 +154,7 @@ orbit_ownership_code orbit_package_ownership_plan_remove(
             for(size_t j=0;j<installed->count;j++)
                 if(i!=j && !same_package(r,&installed->records[j]) &&
                    ((installed->records[j].directory &&
-                     strcmp(r->path,installed->records[j].path)==0) ||
+                     path_equal(r->path,installed->records[j].path)) ||
                     ancestor(r->path,installed->records[j].path))) {
                     shared=true; break;
                 }

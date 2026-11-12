@@ -292,7 +292,6 @@ orbit_filesystem_code orbit_package_filesystem_prepare_remove(
     orbit_package_file_change *change) {
     if (!change || !valid_component(target_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
         !valid_component(backup_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
-        strcmp(target_name, backup_name) == 0 ||
         !same_volume_directories(target_parent_fd, backup_parent_fd) ||
         aliased_component_names(target_parent_fd, target_name,
             -1, "", backup_parent_fd, backup_name, false))

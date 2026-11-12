@@ -3,7 +3,12 @@
 #include <string.h>
 
 static bool bounded_string(const char *s, size_t n) {
-    return s && memchr(s, '\0', n) != NULL && s[0] != '\0';
+    if (!s || s[0] == '\0') return false;
+    const char *end = (const char *)memchr(s, '\0', n);
+    if (!end) return false;
+    for (const char *p = end + 1; p < s + n; ++p)
+        if (*p != '\0') return false;
+    return true;
 }
 static bool same_package(const orbit_package_ownership_record *a,
                          const orbit_package_ownership_record *b) {
@@ -134,9 +139,12 @@ orbit_ownership_code orbit_package_ownership_plan_remove(
         if(r->directory) {
             bool shared=false;
             for(size_t j=0;j<installed->count;j++)
-                if(i!=j && installed->records[j].directory &&
-                   strcmp(r->path,installed->records[j].path)==0 &&
-                   !same_package(r,&installed->records[j])) { shared=true; break; }
+                if(i!=j && !same_package(r,&installed->records[j]) &&
+                   ((installed->records[j].directory &&
+                     strcmp(r->path,installed->records[j].path)==0) ||
+                    ancestor(r->path,installed->records[j].path))) {
+                    shared=true; break;
+                }
             if(shared) continue;
         }
         if(!append(plan,r)) { rc=ORBIT_OWNERSHIP_LIMIT; goto fail; }

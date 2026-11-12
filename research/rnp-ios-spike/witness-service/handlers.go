@@ -118,12 +118,12 @@ func (s *service) head(w http.ResponseWriter, r *http.Request) {
 	if credErr != nil { jsonError(w,400,"invalid request"); return }
 	verifier, verifyErr := s.recoveryVerifier(credential)
 	if verifyErr != nil { jsonError(w,403,"request rejected"); return }
-	checkpoint, err := s.reconcileAnchoredInstallation(context.Background(),tx,verifier)
+	checkpoint, err := s.reconcileAnchoredInstallation(r.Context(),tx,verifier)
 	if err != nil || checkpoint.KeyID != req.KeyID { jsonError(w, 503, "witness anchor unavailable"); return }
 	stored, counter, err := s.authenticateAssertion(tx, req.KeyID, raw, assertion)
 	if err != nil { jsonError(w, 403, "request rejected"); return }
 	if err = updateCounter(tx, req.KeyID, counter); err != nil { jsonError(w, 409, "assertion replay"); return }
-	if _, err = s.appendAnchoredState(context.Background(),tx,verifier,checkpoint,
+	if _, err = s.appendAnchoredState(r.Context(),tx,verifier,checkpoint,
 		req.KeyID,stored.PublicKey,counter,stored.Head); err != nil {
 		jsonError(w,503,"witness anchor unavailable"); return
 	}
@@ -148,7 +148,7 @@ func (s *service) compareAndSwap(w http.ResponseWriter, r *http.Request) {
 	if credErr != nil { jsonError(w,400,"invalid request"); return }
 	verifier, verifyErr := s.recoveryVerifier(credential)
 	if verifyErr != nil { jsonError(w,403,"request rejected"); return }
-	checkpoint, err := s.reconcileAnchoredInstallation(context.Background(),tx,verifier)
+	checkpoint, err := s.reconcileAnchoredInstallation(r.Context(),tx,verifier)
 	if err != nil || checkpoint.KeyID != req.KeyID { jsonError(w, 503, "witness anchor unavailable"); return }
 	stored, counter, err := s.authenticateAssertion(tx, req.KeyID, raw, assertion)
 	if err != nil { jsonError(w, 403, "request rejected"); return }
@@ -157,7 +157,7 @@ func (s *service) compareAndSwap(w http.ResponseWriter, r *http.Request) {
 		// Idempotent retry after the server committed but the response was lost.
 		if current == next {
 			if err = updateCounter(tx, req.KeyID, counter); err != nil { jsonError(w, 409, "assertion replay"); return }
-			if _, err = s.appendAnchoredState(context.Background(),tx,verifier,checkpoint,
+			if _, err = s.appendAnchoredState(r.Context(),tx,verifier,checkpoint,
 				req.KeyID,stored.PublicKey,counter,current); err != nil {
 				jsonError(w,503,"witness anchor unavailable"); return
 			}
@@ -173,7 +173,7 @@ func (s *service) compareAndSwap(w http.ResponseWriter, r *http.Request) {
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	changed, err := res.RowsAffected()
 	if err != nil || changed != 1 { jsonError(w, 409, "head conflict"); return }
-	if _, err = s.appendAnchoredState(context.Background(),tx,verifier,checkpoint,
+	if _, err = s.appendAnchoredState(r.Context(),tx,verifier,checkpoint,
 		req.KeyID,stored.PublicKey,counter,next); err != nil {
 		jsonError(w,503,"witness anchor unavailable"); return
 	}

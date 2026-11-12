@@ -411,7 +411,9 @@ int main(int argc,char **argv) {
         strcmp(parsed_index.packages[0].architecture,"iphoneos-arm64")==0&&
         parsed_index.packages[0].size==(uint64_t)artifact_len&&
         strlen(parsed_index.packages[0].sha256)==64U&&
-        strstr(parsed_index.packages[0].description,"disposable parser fixture")!=NULL,true);
+        strstr(parsed_index.packages[0].description,"disposable parser fixture")!=NULL&&
+        strcmp(parsed_index.packages[0].depends,"libsubstrate (>= 0.9), firmware (>= 1.0)")==0&&
+        strcmp(parsed_index.packages[0].pre_depends,"dpkg (>= 1.19), libsystem (>= 1.0)")==0,true);
     if(parsed_ok) {
         expect("downloaded-deb-size-and-SHA256-verified",
             orbit_package_verify_artifact(&parsed_index.packages[0],artifact,artifact_len),true);
@@ -488,7 +490,15 @@ int main(int argc,char **argv) {
     expect("Packages-index-invalid-package-name-rejected",
         !orbit_packages_index_parse((const uint8_t*)uppercase_package,
             sizeof(uppercase_package)-1U,&parsed_index),true);
-    const char unknown_only_stanza[]="X-Unknown: value\n\n";
+    const char invalid_multi_arch[]=
+        "Package: orbit-multiarch\\nVersion: 1.0\\nArchitecture: iphoneos-arm64\\n"
+        "Filename: pool/orbit.deb\\nSize: 1\\n"
+        "SHA256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n"
+        "Multi-Arch: maybe\\n\\n";
+    expect("Packages-index-invalid-Multi-Arch-rejected",
+        !orbit_packages_index_parse((const uint8_t*)invalid_multi_arch,
+            sizeof(invalid_multi_arch)-1U,&parsed_index),true);
+    const char unknown_only_stanza[]="X-Unknown: value\\n\\n";
     expect("Packages-index-unknown-only-stanza-rejected",
         !orbit_packages_index_parse((const uint8_t*)unknown_only_stanza,
             sizeof(unknown_only_stanza)-1U,&parsed_index),true);

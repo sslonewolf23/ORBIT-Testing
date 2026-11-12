@@ -260,14 +260,3 @@ func (s *service) recoveryVerifier(credential []byte) ([]byte, error) {
 	return mac.Sum(nil), nil
 }
 
-func recoveryProof(credential, challenge []byte, oldKeyID, newKeyID string) ([]byte, error) {
-	if len(credential) != 32 || len(challenge) != 32 || oldKeyID == "" || newKeyID == "" || oldKeyID == newKeyID { return nil, errors.New("invalid recovery proof input") }
-	mac := hmac.New(sha256.New, credential)
-	mac.Write([]byte("ORBIT-RECOVERY-AUTH-V1\\x00"))
-	mac.Write(challenge)
-	mac.Write([]byte{0})
-	mac.Write([]byte(oldKeyID))
-	mac.Write([]byte{0})
-	mac.Write([]byte(newKeyID))
-	return mac.Sum(nil), nil
-}

@@ -153,6 +153,18 @@ jobs:
             -Iresearch/rnp-ios-spike/bridge \
             -c research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
             -o "$RUNNER_TEMP/ORBITPackageTransactionEnvelope-ios.o"
+          for source in \
+            ORBITPackageArchive \
+            ORBITPackageDecompress \
+            ORBITPackageFilesystem \
+            ORBITPackageFilesystemJournalCodec \
+            ORBITPackageFilesystemJournalEnvelope; do
+            clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
+              -I"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/include" \
+              -Iresearch/rnp-ios-spike/bridge \
+              -c "research/rnp-ios-spike/bridge/$source.c" \
+              -o "$RUNNER_TEMP/$source-ios.o"
+          done
           clang -target "$TARGET" -isysroot "$SDK" -std=c11 -Wall -Wextra -Werror \
             -I"$RUNNER_TEMP/rnp-ios-install/include" \
             -Iresearch/rnp-ios-spike/bridge \

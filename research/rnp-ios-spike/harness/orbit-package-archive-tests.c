@@ -385,7 +385,7 @@ int main(void) {
     EXPECT("absolute archive paths rejected",
            !orbit_package_archive_path_is_safe("/Library/ORBIT/payload.dylib"));
     EXPECT("backslash path separators rejected",
-           !orbit_package_archive_path_is_safe("Library\\\\ORBIT/payload.dylib"));
+           !orbit_package_archive_path_is_safe("Library\\ORBIT/payload.dylib"));
     EXPECT("empty path components rejected",
            !orbit_package_archive_path_is_safe("Library//ORBIT/payload.dylib"));
     EXPECT("dot path components rejected",

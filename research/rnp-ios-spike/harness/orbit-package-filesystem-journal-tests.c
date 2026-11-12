@@ -205,6 +205,22 @@ int main(void) {
     EXPECT("journal root opened", base_fd >= 0);
     if (base_fd < 0) { (void)rmdir(base_path); return EXIT_FAILURE; }
 
+    orbit_package_filesystem_lock lock_one = { -1 };
+    orbit_package_filesystem_lock lock_two = { -1 };
+    EXPECT("exclusive package lock acquired",
+        orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
+            ORBIT_FILESYSTEM_OK);
+    EXPECT("second package lock is rejected as busy",
+        orbit_package_filesystem_lock_acquire(base_fd, &lock_two) ==
+            ORBIT_FILESYSTEM_BUSY);
+    EXPECT("first package lock released",
+        orbit_package_filesystem_lock_release(&lock_one) == ORBIT_FILESYSTEM_OK);
+    EXPECT("package lock can be acquired after release",
+        orbit_package_filesystem_lock_acquire(base_fd, &lock_two) ==
+            ORBIT_FILESYSTEM_OK);
+    EXPECT("second package lock released",
+        orbit_package_filesystem_lock_release(&lock_two) == ORBIT_FILESYSTEM_OK);
+
     uint8_t backup_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xA1U };
     int transaction_backup_fd = -1;
     EXPECT("transaction backup directory created with private identity",
@@ -432,6 +448,7 @@ int main(void) {
     (void)unlinkat(base_fd, "stage", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "backup", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "a1000000000000000000000000000000", AT_REMOVEDIR);
+    (void)unlinkat(base_fd, ORBIT_FILESYSTEM_LOCK_NAME, 0);
     close(base_fd);
     EXPECT("temporary journal root removed", rmdir(base_path) == 0);
 

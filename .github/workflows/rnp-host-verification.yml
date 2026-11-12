@@ -671,6 +671,28 @@ jobs:
           "$RUNNER_TEMP/orbit-package-archive-tests" | tee "$RUNNER_TEMP/package-archive.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-archive.out"
 
+      - name: Fuzz package archive and decompression parsers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/orbit-parser-corpus" "$RUNNER_TEMP/orbit-parser-fuzz-artifacts"
+          printf '!<arch>\\n' > "$RUNNER_TEMP/orbit-parser-corpus/ar-magic"
+          printf 'ustar' > "$RUNNER_TEMP/orbit-parser-corpus/ustar-marker"
+          clang -std=c11 -O1 -g -fsanitize=fuzzer,address,undefined \\
+            -fno-omit-frame-pointer -DORBIT_PACKAGE_ARCHIVE_TESTING=1 \\
+            -Iresearch/rnp-ios-spike/bridge \\
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \\
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \\
+            research/rnp-ios-spike/harness/orbit-package-parser-fuzz.c \\
+            -lz -lbz2 -llzma -lzstd \\
+            -o "$RUNNER_TEMP/orbit-package-parser-fuzz"
+          "$RUNNER_TEMP/orbit-package-parser-fuzz" \\
+            "$RUNNER_TEMP/orbit-parser-corpus" \\
+            -dict=research/rnp-ios-spike/harness/orbit-package-parser.dict \\
+            -max_total_time=45 -max_len=1048576 -timeout=2 -rss_limit_mb=1024 \\
+            -artifact_prefix="$RUNNER_TEMP/orbit-parser-fuzz-artifacts/" \\
+            | tee "$RUNNER_TEMP/package-parser-fuzz.out"
+
       - name: Upload host verification evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -681,4 +703,6 @@ jobs:
             ${{ runner.temp }}/rnp-install/
             ${{ runner.temp }}/fixtures/
             ${{ runner.temp }}/*.out
+            ${{ runner.temp }}/orbit-parser-fuzz-artifacts/
+            ${{ runner.temp }}/orbit-parser-corpus/
           if-no-files-found: warn

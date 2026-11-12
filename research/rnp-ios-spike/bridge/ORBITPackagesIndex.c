@@ -176,6 +176,21 @@ static bool parse_field(package_stanza *stanza,char *line) {
     } else if(strcmp(field,"Description")==0) {
         if(!copy_value(stanza->record.description,sizeof(stanza->record.description),
                        value,value_length,true))return false;
+    } else if(strcmp(field,"Depends")==0) {
+        if(!copy_value(stanza->record.depends,sizeof(stanza->record.depends),value,value_length,true))return false;
+    } else if(strcmp(field,"Pre-Depends")==0) {
+        if(!copy_value(stanza->record.pre_depends,sizeof(stanza->record.pre_depends),value,value_length,true))return false;
+    } else if(strcmp(field,"Conflicts")==0) {
+        if(!copy_value(stanza->record.conflicts,sizeof(stanza->record.conflicts),value,value_length,true))return false;
+    } else if(strcmp(field,"Breaks")==0) {
+        if(!copy_value(stanza->record.breaks,sizeof(stanza->record.breaks),value,value_length,true))return false;
+    } else if(strcmp(field,"Provides")==0) {
+        if(!copy_value(stanza->record.provides,sizeof(stanza->record.provides),value,value_length,true))return false;
+    } else if(strcmp(field,"Replaces")==0) {
+        if(!copy_value(stanza->record.replaces,sizeof(stanza->record.replaces),value,value_length,true))return false;
+    } else if(strcmp(field,"Multi-Arch")==0) {
+        if(!copy_value(stanza->record.multi_arch,sizeof(stanza->record.multi_arch),value,value_length,false))return false;
+        if(strcmp(value,"same")!=0&&strcmp(value,"foreign")!=0&&strcmp(value,"allowed")!=0&&strcmp(value,"no")!=0)return false;
     } else {
         for(size_t i=0U;i<value_length;++i) {
             unsigned char c=(unsigned char)value[i];
@@ -224,9 +239,24 @@ bool orbit_packages_index_parse(const uint8_t *data,size_t length,
                     if(c<0x20U&&c!='\t'){ok=false;break;}
                     if(c==0x7fU){ok=false;break;}
                 }
-                if(ok&&strcmp(stanza.last_field,"Description")==0)
+                if(ok&&strcmp(stanza.last_field,"Description")==0) {
+                    bool blank=continuation_length==1U&&continuation[0]=='.';
                     ok=append_description(stanza.record.description,"\n",1U)&&
-                       append_description(stanza.record.description,continuation,continuation_length);
+                       append_description(stanza.record.description,blank?"":continuation,blank?0U:continuation_length);
+                } else if(ok) {
+                    char *target=NULL;size_t capacity=0U;
+                    if(strcmp(stanza.last_field,"Depends")==0){target=stanza.record.depends;capacity=sizeof(stanza.record.depends);}
+                    else if(strcmp(stanza.last_field,"Pre-Depends")==0){target=stanza.record.pre_depends;capacity=sizeof(stanza.record.pre_depends);}
+                    else if(strcmp(stanza.last_field,"Conflicts")==0){target=stanza.record.conflicts;capacity=sizeof(stanza.record.conflicts);}
+                    else if(strcmp(stanza.last_field,"Breaks")==0){target=stanza.record.breaks;capacity=sizeof(stanza.record.breaks);}
+                    else if(strcmp(stanza.last_field,"Provides")==0){target=stanza.record.provides;capacity=sizeof(stanza.record.provides);}
+                    else if(strcmp(stanza.last_field,"Replaces")==0){target=stanza.record.replaces;capacity=sizeof(stanza.record.replaces);}
+                    if(target) {
+                        size_t used=strlen(target);
+                        if(used+1U+continuation_length>=capacity)ok=false;
+                        else {target[used]=' ';memcpy(target+used+1U,continuation,continuation_length);target[used+1U+continuation_length]='\\0';}
+                    }
+                }
             }
         } else {
             ok=parse_field(&stanza,line);

@@ -243,7 +243,7 @@ jobs:
           </dict>
           </plist>
           PLIST
-          swiftc -target "$TARGET" -sdk "$SDK" \
+          swiftc -parse-as-library -target "$TARGET" -sdk "$SDK" \
             -import-objc-header research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.h \
             -Iresearch/rnp-ios-spike/bridge \
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-ios.o" \

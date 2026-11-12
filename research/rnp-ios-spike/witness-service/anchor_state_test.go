@@ -27,7 +27,7 @@ func (m *memoryAnchor) Append(_ context.Context,id string,c anchorCheckpoint) er
 }
 
 func TestCheckpointHashDetectsMutation(t *testing.T) {
-	c:=anchorCheckpoint{Sequence:1,KeyID:"test-key",PublicKey:[]byte{1,2,3},
+	c:=anchorCheckpoint{InstallationID:installationAnchorID([]byte{1}),Sequence:1,KeyID:"test-key",PublicKey:[]byte{1,2,3},
 		Counter:0,Head:witnessHead{Revision:0,Tombstone:true}}
 	c.Hash=checkpointHash(c)
 	if err:=validateCheckpoint(c); err!=nil { t.Fatal(err) }
@@ -37,14 +37,15 @@ func TestCheckpointHashDetectsMutation(t *testing.T) {
 
 func TestMemoryAnchorRequiresContiguousAppend(t *testing.T) {
 	a:=newMemoryAnchor()
-	c:=anchorCheckpoint{Sequence:1,KeyID:"key",PublicKey:[]byte{1},Head:witnessHead{Tombstone:true}}
+	c:=anchorCheckpoint{InstallationID:"",Sequence:1,KeyID:"key",PublicKey:[]byte{1},Head:witnessHead{Tombstone:true}}
 	c.Hash=checkpointHash(c)
-	if err:=a.Append(context.Background(),"installation",c); err!=nil { t.Fatal(err) }
+	if err:=c.InstallationID=installationAnchorID([]byte{2}); c.Hash=checkpointHash(c)
+	if err:=a.Append(context.Background(),c.InstallationID,c); err!=nil { t.Fatal(err) }
 	next:=c
 	next.Sequence=3
 	next.PreviousHash=c.Hash
 	next.Hash=checkpointHash(next)
-	if err:=a.Append(context.Background(),"installation",next); !errors.Is(err,errAnchorConflict) {
+	if err:=a.Append(context.Background(),c.InstallationID,next); !errors.Is(err,errAnchorConflict) {
 		t.Fatal("skipped checkpoint sequence accepted")
 	}
 }
@@ -63,9 +64,9 @@ func TestReconcileRepairsRolledBackSQLiteStateFromExternalAnchor(t *testing.T) {
 		VALUES(?,?,?,4,?,?,0,1,?,1)`,
 		oldKey,oldPublic,[]byte("att"),u64Bytes(oldHead.Revision),oldHead.Digest[:],verifier); err!=nil { t.Fatal(err) }
 	anchor:=newMemoryAnchor()
-	first:=anchorCheckpoint{Sequence:1,KeyID:oldKey,PublicKey:oldPublic,Counter:4,Head:oldHead}
+	first:=anchorCheckpoint{InstallationID:installationAnchorID(verifier),Sequence:1,KeyID:oldKey,PublicKey:oldPublic,Counter:4,Head:oldHead}
 	first.Hash=checkpointHash(first)
-	second:=anchorCheckpoint{Sequence:2,KeyID:newKey,PublicKey:newPublic,Counter:2,Head:newHead,PreviousHash:first.Hash}
+	second:=anchorCheckpoint{InstallationID:installationAnchorID(verifier),Sequence:2,KeyID:newKey,PublicKey:newPublic,Counter:2,Head:newHead,PreviousHash:first.Hash}
 	second.Hash=checkpointHash(second)
 	id:=installationAnchorID(verifier)
 	anchor.items[id]=second
@@ -113,7 +114,7 @@ func TestReconcileRebuildsCompletelyMissingSQLiteInstallation(t *testing.T) {
 	verifier:=make([]byte,32); verifier[0]=0xC3
 	head:=witnessHead{Revision:9,Tombstone:false}; head.Digest[0]=0x91
 	anchor:=newMemoryAnchor()
-	c:=anchorCheckpoint{Sequence:7,KeyID:"restored-key",PublicKey:[]byte("attested-public"),
+	c:=anchorCheckpoint{InstallationID:installationAnchorID(verifier),Sequence:7,KeyID:"restored-key",PublicKey:[]byte("attested-public"),
 		Counter:19,Head:head}
 	c.Hash=checkpointHash(c)
 	anchor.items[installationAnchorID(verifier)]=c

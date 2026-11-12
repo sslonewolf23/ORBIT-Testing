@@ -37,7 +37,7 @@ int main(void) {
     orbit_bootstrap_lockset lockset = { -1, 0, 0, { { -1, 0, 0 }, { -1, 0, 0 } } };
     EXPECT("Dopamine lockset acquires frontend then dpkg locks",
         profile && orbit_bootstrap_lockset_acquire(
-            root, profile, geteuid(), &lockset) == ORBIT_NATIVE_LOCK_OK);
+            root, profile, "var/lib/dpkg", geteuid(), &lockset) == ORBIT_NATIVE_LOCK_OK);
     EXPECT("both native locks held",
         lockset.count == 2 && lockset.locks[0].descriptor >= 0 &&
         lockset.locks[1].descriptor >= 0);
@@ -50,7 +50,7 @@ int main(void) {
         orbit_bootstrap_profile_get(ORBIT_BOOTSTRAP_PROCursus_ROOTFUL);
     EXPECT("Procursus rootful profile acquires the same relative lock set",
         rootful_profile && orbit_bootstrap_lockset_acquire(
-            root, rootful_profile, geteuid(), &lockset) == ORBIT_NATIVE_LOCK_OK);
+            root, rootful_profile, "var/lib/dpkg", geteuid(), &lockset) == ORBIT_NATIVE_LOCK_OK);
     EXPECT("Procursus rootful lockset releases",
         orbit_bootstrap_lockset_release(&lockset) == ORBIT_NATIVE_LOCK_OK);
 

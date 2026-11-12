@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
@@ -187,11 +188,8 @@ func updateCounter(tx *sql.Tx, keyID string, counter uint32) error {
 
 func u64Bytes(v uint64) []byte { b:=make([]byte,8); binary.BigEndian.PutUint64(b,v); return b }
 func boolInt(v bool) int { if v { return 1 }; return 0 }
-func equalBytes(a,b []byte) bool {
-	if len(a)!=len(b) { return false }
-	var diff byte
-	for i:=range a { diff |= a[i]^b[i] }
-	return diff==0
+func equalBytes(a, b []byte) bool {
+	return subtle.ConstantTimeCompare(a, b) == 1
 }
 
 

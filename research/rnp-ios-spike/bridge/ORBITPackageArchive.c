@@ -218,6 +218,8 @@ static bool member_compression(const char *name, const char *base,
     return false;
 }
 
+static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length, orbit_archive_report *report);
+
 static orbit_archive_code inspect_tar_member(
     const uint8_t *member, size_t member_length, bool compressed,
     orbit_decompress_format format, orbit_archive_report *report) {
@@ -239,8 +241,6 @@ static orbit_archive_code inspect_tar_member(
     free(decoded.bytes);
     return result;
 }
-
-static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length, orbit_archive_report *report);
 
 static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length,
                                       orbit_archive_report *report) {

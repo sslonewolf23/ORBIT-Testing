@@ -340,8 +340,15 @@ orbit_staging_code orbit_package_staging_discard(
         staging->staging_directory_fd = openat(
             staging->base_directory_fd, staging->staging_name,
             O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-        if (staging->staging_directory_fd < 0)
-            return ORBIT_STAGING_IO_ERROR;
+        if (staging->staging_directory_fd < 0) {
+            if (errno != ENOENT) return ORBIT_STAGING_IO_ERROR;
+            staging->staging_name[0] = '\\0';
+            staging->complete = false;
+            staging->failed = false;
+            int base_fd = staging->base_directory_fd;
+            staging->base_directory_fd = -1;
+            return close(base_fd) == 0 ? ORBIT_STAGING_OK : ORBIT_STAGING_IO_ERROR;
+        }
     }
     if (!remove_directory_contents(staging->staging_directory_fd))
         return ORBIT_STAGING_IO_ERROR;

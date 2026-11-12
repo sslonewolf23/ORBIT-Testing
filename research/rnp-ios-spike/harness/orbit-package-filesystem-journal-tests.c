@@ -263,6 +263,9 @@ int main(void) {
     EXPECT("second package lock is rejected as busy",
         orbit_package_filesystem_lock_acquire(base_fd, &lock_two) ==
             ORBIT_FILESYSTEM_BUSY);
+    EXPECT("reacquiring into a live handle is rejected without losing it",
+        orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
+            ORBIT_FILESYSTEM_BUSY && lock_one.descriptor >= 0);
     EXPECT("first package lock released",
         orbit_package_filesystem_lock_release(&lock_one) == ORBIT_FILESYSTEM_OK);
     EXPECT("package lock can be acquired after release",

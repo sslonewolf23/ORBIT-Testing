@@ -14,7 +14,7 @@
 static unsigned checks;
 static unsigned failures;
 #define EXPECT(label, condition) do { ++checks; if (!(condition)) { ++failures; \
-    fprintf(stderr, "FAIL: %s\\n", label); } } while (0)
+    fprintf(stderr, "FAIL: %s\n", label); } } while (0)
 
 static bool write_file_at(int directory_fd, const char *name,
                           const char *contents) {
@@ -29,8 +29,9 @@ static bool write_file_at(int directory_fd, const char *name,
         if (amount <= 0) { close(fd); return false; }
         offset += (size_t)amount;
     }
-    bool result = fsync(fd) == 0 && close(fd) == 0;
-    return result;
+    bool sync_ok = fsync(fd) == 0;
+    bool close_ok = close(fd) == 0;
+    return sync_ok && close_ok;
 }
 
 static bool file_equals_at(int directory_fd, const char *name,
@@ -210,32 +211,37 @@ int main(void) {
     close(target_fd);
 
     /* Remove the known test fixtures without following links. */
+    int cleanup_target = openat(base_fd, "target", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    int cleanup_stage = openat(base_fd, "stage", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    int cleanup_backup = openat(base_fd, "backup", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     const char *target_names[] = {
         "existing.dylib", "commit.dylib", "remove.dylib",
         "hardlinked", "hardlinked-alias", "symlink-target", "foreign-change"
     };
-    for (size_t i = 0U; i < sizeof(target_names) / sizeof(target_names[0]); ++i)
-        (void)unlinkat(openat(base_fd, "target", O_RDONLY | O_DIRECTORY), target_names[i], 0);
+    if (cleanup_target >= 0) {
+        for (size_t i = 0U; i < sizeof(target_names) / sizeof(target_names[0]); ++i)
+            (void)unlinkat(cleanup_target, target_names[i], 0);
+        close(cleanup_target);
+    }
     const char *stage_names[] = { "symlink-stage", "foreign-stage" };
-    for (size_t i = 0U; i < sizeof(stage_names) / sizeof(stage_names[0]); ++i)
-        (void)unlinkat(openat(base_fd, "stage", O_RDONLY | O_DIRECTORY), stage_names[i], 0);
+    if (cleanup_stage >= 0) {
+        for (size_t i = 0U; i < sizeof(stage_names) / sizeof(stage_names[0]); ++i)
+            (void)unlinkat(cleanup_stage, stage_names[i], 0);
+        close(cleanup_stage);
+    }
     const char *backup_names[] = { "foreign-backup", "occupied.backup" };
-    for (size_t i = 0U; i < sizeof(backup_names) / sizeof(backup_names[0]); ++i)
-        (void)unlinkat(openat(base_fd, "backup", O_RDONLY | O_DIRECTORY), backup_names[i], 0);
-
-    int cleanup_target = openat(base_fd, "target", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    int cleanup_stage = openat(base_fd, "stage", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    int cleanup_backup = openat(base_fd, "backup", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-    if (cleanup_target >= 0) close(cleanup_target);
-    if (cleanup_stage >= 0) close(cleanup_stage);
-    if (cleanup_backup >= 0) close(cleanup_backup);
+    if (cleanup_backup >= 0) {
+        for (size_t i = 0U; i < sizeof(backup_names) / sizeof(backup_names[0]); ++i)
+            (void)unlinkat(cleanup_backup, backup_names[i], 0);
+        close(cleanup_backup);
+    }
     (void)unlinkat(base_fd, "target", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "stage", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "backup", AT_REMOVEDIR);
     close(base_fd);
     EXPECT("temporary transaction root removed", rmdir(base_path) == 0);
 
-    printf("filesystem_checks=%u failures=%u\\ndecision=%s\\n",
+    printf("filesystem_checks=%u failures=%u\ndecision=%s\n",
            checks, failures, failures == 0U ? "PASS" : "FAIL");
     return failures == 0U ? EXIT_SUCCESS : EXIT_FAILURE;
 }

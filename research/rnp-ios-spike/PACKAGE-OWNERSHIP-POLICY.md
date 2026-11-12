@@ -19,3 +19,20 @@ A removal plan includes paths recorded for the package identity. Shared director
 The module is not yet connected to persistent package state or the transaction engine. A future installer must atomically commit ownership database changes with filesystem mutations, and remove directories only with descriptor-relative, non-following operations after confirming they are empty. Ownership must be derived from inspected data archive manifests, never package maintainer scripts.
 
 Installation remains disabled. This is not a filesystem mutator.
+
+
+## Complete snapshot transitions
+
+The module now includes complete-snapshot builders:
+
+- Install/upgrade removes all prior rows for the same package name and architecture, retains unrelated package rows, then adds the candidate manifest rows.
+- Removal removes every row for the selected package identity while retaining all other owners, including packages that share directory ownership.
+- The complete result is validated before it is returned. The caller supplies the output storage; it must not overlap the installed snapshot's record storage.
+
+Host regression tests cover upgrade replacement of stale paths and preservation of shared-directory ownership on removal. These transition builders do not write persistent state and must not be called as a substitute for the transaction journal.
+
+## Persistence boundary
+
+A canonical ownership codec is available and host-tested. It is serialization only: it provides neither authentication nor anti-rollback protection. The pending and committed snapshots must be carried in the same authenticated, monotonic envelope as the filesystem journal, with promotion occurring only when a COMMITTED file transaction has completed finalization. See [PACKAGE-FILESYSTEM-TRANSACTIONS.md](PACKAGE-FILESYSTEM-TRANSACTIONS.md) for the required crash-consistent state transitions.
+
+No production ownership store or device transaction integration is connected yet. Installation remains disabled.

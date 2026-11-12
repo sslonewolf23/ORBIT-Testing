@@ -254,7 +254,7 @@ bool orbit_packages_index_parse(const uint8_t *data,size_t length,
                     if(target) {
                         size_t used=strlen(target);
                         if(used+1U+continuation_length>=capacity)ok=false;
-                        else {target[used]=' ';memcpy(target+used+1U,continuation,continuation_length);target[used+1U+continuation_length]='\\0';}
+                        else {target[used]=' ';memcpy(target+used+1U,continuation,continuation_length);target[used+1U+continuation_length]='\0';}
                     }
                 }
             }

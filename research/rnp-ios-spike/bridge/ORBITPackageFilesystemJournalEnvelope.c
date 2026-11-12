@@ -26,13 +26,16 @@ static bool ownership_payload_valid(const uint8_t *payload, size_t length) {
     if (!payload || length < 12U ||
         length > ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP)
         return false;
+    uint32_t record_count = read_u32(payload + 8U);
+    if (record_count > ORBIT_OWNERSHIP_MAX_RECORDS) return false;
+    size_t allocation_count = record_count ? record_count : 1U;
     orbit_package_ownership_record *records =
         (orbit_package_ownership_record *)calloc(
-            ORBIT_OWNERSHIP_MAX_RECORDS, sizeof(*records));
+            allocation_count, sizeof(*records));
     if (!records) return false;
     orbit_package_ownership_snapshot snapshot;
     orbit_ownership_codec_code result = orbit_package_ownership_decode(
-        payload, length, records, ORBIT_OWNERSHIP_MAX_RECORDS, &snapshot);
+        payload, length, records, record_count, &snapshot);
     free(records);
     return result == ORBIT_OWNERSHIP_CODEC_OK;
 }

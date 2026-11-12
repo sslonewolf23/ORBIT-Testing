@@ -89,7 +89,7 @@ func cborSignedInteger(m map[any]any, key int64) (int64, bool) {
 
 func parseCOSEPublicKey(data []byte) (*ecdsa.PublicKey, []byte, error) {
 	var raw map[any]any
-	rest, err := cbor.UnmarshalFirst(data, &raw)
+	rest, err := decodeCBORFirst(data, &raw)
 	if err != nil { return nil, nil, errors.New("malformed COSE credential key") }
 	kty, ok1 := cborInteger(raw, 1)
 	crv, ok2 := cborInteger(raw, -1)

@@ -46,6 +46,14 @@ int main(void) {
     EXPECT("lockset reset after release",
         lockset.count == 0 && lockset.directory_descriptor == -1);
 
+    const orbit_bootstrap_profile *rootful_profile =
+        orbit_bootstrap_profile_get(ORBIT_BOOTSTRAP_PROCursus_ROOTFUL);
+    EXPECT("Procursus rootful profile acquires the same relative lock set",
+        rootful_profile && orbit_bootstrap_lockset_acquire(
+            root, rootful_profile, geteuid(), &lockset) == ORBIT_NATIVE_LOCK_OK);
+    EXPECT("Procursus rootful lockset releases",
+        orbit_bootstrap_lockset_release(&lockset) == ORBIT_NATIVE_LOCK_OK);
+
     EXPECT("lock files cleaned",
         unlinkat(root, "var/lib/dpkg/lock-frontend", 0) == 0 &&
         unlinkat(root, "var/lib/dpkg/lock", 0) == 0);

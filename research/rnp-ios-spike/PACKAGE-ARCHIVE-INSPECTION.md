@@ -16,7 +16,7 @@ It accepts uncompressed `control.tar` and `data.tar`, plus gzip (`.gz`), xz (`.x
 - Zstandard decoder window: 64 MiB maximum.
 - Exactly one compressed stream is accepted; truncated streams, concatenated streams, and trailing bytes are rejected.
 
-The codec adapters decode incrementally into fixed-size output chunks and feed a stateful ustar parser directly. The parser retains only a 512-byte header buffer, bounded path manifest, and counters; it skips regular-file payload bytes without collecting the expanded tar member. Header parsing, payload skipping, padding, and end-marker validation continue correctly across arbitrary sink chunk boundaries. This is an incremental read-only manifest parser, not an extractor.
+The codec adapters decode incrementally into fixed-size output chunks and feed a stateful ustar parser directly. The parser retains only a 512-byte header buffer, bounded path manifest, and counters; it skips regular-file payload bytes without collecting the expanded tar member. Header parsing, payload skipping, padding, and end-marker validation continue correctly across arbitrary sink chunk boundaries. This is an incremental read-only manifest parser, not an extractor. A data.tar-only callback can stream validated entry records to a caller; callbacks are provisional until the entire .deb passes inspection, so callers must stage and discard all callback output on any later error.
 
 ## Accepted tar entries
 

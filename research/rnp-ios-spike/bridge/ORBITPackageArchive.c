@@ -256,11 +256,17 @@ typedef struct {
     orbit_archive_code code;
     orbit_archive_entry_callback callback;
     void *callback_context;
+    orbit_archive_data_chunk_callback data_callback;
+    void *data_context;
+    char current_file_path[ORBIT_TAR_MAX_PATH + 1U];
+    uint64_t current_file_offset;
 } tar_stream;
 
 static bool tar_stream_init(tar_stream *stream, orbit_archive_report *report,
                             orbit_archive_entry_callback callback,
-                            void *callback_context) {
+                            void *callback_context,
+                            orbit_archive_data_chunk_callback data_callback,
+                            void *data_context) {
     if (!stream || !report) return false;
     memset(stream, 0, sizeof(*stream));
     stream->paths = (path_set *)calloc(1U, sizeof(*stream->paths));
@@ -268,6 +274,8 @@ static bool tar_stream_init(tar_stream *stream, orbit_archive_report *report,
     stream->report = report;
     stream->callback = callback;
     stream->callback_context = callback_context;
+    stream->data_callback = data_callback;
+    stream->data_context = data_context;
     stream->code = ORBIT_ARCHIVE_OK;
     return true;
 }
@@ -344,6 +352,13 @@ static orbit_archive_code tar_stream_header(tar_stream *stream) {
         if (!stream->callback(stream->callback_context, &entry))
             return ORBIT_ARCHIVE_CALLBACK_ERROR;
     }
+    if (!directory && stream->data_callback) {
+        memcpy(stream->current_file_path, path, strlen(path) + 1U);
+        stream->current_file_offset = 0U;
+        if (file_size == 0U &&
+            !stream->data_callback(stream->data_context, path, 0U, NULL, 0U, true))
+            return ORBIT_ARCHIVE_CALLBACK_ERROR;
+    }
 
     uint64_t padded = file_size;
     if (padded > UINT64_MAX - (TAR_BLOCK_BYTES - 1U))
@@ -375,6 +390,14 @@ static bool tar_stream_feed(void *context, const uint8_t *bytes, size_t length) 
         if (stream->payload_remaining != 0U) {
             size_t take = stream->payload_remaining < (uint64_t)(length - offset) ?
                 (size_t)stream->payload_remaining : length - offset;
+            if (stream->data_callback &&
+                !stream->data_callback(stream->data_context,
+                    stream->current_file_path, stream->current_file_offset,
+                    bytes + offset, take, (uint64_t)take == stream->payload_remaining)) {
+                stream->code = ORBIT_ARCHIVE_CALLBACK_ERROR;
+                return false;
+            }
+            stream->current_file_offset += (uint64_t)take;
             stream->payload_remaining -= (uint64_t)take;
             offset += take;
             continue;
@@ -417,9 +440,11 @@ static orbit_archive_code tar_stream_finish(tar_stream *stream) {
 static orbit_archive_code inspect_tar_member(
     const uint8_t *member, size_t member_length, bool compressed,
     orbit_decompress_format format, orbit_archive_report *report,
-    orbit_archive_entry_callback callback, void *callback_context) {
+    orbit_archive_entry_callback callback, void *callback_context,
+    orbit_archive_data_chunk_callback data_callback, void *data_context) {
     tar_stream stream;
-    if (!tar_stream_init(&stream, report, callback, callback_context)) return ORBIT_ARCHIVE_LIMIT;
+    if (!tar_stream_init(&stream, report, callback, callback_context,
+                         data_callback, data_context)) return ORBIT_ARCHIVE_LIMIT;
     orbit_archive_code result = ORBIT_ARCHIVE_OK;
     if (compressed) {
         uint64_t decoded_length = 0U;
@@ -452,7 +477,8 @@ orbit_archive_code orbit_package_archive_test_inspect_tar_chunks(
         return ORBIT_ARCHIVE_INVALID_ARGUMENT;
     memset(report, 0, sizeof(*report));
     tar_stream stream;
-    if (!tar_stream_init(&stream, report, NULL, NULL)) return ORBIT_ARCHIVE_LIMIT;
+    if (!tar_stream_init(&stream, report, NULL, NULL, NULL, NULL))
+        return ORBIT_ARCHIVE_LIMIT;
     orbit_archive_code result = ORBIT_ARCHIVE_OK;
     size_t offset = 0U;
     while (offset < tar_length) {
@@ -471,9 +497,11 @@ orbit_archive_code orbit_package_archive_test_inspect_tar_chunks(
 }
 #endif
 
-orbit_archive_code orbit_package_archive_inspect_deb_with_data_entries(
-    const uint8_t *deb, size_t deb_length, orbit_archive_entry_callback callback,
-    void *callback_context, orbit_archive_report *report) {
+orbit_archive_code orbit_package_archive_inspect_deb_with_data(
+    const uint8_t *deb, size_t deb_length,
+    orbit_archive_entry_callback entry_callback, void *entry_context,
+    orbit_archive_data_chunk_callback data_callback, void *data_context,
+    orbit_archive_report *report) {
     if (!report) return ORBIT_ARCHIVE_INVALID_ARGUMENT;
     memset(report, 0, sizeof(*report));
     if (!deb || deb_length == 0U) {
@@ -562,16 +590,25 @@ orbit_archive_code orbit_package_archive_inspect_deb_with_data_entries(
         report->code = ORBIT_ARCHIVE_MISSING_COMPONENT; return report->code;
     }
     report->code = inspect_tar_member(control_tar, control_tar_length,
-                                      control_compressed, control_format, report, NULL, NULL);
+                                      control_compressed, control_format, report,
+                                      NULL, NULL, NULL, NULL);
     if (report->code != ORBIT_ARCHIVE_OK) return report->code;
     report->code = inspect_tar_member(data_tar, data_tar_length,
                                       data_compressed, data_format, report,
-                                      callback, callback_context);
+                                      entry_callback, entry_context,
+                                      data_callback, data_context);
     return report->code;
+}
+
+orbit_archive_code orbit_package_archive_inspect_deb_with_data_entries(
+    const uint8_t *deb, size_t deb_length, orbit_archive_entry_callback callback,
+    void *callback_context, orbit_archive_report *report) {
+    return orbit_package_archive_inspect_deb_with_data(
+        deb, deb_length, callback, callback_context, NULL, NULL, report);
 }
 
 orbit_archive_code orbit_package_archive_inspect_deb(
     const uint8_t *deb, size_t deb_length, orbit_archive_report *report) {
-    return orbit_package_archive_inspect_deb_with_data_entries(
-        deb, deb_length, NULL, NULL, report);
+    return orbit_package_archive_inspect_deb_with_data(
+        deb, deb_length, NULL, NULL, NULL, NULL, report);
 }

@@ -2,6 +2,11 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     void *context,
@@ -11,7 +16,7 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     orbit_package_filesystem_executor_context *executor =
         (orbit_package_filesystem_executor_context *)context;
     if (!executor || !transaction_id || !change ||
-        executor->install_root_fd < 0 || executor->backup_root_fd < 0 ||
+        executor->install_root_fd < 0 || executor->backup_base_directory_fd < 0 ||
         memcmp(executor->transaction_id, transaction_id,
                ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES) != 0)
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
@@ -22,6 +27,19 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     if (change->operation == ORBIT_FILESYSTEM_REPLACE &&
         executor->staging_root_fd < 0)
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    char backup_name[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES * 2U + 1U];
+    static const char hex[] = "0123456789abcdef";
+    for (size_t i = 0U; i < ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES; ++i) {
+        backup_name[i * 2U] = hex[transaction_id[i] >> 4U];
+        backup_name[i * 2U + 1U] = hex[transaction_id[i] & 0x0fU];
+    }
+    backup_name[sizeof(backup_name) - 1U] = '\\0';
+    int backup_parent_fd = -1;
+    valid = orbit_package_filesystem_open_backup_directory(
+        executor->backup_base_directory_fd, transaction_id, false,
+        &backup_parent_fd);
+    if (valid != ORBIT_FILESYSTEM_OK) return valid;
 
     int target_parent_fd = -1;
     int staged_parent_fd = -1;
@@ -36,6 +54,7 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
             &staged_parent_fd);
         if (valid != ORBIT_FILESYSTEM_OK) {
             close(target_parent_fd);
+            close(backup_parent_fd);
             return valid;
         }
     }
@@ -44,7 +63,7 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     if (action == ORBIT_FILE_JOURNAL_APPLY)
         result = orbit_package_filesystem_apply(
             target_parent_fd, staged_parent_fd,
-            executor->backup_root_fd, change);
+            backup_parent_fd, change);
     else if (action == ORBIT_FILE_JOURNAL_ROLLBACK)
         result = orbit_package_filesystem_rollback(
             target_parent_fd, staged_parent_fd,
@@ -58,9 +77,68 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
 
     bool staged_closed = staged_parent_fd < 0 || close(staged_parent_fd) == 0;
     bool target_closed = close(target_parent_fd) == 0;
-    if (!staged_closed || !target_closed)
+    bool backup_closed = close(backup_parent_fd) == 0;
+    if (!staged_closed || !target_closed || !backup_closed)
         return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     return result;
+}
+
+orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
+    int backup_base_directory_fd,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
+    bool create, int *backup_directory_fd) {
+    if (backup_base_directory_fd < 0 || !transaction_id ||
+        !backup_directory_fd)
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    *backup_directory_fd = -1;
+    uint8_t combined = 0U;
+    for (size_t i = 0U; i < ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES; ++i)
+        combined |= transaction_id[i];
+    if (combined == 0U) return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    struct stat base_status;
+    if (fstat(backup_base_directory_fd, &base_status) < 0)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    if (!S_ISDIR(base_status.st_mode))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    char name[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES * 2U + 1U];
+    static const char hex[] = "0123456789abcdef";
+    for (size_t i = 0U; i < ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES; ++i) {
+        name[i * 2U] = hex[transaction_id[i] >> 4U];
+        name[i * 2U + 1U] = hex[transaction_id[i] & 0x0fU];
+    }
+    name[sizeof(name) - 1U] = '\\0';
+
+    if (create && mkdirat(backup_base_directory_fd, name, 0700) < 0 &&
+        errno != EEXIST)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    if (create && fsync(backup_base_directory_fd) < 0)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+
+    int fd = openat(backup_base_directory_fd, name,
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return errno == ENOENT ?
+        ORBIT_FILESYSTEM_RECOVERY_REQUIRED : ORBIT_FILESYSTEM_IO_ERROR;
+
+    struct stat opened_status, named_status;
+    if (fstat(fd, &opened_status) < 0 ||
+        fstatat(backup_base_directory_fd, name, &named_status,
+                AT_SYMLINK_NOFOLLOW) < 0) {
+        close(fd);
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    }
+    if (!S_ISDIR(opened_status.st_mode) || !S_ISDIR(named_status.st_mode) ||
+        opened_status.st_dev != named_status.st_dev ||
+        opened_status.st_ino != named_status.st_ino ||
+        opened_status.st_uid != geteuid() ||
+        (opened_status.st_mode & 0077) != 0 ||
+        opened_status.st_dev != base_status.st_dev) {
+        close(fd);
+        return ORBIT_FILESYSTEM_CONFLICT;
+    }
+    *backup_directory_fd = fd;
+    return ORBIT_FILESYSTEM_OK;
 }
 
 static bool transaction_id_is_valid(

@@ -22,6 +22,7 @@ var errAnchorConflict = errors.New("monotonic anchor conflict")
 // Sequence, including read-only head requests, so assertion counters cannot be
 // rolled back independently of journal state.
 type anchorCheckpoint struct {
+	InstallationID string `json:"installationID"`
 	Sequence uint64       `json:"sequence"`
 	KeyID string           `json:"keyID"`
 	PublicKey []byte       `json:"publicKey"`
@@ -41,6 +42,8 @@ func checkpointHash(c anchorCheckpoint) [32]byte {
 	// Explicit fixed-width/bounded encoding avoids JSON canonicalization ambiguity.
 	buf := make([]byte, 0, 128+len(c.KeyID)+len(c.PublicKey))
 	buf = append(buf, []byte("ORBIT-WITNESS-CHECKPOINT-V1\x00")...)
+	buf = append(buf, []byte(c.InstallationID)...)
+	buf = append(buf, 0)
 	var n8 [8]byte
 	binary.BigEndian.PutUint64(n8[:], c.Sequence)
 	buf = append(buf, n8[:]...)
@@ -60,7 +63,7 @@ func checkpointHash(c anchorCheckpoint) [32]byte {
 }
 
 func validateCheckpoint(c anchorCheckpoint) error {
-	if c.Sequence == 0 || c.KeyID == "" || len(c.KeyID) > 128 ||
+	if len(c.InstallationID) != 64 || c.Sequence == 0 || c.KeyID == "" || len(c.KeyID) > 128 ||
 		len(c.PublicKey) == 0 || len(c.PublicKey) > 4096 ||
 		c.Hash != checkpointHash(c) {
 		return errors.New("invalid monotonic checkpoint")
@@ -106,6 +109,7 @@ func (d *dynamoAnchor) Latest(ctx context.Context, installationID string) (ancho
 	parsed, err := strconv.ParseUint(seq.Value, 10, 64)
 	if err != nil || parsed != c.Sequence { return zero, false, errors.New("anchor sequence mismatch") }
 	if err := validateCheckpoint(c); err != nil { return zero, false, err }
+	if c.InstallationID != installationID { return zero,false,errors.New("anchor installation binding mismatch") }
 	hashAttr, ok := out.Items[0]["checkpoint_hash"].(*types.AttributeValueMemberS)
 	if !ok || hashAttr.Value != hex.EncodeToString(c.Hash[:]) { return zero,false,errors.New("anchor checkpoint hash index mismatch") }
 	if c.Sequence == 1 {
@@ -131,6 +135,7 @@ func (d *dynamoAnchor) Latest(ctx context.Context, installationID string) (ancho
 
 func (d *dynamoAnchor) Append(ctx context.Context, installationID string, c anchorCheckpoint) error {
 	if err := validateCheckpoint(c); err != nil { return err }
+	if c.InstallationID != installationID { return errors.New("anchor installation binding mismatch") }
 	latest, found, err := d.Latest(ctx,installationID)
 	if err != nil { return err }
 	if found {

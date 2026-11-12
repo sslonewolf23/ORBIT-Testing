@@ -10,6 +10,7 @@ import (
 type memoryAnchor struct { items map[string]anchorCheckpoint }
 
 func newMemoryAnchor() *memoryAnchor { return &memoryAnchor{items: make(map[string]anchorCheckpoint)} }
+func (m *memoryAnchor) Health(_ context.Context) error { return nil }
 func (m *memoryAnchor) Latest(_ context.Context,id string)(anchorCheckpoint,bool,error) {
 	c,ok:=m.items[id]; return c,ok,nil
 }

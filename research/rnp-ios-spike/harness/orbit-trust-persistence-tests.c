@@ -396,9 +396,40 @@ int main(int argc,char **argv) {
     expect("wrong-repository-codename-rejected",
         verify_code==ORBIT_REPOSITORY_VERIFY_REPOSITORY_POLICY_REJECTED,true);
     verify_code=orbit_repository_verify_packages_index(
+        &verify_state,repo,trusted_fpr,trusted,trusted_len,
+        index_inrelease,index_inrelease_len,"Wrong Origin","stable","fixture",
+        "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
+        packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
+        &verify_backend,&verify_result);
+    expect("wrong-signed-Release-origin-rejected",
+        verify_code==ORBIT_REPOSITORY_VERIFY_REPOSITORY_POLICY_REJECTED,true);
+    verify_code=orbit_repository_verify_packages_index(
+        &verify_state,repo,trusted_fpr,trusted,trusted_len,
+        index_inrelease,index_inrelease_len,"ORBIT Test","stable","fixture",
+        "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages/../Packages",
+        packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
+        &verify_backend,&verify_result);
+    expect("wrong-index-path-rejected",
+        verify_code==ORBIT_REPOSITORY_VERIFY_INDEX_REJECTED,true);
+    uint8_t *tampered_inrelease=(uint8_t*)malloc(index_inrelease_len);
+    expect("tampered-InRelease-fixture-allocation",tampered_inrelease!=NULL,true);
+    if(tampered_inrelease!=NULL) {
+        memcpy(tampered_inrelease,index_inrelease,index_inrelease_len);
+        tampered_inrelease[index_inrelease_len/2U]^=0x01U;
+        verify_code=orbit_repository_verify_packages_index(
+            &verify_state,repo,trusted_fpr,trusted,trusted_len,
+            tampered_inrelease,index_inrelease_len,"ORBIT Test","stable","fixture",
+            "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
+            packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
+            &verify_backend,&verify_result);
+        expect("tampered-InRelease-signature-rejected",
+            verify_code==ORBIT_REPOSITORY_VERIFY_SIGNATURE_REJECTED,true);
+        free(tampered_inrelease);
+    }
+    verify_code=orbit_repository_verify_packages_index(
         &verify_state,repo,"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF",
         trusted,trusted_len,index_inrelease,index_inrelease_len,
-        "stable","fixture","iphoneos-arm64","main",
+        "ORBIT Test","stable","fixture","iphoneos-arm64","main",
         "main/binary-iphoneos-arm64/Packages",packages,packages_len,
         verify_now,7ULL*24ULL*60ULL*60ULL,300U,&verify_backend,&verify_result);
     expect("untrusted-primary-fingerprint-rejected",

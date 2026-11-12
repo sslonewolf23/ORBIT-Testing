@@ -3,6 +3,7 @@
 
 #include "ORBITPackageTransaction.h"
 #include "ORBITPackageBootstrapLockset.h"
+#include "ORBITAPTConfigResolver.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -16,7 +17,10 @@ extern "C" {
 typedef struct {
     int bootstrap_root_descriptor;
     const orbit_bootstrap_profile *profile;
-    const char *observed_admin_relative;
+    /* APT-visible prefix, not necessarily the physical path used to open root fd. */
+    const char *bootstrap_root_apt_path;
+    /* Exact effective Dir::State::status returned by initialized libapt-pkg. */
+    const char *effective_status_path;
     uid_t expected_owner;
 } orbit_transaction_native_lock_context;
 

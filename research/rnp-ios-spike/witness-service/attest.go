@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/sha256"
 	"crypto/x509"
+	"database/sql"
 	"encoding/asn1"
 	"encoding/binary"
 	"errors"
@@ -21,27 +22,11 @@ var (
 )
 
 type service struct {
-	db          interfaceDB
+	db          *sql.DB
 	appID       string
 	environment string
 	roots       *x509.CertPool
 	now         func() time.Time
-}
-
-// interfaceDB keeps cryptographic validation independently testable.
-type interfaceDB interface {
-	Exec(query string, args ...any) (result interfaceResult, err error)
-	QueryRow(query string, args ...any) interfaceRow
-	Begin() (interfaceTx, error)
-}
-
-type interfaceResult interface { RowsAffected() (int64, error) }
-type interfaceRow interface { Scan(dest ...any) error }
-type interfaceTx interface {
-	Exec(query string, args ...any) (interfaceResult, error)
-	QueryRow(query string, args ...any) interfaceRow
-	Commit() error
-	Rollback() error
 }
 
 type cborAttestation struct {

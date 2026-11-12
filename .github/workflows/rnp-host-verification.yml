@@ -27,10 +27,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! command -v expect >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y expect
-          fi
+          sudo apt-get update
+          sudo apt-get install -y expect liblzma-dev libzstd-dev libbz2-dev zlib1g-dev
           required_tools=(clang clang++ cmake ninja pkg-config gpg git expect)
           for tool in "${required_tools[@]}"; do
             if ! command -v "$tool" >/dev/null 2>&1; then
@@ -630,6 +628,19 @@ jobs:
           "$RUNNER_TEMP/orbit-package-transaction-tests" | tee "$RUNNER_TEMP/package-transaction.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction.out"
 
+      - name: Compile and run bounded package decompression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/harness/orbit-package-decompress-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-decompress-tests"
+          "$RUNNER_TEMP/orbit-package-decompress-tests" | tee "$RUNNER_TEMP/package-decompress.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-decompress.out"
+
       - name: Compile and run package archive inspection tests
         shell: bash
         run: |
@@ -637,7 +648,9 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror \
             -Iresearch/rnp-ios-spike/bridge \
             research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
             research/rnp-ios-spike/harness/orbit-package-archive-tests.c \
+            -lz -lbz2 -llzma -lzstd \
             -o "$RUNNER_TEMP/orbit-package-archive-tests"
           "$RUNNER_TEMP/orbit-package-archive-tests" | tee "$RUNNER_TEMP/package-archive.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-archive.out"

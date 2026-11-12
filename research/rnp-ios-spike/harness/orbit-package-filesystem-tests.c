@@ -82,6 +82,62 @@ int main(void) {
         target_fd >= 0 && stage_fd >= 0 && backup_fd >= 0);
     if (target_fd < 0 || stage_fd < 0 || backup_fd < 0) return EXIT_FAILURE;
 
+    EXPECT("nested target directory created", mkdirat(target_fd, "nested", 0700) == 0);
+    EXPECT("nested stage directory created", mkdirat(stage_fd, "nested", 0700) == 0);
+    int nested_target_fd = openat(target_fd, "nested",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int nested_stage_fd = openat(stage_fd, "nested",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("nested parent directories opened",
+        nested_target_fd >= 0 && nested_stage_fd >= 0);
+    EXPECT("nested target fixture created",
+        write_file_at(nested_target_fd, "path-target", "path-old"));
+    EXPECT("nested stage fixture created",
+        write_file_at(nested_stage_fd, "path-stage", "path-new"));
+    orbit_package_file_change path_change;
+    EXPECT("nested file change prepared",
+        orbit_package_filesystem_prepare_replace(
+            nested_target_fd, "path-target", nested_stage_fd, "path-stage",
+            backup_fd, "path-backup", &path_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("relative parent locators stored",
+        orbit_package_filesystem_set_parent_paths(
+            &path_change, "target/nested", "stage/nested") == ORBIT_FILESYSTEM_OK);
+    close(nested_target_fd);
+    close(nested_stage_fd);
+    int recovered_target_fd = -1, recovered_stage_fd = -1;
+    EXPECT("target parent re-opened from durable locator",
+        orbit_package_filesystem_open_parent_directory(
+            base_fd, path_change.target_parent_path,
+            &recovered_target_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("stage parent re-opened from durable locator",
+        orbit_package_filesystem_open_parent_directory(
+            base_fd, path_change.staged_parent_path,
+            &recovered_stage_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("recovered parent descriptors apply replacement",
+        recovered_target_fd >= 0 && recovered_stage_fd >= 0 &&
+        orbit_package_filesystem_apply(
+            recovered_target_fd, recovered_stage_fd, backup_fd,
+            &path_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("recovered parent descriptors rollback replacement",
+        recovered_target_fd >= 0 && recovered_stage_fd >= 0 &&
+        orbit_package_filesystem_rollback(
+            recovered_target_fd, recovered_stage_fd, backup_fd,
+            &path_change) == ORBIT_FILESYSTEM_OK);
+    if (recovered_target_fd >= 0) close(recovered_target_fd);
+    if (recovered_stage_fd >= 0) close(recovered_stage_fd);
+    int invalid_parent_fd = -1;
+    EXPECT("parent resolver rejects traversal",
+        orbit_package_filesystem_open_parent_directory(
+            base_fd, "target/../stage", &invalid_parent_fd) ==
+            ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+    EXPECT("parent resolver symlink fixture created",
+        symlinkat("target", base_fd, "target-link") == 0);
+    EXPECT("parent resolver refuses symlink traversal",
+        orbit_package_filesystem_open_parent_directory(
+            base_fd, "target-link", &invalid_parent_fd) ==
+            ORBIT_FILESYSTEM_IO_ERROR);
+    (void)unlinkat(base_fd, "target-link", 0);
+
     orbit_package_file_change change;
     EXPECT("old target created", write_file_at(target_fd, "existing.dylib", "old-bytes"));
     EXPECT("staged replacement created", write_file_at(stage_fd, "existing.new", "new-bytes"));
@@ -241,6 +297,12 @@ int main(void) {
     if (cleanup_target >= 0) {
         for (size_t i = 0U; i < sizeof(target_names) / sizeof(target_names[0]); ++i)
             (void)unlinkat(cleanup_target, target_names[i], 0);
+        int nested_fd = openat(cleanup_target, "nested", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (nested_fd >= 0) {
+            (void)unlinkat(nested_fd, "path-target", 0);
+            close(nested_fd);
+        }
+        (void)unlinkat(cleanup_target, "nested", AT_REMOVEDIR);
         close(cleanup_target);
     }
     const char *stage_names[] = {
@@ -249,6 +311,12 @@ int main(void) {
     if (cleanup_stage >= 0) {
         for (size_t i = 0U; i < sizeof(stage_names) / sizeof(stage_names[0]); ++i)
             (void)unlinkat(cleanup_stage, stage_names[i], 0);
+        int nested_fd = openat(cleanup_stage, "nested", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (nested_fd >= 0) {
+            (void)unlinkat(nested_fd, "path-stage", 0);
+            close(nested_fd);
+        }
+        (void)unlinkat(cleanup_stage, "nested", AT_REMOVEDIR);
         close(cleanup_stage);
     }
     const char *backup_names[] = {

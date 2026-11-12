@@ -342,7 +342,7 @@ orbit_staging_code orbit_package_staging_discard(
             O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
         if (staging->staging_directory_fd < 0) {
             if (errno != ENOENT) return ORBIT_STAGING_IO_ERROR;
-            staging->staging_name[0] = '\\0';
+            staging->staging_name[0] = '\0';
             staging->complete = false;
             staging->failed = false;
             int base_fd = staging->base_directory_fd;

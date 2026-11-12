@@ -730,6 +730,7 @@ jobs:
             research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
             research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournal.c \
             research/rnp-ios-spike/harness/orbit-package-filesystem-journal-tests.c \
+            -Wl,--wrap=fsync \
             -lz -lbz2 -llzma -lzstd \
             -o "$RUNNER_TEMP/orbit-package-filesystem-journal-tests"
           "$RUNNER_TEMP/orbit-package-filesystem-journal-tests" | tee "$RUNNER_TEMP/package-filesystem-journal.out"

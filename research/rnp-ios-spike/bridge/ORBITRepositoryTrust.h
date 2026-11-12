@@ -76,7 +76,9 @@ orbit_trust_code orbit_repository_trust_authorize_rotation(
 
 /* Emergency recovery uses the independently pinned recovery fingerprint in
  * the authenticated trust state. Callers cannot substitute a recovery pin.
- * Its signed proof activates immediately with zero previous-key grace. */
+ * Its signed proof activates immediately with zero previous-key grace.
+ * Production callers must use the transactional *_and_store wrapper so the
+ * state is reloaded from the authenticated persistence backend. */
 orbit_trust_code orbit_repository_trust_authorize_recovery_rotation(
     orbit_repository_trust_state *state,
     const char *expected_repository,

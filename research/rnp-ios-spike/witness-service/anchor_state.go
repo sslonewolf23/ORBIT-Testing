@@ -104,6 +104,10 @@ func (s *service) appendAnchoredState(ctx context.Context, tx *sql.Tx,
 	if previous.Sequence == ^uint64(0) || previous.Sequence >= uint64(^uint64(0)>>1) {
 		return anchorCheckpoint{}, errors.New("monotonic anchor sequence exhausted")
 	}
+	installationID := installationAnchorID(verifier)
+	if previous.InstallationID != installationID {
+		return anchorCheckpoint{}, errors.New("previous checkpoint installation mismatch")
+	}
 	next := anchorCheckpoint{
 		InstallationID: installationID,
 		Sequence: previous.Sequence+1,
@@ -114,7 +118,6 @@ func (s *service) appendAnchoredState(ctx context.Context, tx *sql.Tx,
 		PreviousHash: previous.Hash,
 	}
 	next.Hash = checkpointHash(next)
-	installationID := installationAnchorID(verifier)
 	if err := s.anchor.Append(ctx,installationID,next); err != nil {
 		if errors.Is(err,errAnchorConflict) {
 			latest,found,readErr := s.anchor.Latest(ctx,installationID)

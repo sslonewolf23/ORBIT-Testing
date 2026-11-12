@@ -34,6 +34,7 @@ type anchorCheckpoint struct {
 type anchorStore interface {
 	Latest(context.Context, string) (anchorCheckpoint, bool, error)
 	Append(context.Context, string, anchorCheckpoint) error
+	Health(context.Context) error
 }
 
 func checkpointHash(c anchorCheckpoint) [32]byte {
@@ -139,4 +140,10 @@ func (d *dynamoAnchor) Append(ctx context.Context, installationID string, c anch
 	}
 	if err != nil { return fmt.Errorf("append monotonic anchor: %w", err) }
 	return nil
+}
+
+
+func (d *dynamoAnchor) Health(ctx context.Context) error {
+	_,_,err := d.Latest(ctx,"0000000000000000000000000000000000000000000000000000000000000000")
+	return err
 }

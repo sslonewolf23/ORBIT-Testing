@@ -127,6 +127,34 @@ check accepts only that exact persisted timestamp. A backward clock value is rej
 and cannot make an expired previous key valid again. Rotation scheduling,
 activation, and pruning also refuse time values below the stored floor.
 
+## End-to-end repository verification
+
+`ORBITRepositoryVerifier.c` provides the fail-closed repository verification
+entry point, `orbit_repository_verify_packages_index`. It reloads the latest
+authenticated trust record under the repository transaction lock, advances
+and commits the monotonic time floor, and authorizes the requested primary
+fingerprint before checking the repository document.
+
+The verifier then validates the clear-signed InRelease using that exact pin,
+parses only the authenticated cleartext, and enforces exact signed Release
+`Origin`, `Suite`, and `Codename` plus complete architecture/component
+tokens. It enforces `Valid-Until`, or a caller-provided maximum Release age
+when that field is absent, and finally checks the actual Packages-index bytes
+against the exact SHA256 path and declared byte count.
+
+The API returns distinct fail-closed outcomes for storage failure, untrusted
+signer, invalid signature, malformed Release metadata, repository-policy
+mismatch, stale Release metadata, and Packages-index mismatch. Authenticated
+cleartext is bounded, scrubbed, and never returned to the caller. The function
+does not parse/install packages or authorize package execution.
+
+All persistent trust mutations (bootstrap, normal rotation, emergency
+recovery, time-floor updates, activation, and grace pruning) hold the
+repository-scoped backend transaction lock across the complete read/modify/
+write. The host test backend rejects any storage callback invoked without
+that lock. The host fixture now signs a real Packages index and its digest
+inside Release metadata.
+
 ## Test coverage
 
 The host fixture suite exercises:

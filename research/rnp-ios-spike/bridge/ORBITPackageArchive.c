@@ -198,14 +198,20 @@ typedef struct {
     unsigned zero_blocks;
     bool ended;
     orbit_archive_code code;
+    orbit_archive_entry_callback callback;
+    void *callback_context;
 } tar_stream;
 
-static bool tar_stream_init(tar_stream *stream, orbit_archive_report *report) {
+static bool tar_stream_init(tar_stream *stream, orbit_archive_report *report,
+                            orbit_archive_entry_callback callback,
+                            void *callback_context) {
     if (!stream || !report) return false;
     memset(stream, 0, sizeof(*stream));
     stream->paths = (path_set *)calloc(1U, sizeof(*stream->paths));
     if (!stream->paths) return false;
     stream->report = report;
+    stream->callback = callback;
+    stream->callback_context = callback_context;
     stream->code = ORBIT_ARCHIVE_OK;
     return true;
 }
@@ -276,6 +282,15 @@ static orbit_archive_code tar_stream_header(tar_stream *stream) {
             stream->report->largest_file_bytes = file_size;
     }
     ++stream->report->entries;
+    if (stream->callback) {
+        orbit_archive_entry entry;
+        memset(&entry, 0, sizeof(entry));
+        memcpy(entry.path, path, strlen(path) + 1U);
+        entry.size = file_size;
+        entry.directory = directory;
+        if (!stream->callback(stream->callback_context, &entry))
+            return ORBIT_ARCHIVE_CALLBACK_ERROR;
+    }
 
     uint64_t padded = file_size;
     if (padded > UINT64_MAX - (TAR_BLOCK_BYTES - 1U))
@@ -348,9 +363,10 @@ static orbit_archive_code tar_stream_finish(tar_stream *stream) {
 
 static orbit_archive_code inspect_tar_member(
     const uint8_t *member, size_t member_length, bool compressed,
-    orbit_decompress_format format, orbit_archive_report *report) {
+    orbit_decompress_format format, orbit_archive_report *report,
+    orbit_archive_entry_callback callback, void *callback_context) {
     tar_stream stream;
-    if (!tar_stream_init(&stream, report)) return ORBIT_ARCHIVE_LIMIT;
+    if (!tar_stream_init(&stream, report, callback, callback_context)) return ORBIT_ARCHIVE_LIMIT;
     orbit_archive_code result = ORBIT_ARCHIVE_OK;
     if (compressed) {
         uint64_t decoded_length = 0U;
@@ -383,7 +399,7 @@ orbit_archive_code orbit_package_archive_test_inspect_tar_chunks(
         return ORBIT_ARCHIVE_INVALID_ARGUMENT;
     memset(report, 0, sizeof(*report));
     tar_stream stream;
-    if (!tar_stream_init(&stream, report)) return ORBIT_ARCHIVE_LIMIT;
+    if (!tar_stream_init(&stream, report, NULL, NULL)) return ORBIT_ARCHIVE_LIMIT;
     orbit_archive_code result = ORBIT_ARCHIVE_OK;
     size_t offset = 0U;
     while (offset < tar_length) {
@@ -402,8 +418,9 @@ orbit_archive_code orbit_package_archive_test_inspect_tar_chunks(
 }
 #endif
 
-orbit_archive_code orbit_package_archive_inspect_deb(
-    const uint8_t *deb, size_t deb_length, orbit_archive_report *report) {
+orbit_archive_code orbit_package_archive_inspect_deb_with_data_entries(
+    const uint8_t *deb, size_t deb_length, orbit_archive_entry_callback callback,
+    void *callback_context, orbit_archive_report *report) {
     if (!report) return ORBIT_ARCHIVE_INVALID_ARGUMENT;
     memset(report, 0, sizeof(*report));
     if (!deb || deb_length == 0U) {
@@ -492,9 +509,16 @@ orbit_archive_code orbit_package_archive_inspect_deb(
         report->code = ORBIT_ARCHIVE_MISSING_COMPONENT; return report->code;
     }
     report->code = inspect_tar_member(control_tar, control_tar_length,
-                                      control_compressed, control_format, report);
+                                      control_compressed, control_format, report, NULL, NULL);
     if (report->code != ORBIT_ARCHIVE_OK) return report->code;
     report->code = inspect_tar_member(data_tar, data_tar_length,
-                                      data_compressed, data_format, report);
+                                      data_compressed, data_format, report,
+                                      callback, callback_context);
     return report->code;
+}
+
+orbit_archive_code orbit_package_archive_inspect_deb(
+    const uint8_t *deb, size_t deb_length, orbit_archive_report *report) {
+    return orbit_package_archive_inspect_deb_with_data_entries(
+        deb, deb_length, NULL, NULL, report);
 }

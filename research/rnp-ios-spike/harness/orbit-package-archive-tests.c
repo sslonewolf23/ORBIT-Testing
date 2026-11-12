@@ -158,6 +158,7 @@ int main(void) {
     EXPECT("dot segment rejected",
            !orbit_package_archive_path_is_safe("usr/./lib/file"));
 
+    orbit_archive_report report;
     uint8_t stream_tar[73728];
     size_t stream_tar_length = make_tar(stream_tar, "Library/ORBIT/stream.dylib", '0');
     const size_t chunk_sizes[] = { 1U, 511U, 512U, 513U, 65519U };
@@ -189,7 +190,6 @@ int main(void) {
         report.regular_file_bytes == sizeof(payload));
 
     uint8_t deb[8192];
-    orbit_archive_report report;
     size_t length = make_deb(deb, "./Library/ORBIT/example.dylib", '0');
     EXPECT("valid uncompressed deb accepted",
            orbit_package_archive_inspect_deb(deb, length, &report) == ORBIT_ARCHIVE_OK);

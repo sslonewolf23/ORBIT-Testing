@@ -89,6 +89,11 @@ int main(void) {
         orbit_package_filesystem_prepare_replace(
             target_fd, "existing.dylib", stage_fd, "existing.new",
             backup_fd, "existing.backup", &change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("interrupted preimage-link state created",
+        linkat(target_fd, "existing.dylib", backup_fd, "existing.backup", 0) == 0);
+    EXPECT("replacement resumes from preimage-link state",
+        orbit_package_filesystem_apply(
+            target_fd, stage_fd, backup_fd, &change) == ORBIT_FILESYSTEM_OK);
     EXPECT("replacement applied atomically",
         orbit_package_filesystem_apply(
             target_fd, stage_fd, backup_fd, &change) == ORBIT_FILESYSTEM_OK);
@@ -96,6 +101,9 @@ int main(void) {
         file_equals_at(target_fd, "existing.dylib", "new-bytes"));
     EXPECT("replacement preimage retained in backup",
         file_equals_at(backup_fd, "existing.backup", "old-bytes"));
+    EXPECT("replacement apply is idempotent after rename",
+        orbit_package_filesystem_apply(
+            target_fd, stage_fd, backup_fd, &change) == ORBIT_FILESYSTEM_OK);
     EXPECT("replacement rollback restores preimage",
         orbit_package_filesystem_rollback(
             target_fd, stage_fd, backup_fd, &change) == ORBIT_FILESYSTEM_OK);
@@ -143,15 +151,26 @@ int main(void) {
         orbit_package_filesystem_prepare_remove(
             target_fd, "remove.dylib", backup_fd, "remove.backup",
             &change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("interrupted removal preimage-link state created",
+        linkat(target_fd, "remove.dylib", backup_fd, "remove.backup", 0) == 0);
+    EXPECT("removal resumes from preimage-link state",
+        orbit_package_filesystem_apply(
+            target_fd, -1, backup_fd, &change) == ORBIT_FILESYSTEM_OK);
     EXPECT("removal applied",
         orbit_package_filesystem_apply(
             target_fd, -1, backup_fd, &change) == ORBIT_FILESYSTEM_OK);
     EXPECT("removed target absent", !exists_at(target_fd, "remove.dylib"));
     EXPECT("removed preimage retained", file_equals_at(backup_fd, "remove.backup", "remove-me"));
+    EXPECT("removal apply is idempotent after unlink",
+        orbit_package_filesystem_apply(
+            target_fd, -1, backup_fd, &change) == ORBIT_FILESYSTEM_OK);
     EXPECT("removal rollback restores file",
         orbit_package_filesystem_rollback(
             target_fd, -1, backup_fd, &change) == ORBIT_FILESYSTEM_OK);
     EXPECT("restored removal target matches", file_equals_at(target_fd, "remove.dylib", "remove-me"));
+    EXPECT("removal rollback is idempotent",
+        orbit_package_filesystem_rollback(
+            target_fd, -1, backup_fd, &change) == ORBIT_FILESYSTEM_OK);
 
     EXPECT("final removal target created", write_file_at(target_fd, "final-remove", "gone"));
     EXPECT("final removal change prepared",

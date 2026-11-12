@@ -20,11 +20,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     orbit_archive_report report;
     (void)orbit_package_archive_inspect_deb(data, size, &report);
 
-    const size_t chunk_sizes[] = { 1U, 511U, 513U, 4093U };
-    for (size_t i = 0U; i < sizeof(chunk_sizes) / sizeof(chunk_sizes[0]); ++i) {
-        (void)orbit_package_archive_test_inspect_tar_chunks(
-            data, size, chunk_sizes[i], &report);
-    }
+    const size_t chunk_sizes[] = { 1U, 511U, 512U, 513U, 4093U };
+    size_t chunk_size = chunk_sizes[data[0] % (sizeof(chunk_sizes) / sizeof(chunk_sizes[0]))];
+    (void)orbit_package_archive_test_inspect_tar_chunks(
+        data, size, chunk_size, &report);
 
     const orbit_decompress_format formats[] = {
         ORBIT_DECOMPRESS_GZIP,

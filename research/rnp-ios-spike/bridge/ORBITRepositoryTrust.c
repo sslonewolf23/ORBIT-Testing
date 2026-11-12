@@ -166,12 +166,21 @@ static orbit_trust_code schedule_verified_rotation(
                                                        proof->next_fingerprint))
         return ORBIT_TRUST_CANDIDATE_KEY_REJECTED;
     if (now_seconds < state->last_observed_time ||
-        proof->activate_at < now_seconds ||
-        proof->activate_at - now_seconds > ORBIT_TRUST_MAX_ACTIVATION_DELAY_SECONDS ||
-        proof->previous_key_valid_until < proof->activate_at ||
-        proof->previous_key_valid_until - proof->activate_at >
-            ORBIT_TRUST_MAX_PREVIOUS_KEY_GRACE_SECONDS)
+        proof->previous_key_valid_until < proof->activate_at)
         return ORBIT_TRUST_ROTATION_WINDOW_REJECTED;
+    if (emergency) {
+        if (proof->activate_at < state->last_observed_time ||
+            proof->activate_at > now_seconds ||
+            proof->previous_key_valid_until != proof->activate_at ||
+            now_seconds - proof->activate_at >
+                ORBIT_TRUST_MAX_EMERGENCY_STATEMENT_AGE_SECONDS)
+            return ORBIT_TRUST_ROTATION_WINDOW_REJECTED;
+    } else if (proof->activate_at < now_seconds ||
+               proof->activate_at - now_seconds > ORBIT_TRUST_MAX_ACTIVATION_DELAY_SECONDS ||
+               proof->previous_key_valid_until - proof->activate_at >
+                   ORBIT_TRUST_MAX_PREVIOUS_KEY_GRACE_SECONDS) {
+        return ORBIT_TRUST_ROTATION_WINDOW_REJECTED;
+    }
 
     if (emergency) {
         memcpy(state->previous_fingerprint, state->current_fingerprint,
@@ -180,7 +189,7 @@ static orbit_trust_code schedule_verified_rotation(
                sizeof(state->current_fingerprint));
         memset(state->pending_fingerprint, 0, sizeof(state->pending_fingerprint));
         state->pending_activation = 0U;
-        state->previous_valid_until = now_seconds;
+        state->previous_valid_until = proof->previous_key_valid_until;
         ++state->generation;
     } else {
         memcpy(state->pending_fingerprint, proof->next_fingerprint,
@@ -280,8 +289,9 @@ orbit_trust_code orbit_repository_trust_authorize_recovery_rotation(
     memset(authenticated_payload,0,ORBIT_TRUST_ROTATION_MAX_BYTES);
     free(authenticated_payload);
     if(!parsed)return ORBIT_TRUST_PROOF_MALFORMED;
-    if(proof.activate_at!=now_seconds ||
-       proof.previous_key_valid_until!=now_seconds ||
+    if(proof.activate_at>now_seconds ||
+       now_seconds-proof.activate_at>ORBIT_TRUST_MAX_EMERGENCY_STATEMENT_AGE_SECONDS ||
+       proof.previous_key_valid_until!=proof.activate_at ||
        strcmp(proof.next_fingerprint,recovery_pin)==0)
         return ORBIT_TRUST_RECOVERY_POLICY_REJECTED;
     return schedule_verified_rotation(state,expected_repository,&proof,

@@ -29,4 +29,9 @@ typedef struct {
 const orbit_bootstrap_profile *orbit_bootstrap_profile_get(
     orbit_bootstrap_profile_id identifier);
 
+/* observed_admin_relative must be derived from the active APT
+ * Dir::State::status setting after resolving it beneath the verified root. */
+int orbit_bootstrap_profile_matches_admin_directory(
+    const orbit_bootstrap_profile *profile, const char *observed_admin_relative);
+
 #endif

@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define AR_HEADER_BYTES 60U
@@ -11,6 +12,7 @@
 
 typedef struct {
     char paths[ORBIT_TAR_MAX_ENTRIES][ORBIT_TAR_MAX_PATH + 1U];
+    bool directories[ORBIT_TAR_MAX_ENTRIES];
     size_t count;
 } path_set;
 
@@ -137,10 +139,24 @@ static bool tar_checksum_valid(const uint8_t *header) {
     return sum == stored;
 }
 
-static bool path_exists(const path_set *set, const char *path) {
-    for (size_t i = 0U; i < set->count; ++i)
-        if (strcmp(set->paths[i], path) == 0) return true;
-    return false;
+static orbit_archive_code check_path_collision(const path_set *set,
+                                                const char *path,
+                                                bool directory) {
+    size_t path_length = strlen(path);
+    for (size_t i = 0U; i < set->count; ++i) {
+        const char *existing = set->paths[i];
+        size_t existing_length = strlen(existing);
+        if (strcmp(existing, path) == 0) return ORBIT_ARCHIVE_DUPLICATE_PATH;
+        if (existing_length < path_length &&
+            strncmp(path, existing, existing_length) == 0 &&
+            path[existing_length] == '/' && !set->directories[i])
+            return ORBIT_ARCHIVE_UNSAFE_PATH;
+        if (path_length < existing_length &&
+            strncmp(existing, path, path_length) == 0 &&
+            existing[path_length] == '/' && !directory)
+            return ORBIT_ARCHIVE_UNSAFE_PATH;
+    }
+    return ORBIT_ARCHIVE_OK;
 }
 
 static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length,
@@ -176,16 +192,23 @@ static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length,
             result = ORBIT_ARCHIVE_UNSUPPORTED_ENTRY; break;
         }
         char path[ORBIT_TAR_MAX_PATH + 1U];
-        if (!join_tar_path(h, path, sizeof(path)) ||
-            !orbit_package_archive_path_is_safe(path)) {
+        if (!join_tar_path(h, path, sizeof(path))) {
+            result = ORBIT_ARCHIVE_UNSAFE_PATH; break;
+        }
+        char type = (char)h[156U];
+        bool directory = type == '5';
+        while (strncmp(path, "./", 2U) == 0)
+            memmove(path, path + 2U, strlen(path + 2U) + 1U);
+        size_t path_length = strlen(path);
+        if (directory && path_length > 0U && path[path_length - 1U] == '/')
+            path[path_length - 1U] = '\0';
+        if (!orbit_package_archive_path_is_safe(path)) {
             result = ORBIT_ARCHIVE_UNSAFE_PATH; break;
         }
         uint64_t file_size = 0U;
         if (!parse_octal(h + 124U, 12U, &file_size)) {
             result = ORBIT_ARCHIVE_MALFORMED_TAR; break;
         }
-        char type = (char)h[156U];
-        bool directory = type == '5';
         if (!(type == '\0' || type == '0' || directory) ||
             (directory && file_size != 0U)) {
             result = ORBIT_ARCHIVE_UNSUPPORTED_ENTRY; break;
@@ -194,11 +217,14 @@ static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length,
             report->entries >= ORBIT_TAR_MAX_ENTRIES) {
             result = ORBIT_ARCHIVE_LIMIT; break;
         }
-        if (path_exists(set, path)) { result = ORBIT_ARCHIVE_DUPLICATE_PATH; break; }
+        orbit_archive_code collision = check_path_collision(set, path, directory);
+        if (collision != ORBIT_ARCHIVE_OK) { result = collision; break; }
         if (set->count >= ORBIT_TAR_MAX_ENTRIES) {
             result = ORBIT_ARCHIVE_LIMIT; break;
         }
-        strcpy(set->paths[set->count++], path);
+        strcpy(set->paths[set->count], path);
+        set->directories[set->count] = directory;
+        ++set->count;
         if (!directory) {
             if (!add_u64(total, file_size, &total) ||
                 total > ORBIT_TAR_MAX_TOTAL_BYTES) {
@@ -242,6 +268,8 @@ orbit_archive_code orbit_package_archive_inspect_deb(
         return report->code;
     }
     size_t offset = 8U;
+    const uint8_t *control_tar = NULL;
+    size_t control_tar_length = 0U;
     const uint8_t *data_tar = NULL;
     size_t data_tar_length = 0U;
     unsigned members = 0U;
@@ -280,6 +308,8 @@ orbit_archive_code orbit_package_archive_inspect_deb(
             if (strcmp(name, "control.tar") != 0) {
                 report->code = ORBIT_ARCHIVE_UNSUPPORTED_COMPRESSION; return report->code;
             }
+            control_tar = body;
+            control_tar_length = (size_t)member_size;
         } else if (strncmp(name, "data.tar", 8U) == 0) {
             if (report->saw_data_archive) {
                 report->code = ORBIT_ARCHIVE_DUPLICATE_PATH; return report->code;
@@ -303,9 +333,13 @@ orbit_archive_code orbit_package_archive_inspect_deb(
         offset += advance;
     }
     if (!report->saw_debian_binary || !report->saw_control_archive ||
-        !report->saw_data_archive || !data_tar) {
+        !report->saw_data_archive || !control_tar || !data_tar) {
         report->code = ORBIT_ARCHIVE_MISSING_COMPONENT; return report->code;
     }
+    orbit_archive_report control_report;
+    memset(&control_report, 0, sizeof(control_report));
+    report->code = inspect_tar(control_tar, control_tar_length, &control_report);
+    if (report->code != ORBIT_ARCHIVE_OK) return report->code;
     report->code = inspect_tar(data_tar, data_tar_length, report);
     return report->code;
 }

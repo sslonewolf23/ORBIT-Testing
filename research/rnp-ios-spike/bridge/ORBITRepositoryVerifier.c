@@ -151,6 +151,14 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
         return finish(result, ORBIT_REPOSITORY_VERIFY_PACKAGE_INDEX_MALFORMED);
     }
 
+    for(size_t i=0U;i<parsed_packages.count;++i) {
+        const char *architecture=parsed_packages.packages[i].architecture;
+        if(strcmp(architecture,required_architecture)!=0&&strcmp(architecture,"all")!=0) {
+            orbit_packages_index_destroy(&parsed_packages);
+            return finish(result,ORBIT_REPOSITORY_VERIFY_PACKAGE_ARCHITECTURE_REJECTED);
+        }
+    }
+
     /* Recheck the pin after the expensive signature and digest work so a
      * concurrent emergency rotation cannot leave a stale authorization. */
     bool still_authorized = orbit_repository_trust_fingerprint_allowed_and_store(

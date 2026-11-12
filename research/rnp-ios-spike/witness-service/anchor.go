@@ -108,6 +108,24 @@ func (d *dynamoAnchor) Latest(ctx context.Context, installationID string) (ancho
 	if err := validateCheckpoint(c); err != nil { return zero, false, err }
 	hashAttr, ok := out.Items[0]["checkpoint_hash"].(*types.AttributeValueMemberS)
 	if !ok || hashAttr.Value != hex.EncodeToString(c.Hash[:]) { return zero,false,errors.New("anchor checkpoint hash index mismatch") }
+	if c.Sequence == 1 {
+		if c.PreviousHash != ([32]byte{}) { return zero,false,errors.New("initial anchor checkpoint has predecessor") }
+	} else {
+		prior, err := d.client.GetItem(ctx,&dynamodb.GetItemInput{
+			TableName:aws.String(d.table),ConsistentRead:aws.Bool(true),
+			Key:map[string]types.AttributeValue{
+				"installation_id":&types.AttributeValueMemberS{Value:installationID},
+				"sequence":&types.AttributeValueMemberN{Value:strconv.FormatUint(c.Sequence-1,10)},
+			},
+		})
+		if err != nil || len(prior.Item)==0 { return zero,false,errors.New("anchor predecessor missing") }
+		priorRaw, ok := prior.Item["checkpoint"].(*types.AttributeValueMemberB)
+		if !ok { return zero,false,errors.New("anchor predecessor malformed") }
+		var priorCheckpoint anchorCheckpoint
+		if err := json.Unmarshal(priorRaw.Value,&priorCheckpoint); err != nil || validateCheckpoint(priorCheckpoint)!=nil || priorCheckpoint.Hash!=c.PreviousHash {
+			return zero,false,errors.New("anchor predecessor hash mismatch")
+		}
+	}
 	return c, true, nil
 }
 

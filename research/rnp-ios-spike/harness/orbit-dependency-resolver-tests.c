@@ -134,6 +134,59 @@ int main(void) {
         code==ORBIT_DEPENDENCY_CONFLICT);
 
     orbit_dependency_plan_destroy(&plan);
+
+    orbit_package_record virtual_records[2];
+    package(&virtual_records[0],"virtual-app","1.0","iphoneos-arm64",
+            "virtual-abi (>= 2.0)",NULL,NULL);
+    package(&virtual_records[1],"abi-provider","3.0","iphoneos-arm64",NULL,NULL,NULL);
+    snprintf(virtual_records[1].provides,sizeof(virtual_records[1].provides),
+             "virtual-abi (= 2.5)");
+    orbit_packages_index virtual_catalog={virtual_records,2U,2U};
+    code=orbit_dependency_plan_build(&virtual_catalog,NULL,0U,"virtual-app",
+                                     "iphoneos-arm64",&plan);
+    expect("versioned-virtual-provide-satisfies-dependency",
+        code==ORBIT_DEPENDENCY_OK&&plan.count==2U&&
+        strcmp(plan.ordered[0]->name,"abi-provider")==0);
+    orbit_dependency_plan_destroy(&plan);
+
+    snprintf(virtual_records[1].provides,sizeof(virtual_records[1].provides),
+             "virtual-abi");
+    code=orbit_dependency_plan_build(&virtual_catalog,NULL,0U,"virtual-app",
+                                     "iphoneos-arm64",&plan);
+    expect("unversioned-provide-does-not-satisfy-versioned-dependency",
+        code==ORBIT_DEPENDENCY_UNSATISFIED);
+
+    snprintf(virtual_records[0].depends,sizeof(virtual_records[0].depends),
+             "virtual-abi");
+    code=orbit_dependency_plan_build(&virtual_catalog,NULL,0U,"virtual-app",
+                                     "iphoneos-arm64",&plan);
+    expect("unversioned-virtual-provide-satisfies-unversioned-dependency",
+        code==ORBIT_DEPENDENCY_OK&&plan.count==2U);
+    orbit_dependency_plan_destroy(&plan);
+
+    snprintf(virtual_records[1].provides,sizeof(virtual_records[1].provides),
+             "virtual-abi (>= 2.0)");
+    code=orbit_dependency_plan_build(&virtual_catalog,NULL,0U,"virtual-app",
+                                     "iphoneos-arm64",&plan);
+    expect("unsupported-nonexact-versioned-provides-fails-closed",
+        code==ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION);
+
+    snprintf(virtual_records[1].provides,sizeof(virtual_records[1].provides),
+             "virtual-abi (= 2.5)");
+    snprintf(virtual_records[0].depends,sizeof(virtual_records[0].depends),
+             "virtual-abi");
+    package(&virtual_records[0],"virtual-app","1.0","iphoneos-arm64",
+            "virtual-abi",NULL,NULL);
+    package(&virtual_records[1],"abi-provider","3.0","iphoneos-arm64",
+            NULL,NULL,"virtual-app");
+    snprintf(virtual_records[1].provides,sizeof(virtual_records[1].provides),
+             "virtual-abi (= 2.5)");
+    code=orbit_dependency_plan_build(&virtual_catalog,NULL,0U,"virtual-app",
+                                     "iphoneos-arm64",&plan);
+    expect("virtual-provide-conflict-detected",
+        code==ORBIT_DEPENDENCY_CONFLICT);
+
+    orbit_dependency_plan_destroy(&plan);
     printf("decision=%s checks=%u failures=%u\n",
            failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;

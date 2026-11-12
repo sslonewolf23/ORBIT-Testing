@@ -263,8 +263,12 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute(
 
     if (apply_result != ORBIT_FILESYSTEM_OK) {
         if (!advance_revision(record)) {
+            orbit_filesystem_code rollback_result =
+                rollback_all(record, executor, executor_context);
+            bool cleared = rollback_result == ORBIT_FILESYSTEM_OK &&
+                backend->clear_atomic(backend->context, record->revision);
             free(record);
-            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+            return cleared ? apply_result : ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
         }
         record->phase = ORBIT_FILE_JOURNAL_ROLLING_BACK;
         if (!backend->store_atomic(backend->context, record)) {

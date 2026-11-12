@@ -360,7 +360,7 @@ int main(int argc,char **argv) {
     uint64_t verify_now=(uint64_t)time(NULL);
     orbit_repository_verify_code verify_code=orbit_repository_verify_packages_index(
         &verify_state,repo,trusted_fpr,trusted,trusted_len,
-        index_inrelease,index_inrelease_len,"stable","fixture",
+        index_inrelease,index_inrelease_len,"ORBIT Test","stable","fixture",
         "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
         packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
         &verify_backend,&verify_result);
@@ -376,7 +376,7 @@ int main(int argc,char **argv) {
         tampered_packages[0]^=0x01U;
         verify_code=orbit_repository_verify_packages_index(
             &verify_state,repo,trusted_fpr,trusted,trusted_len,
-            index_inrelease,index_inrelease_len,"stable","fixture",
+            index_inrelease,index_inrelease_len,"ORBIT Test","stable","fixture",
             "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
             tampered_packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
             &verify_backend,&verify_result);
@@ -386,7 +386,7 @@ int main(int argc,char **argv) {
     }
     verify_code=orbit_repository_verify_packages_index(
         &verify_state,repo,trusted_fpr,trusted,trusted_len,
-        index_inrelease,index_inrelease_len,"stable","wrong-codename",
+        index_inrelease,index_inrelease_len,"ORBIT Test","stable","wrong-codename",
         "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
         packages,packages_len,verify_now,7ULL*24ULL*60ULL*60ULL,300U,
         &verify_backend,&verify_result);
@@ -402,7 +402,7 @@ int main(int argc,char **argv) {
         verify_code==ORBIT_REPOSITORY_VERIFY_SIGNER_NOT_TRUSTED,true);
     verify_code=orbit_repository_verify_packages_index(
         &verify_state,repo,trusted_fpr,trusted,trusted_len,
-        index_inrelease,index_inrelease_len,"stable","fixture",
+        index_inrelease,index_inrelease_len,"ORBIT Test","stable","fixture",
         "iphoneos-arm64","main","main/binary-iphoneos-arm64/Packages",
         packages,packages_len,verify_now+8ULL*24ULL*60ULL*60ULL,
         7ULL*24ULL*60ULL*60ULL,300U,&verify_backend,&verify_result);

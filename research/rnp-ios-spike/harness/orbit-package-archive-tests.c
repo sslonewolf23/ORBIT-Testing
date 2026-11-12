@@ -109,11 +109,11 @@ int main(void) {
     const uint8_t *data_name = (const uint8_t *)"data.tar";
     for (size_t i = 8U; i + 60U <= length; ++i) {
         if (memcmp(deb + i, data_name, 8U) == 0) {
-            memcpy(deb + i, "data.tar.xz", 11U);
+            memcpy(deb + i, "data.tar.zz", 11U);
             break;
         }
     }
-    EXPECT("compressed archive rejected until bounded decoder exists",
+    EXPECT("unknown compression extension rejected",
            orbit_package_archive_inspect_deb(deb, length, &report) == ORBIT_ARCHIVE_UNSUPPORTED_COMPRESSION);
 
     EXPECT("null input rejected",

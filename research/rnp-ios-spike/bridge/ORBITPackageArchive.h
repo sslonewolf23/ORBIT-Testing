@@ -53,7 +53,8 @@ orbit_archive_code orbit_package_archive_inspect_deb_with_data_entries(
     void *callback_context, orbit_archive_report *report);
 
 /* Strict inspection only. No extraction, filesystem writes, or script execution.
- * Supports uncompressed, gzip, xz, bzip2, and zstd control/data tar members.
+ * Path collisions are validated using a sorted, bounded manifest. Supports
+ * uncompressed, gzip, xz, bzip2, and zstd control/data tar members.
  * Compressed members are decoded in fixed chunks with a 256 MiB expanded
  * output ceiling and a 200:1 expansion-ratio ceiling. */
 orbit_archive_code orbit_package_archive_inspect_deb(

@@ -133,6 +133,12 @@ int main(int argc,char **argv) {
     expect("restored-pin-matches",strcmp(loaded.current_fingerprint,pin)==0,true);
     expect("independent-recovery-pin-survives-record-reload",
         strcmp(loaded.recovery_fingerprint,recovery_pin)==0,true);
+    expect("bootstrap-cannot-substitute-persisted-recovery-root",
+        orbit_repository_trust_load_or_initialize(&loaded,repo,
+            "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC",&backend)==ORBIT_TRUST_STORE_OK &&
+        strcmp(loaded.current_fingerprint,pin)==0 &&
+        strcmp(loaded.recovery_fingerprint,recovery_pin)==0,true);
     expect("restored-revision-matches",loaded.revision==state.revision,true);
     storage.locked=true;
     expect("store-lock-contention-fails-closed",

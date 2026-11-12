@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include "ORBITDependencyResolver.h"
 
 #include <ctype.h>
@@ -35,7 +36,8 @@ static int compare_part(const char *a,const char *b) {
         while((*a&&!isdigit((unsigned char)*a))||(*b&&!isdigit((unsigned char)*b))) {
             int ac=order_char(*a),bc=order_char(*b);
             if(ac!=bc)return ac<bc?-1:1;
-            if(*a)++a;if(*b)++b;
+            if(*a)++a;
+            if(*b)++b;
         }
         while(*a=='0')++a;
         while(*b=='0')++b;
@@ -165,7 +167,7 @@ static bool resolve_relation(resolver *r,const char *relation) {
             }
             /* Only simple package/version relations are supported for now. */
             if(strchr(alt,'[')||strchr(alt,']')||strchr(alt,':')||
-               strchr(alt,'<')==NULL&&strchr(alt,'>')==NULL&&strchr(alt,'(')!=NULL) {
+               (strchr(alt,'<')==NULL&&strchr(alt,'>')==NULL&&strchr(alt,'(')!=NULL)) {
                 r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;
             }
         }
@@ -185,6 +187,11 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
             if(!q||!package_arch_ok(q,r->architecture))continue;
             char copy[RELATION_MAX];strcpy(copy,item);
             if(relation_satisfied(q,copy)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
+        }
+        for(size_t i=0;i<r->available->count;++i) {
+            if(r->state[i]!=1U)continue;
+            char copy[RELATION_MAX];strcpy(copy,item);
+            if(relation_satisfied(&r->available->packages[i],copy)){r->error=ORBIT_DEPENDENCY_CONFLICT;return false;}
         }
         for(size_t i=0;i<r->count;++i) {
             char copy[RELATION_MAX];strcpy(copy,item);
@@ -230,5 +237,8 @@ orbit_dependency_code orbit_dependency_plan_build(
     plan->ordered=r.ordered;plan->count=r.count;return ORBIT_DEPENDENCY_OK;
 }
 void orbit_dependency_plan_destroy(orbit_dependency_plan *plan) {
-    if(!plan)return;free(plan->ordered);plan->ordered=NULL;plan->count=0U;
+    if(!plan)return;
+    free(plan->ordered);
+    plan->ordered=NULL;
+    plan->count=0U;
 }

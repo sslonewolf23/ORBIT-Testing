@@ -13,10 +13,11 @@ typedef struct {
     unsigned fail_apply_number;
     unsigned fail_rollback_number;
     bool corrupt_load;
+    bool resolve_mismatch;
 } fixture;
 static unsigned checks=0,failures=0;
 static void expect(const char *name,bool condition) {
-    ++checks;if(!condition){++failures;fprintf(stderr,"FAIL %s\n",name);}
+    ++checks;if(!condition){++failures;fprintf(stderr,"FAIL %s\\n",name);}
 }
 static orbit_journal_status load_journal(void *ctx,orbit_transaction_journal *out) {
     fixture *f=ctx;
@@ -38,7 +39,7 @@ static bool clear_journal(void *ctx,uint64_t revision) {
 }
 static const orbit_package_record *resolve_package(void *ctx,const char *name,
     const char *version,const char *architecture) {
-    (void)ctx;
+    fixture *f=ctx;
     static orbit_package_record records[2];
     static const char *names[2]={"alpha","beta"};
     for(size_t i=0;i<2U;++i)if(strcmp(name,names[i])==0) {
@@ -46,6 +47,8 @@ static const orbit_package_record *resolve_package(void *ctx,const char *name,
         snprintf(records[i].name,sizeof(records[i].name),"%s",name);
         snprintf(records[i].version,sizeof(records[i].version),"%s",version);
         snprintf(records[i].architecture,sizeof(records[i].architecture),"%s",architecture);
+        if(f->resolve_mismatch)
+            snprintf(records[i].version,sizeof(records[i].version),"9.9");
         return &records[i];
     }
     return NULL;
@@ -93,7 +96,7 @@ int main(void) {
     expect("failed-transaction-journal-cleared",!f.present);
 
     memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
-    f.fail_store_number=3U; /* fail after the first apply, before its completion record */
+    f.fail_store_number=3U;
     code=orbit_package_transaction_execute(id,packages,actions,2U,&jb,&pb);
     expect("journal-write-failure-requires-recovery",
         code==ORBIT_TRANSACTION_RECOVERY_REQUIRED);
@@ -115,6 +118,14 @@ int main(void) {
         code==ORBIT_TRANSACTION_OK&&!f.present);
 
     memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
+    f.resolve_mismatch=true;
+    code=orbit_package_transaction_execute(id,packages,actions,2U,&jb,&pb);
+    expect("resolver-identity-mismatch-rejected",
+        code==ORBIT_TRANSACTION_RESOLUTION_ERROR);
+    expect("resolver-mismatch-never-applies-or-rolls-back-wrong-package",
+        f.applies==0U&&f.rollbacks==0U&&!f.present);
+
+    memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
     code=orbit_package_transaction_recover(&jb,&pb);
     expect("no-journal-recovery-is-noop",code==ORBIT_TRANSACTION_OK);
 
@@ -123,7 +134,7 @@ int main(void) {
     code=orbit_package_transaction_recover(&jb,&pb);
     expect("corrupt-journal-fails-closed",code==ORBIT_TRANSACTION_JOURNAL_ERROR);
 
-    printf("decision=%s checks=%u failures=%u\n",
+    printf("decision=%s checks=%u failures=%u\\n",
            failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;
 }

@@ -57,8 +57,8 @@ int main(void) {
 
     orbit_package_record bad_installed;
     package(&bad_installed,"libhelper","2.1","iphoneos-arm64",NULL,NULL,NULL);
-    const orbit_package_record *bad_set[]={&bad_installed};
-    code=orbit_dependency_plan_build(&catalog,bad_set,1U,"orbit-app",
+    const orbit_package_record *bad_set[]={&bad_installed,&installed_base};
+    code=orbit_dependency_plan_build(&catalog,bad_set,2U,"orbit-app",
                                      "iphoneos-arm64",&plan);
     expect("installed-dependency-satisfies-version",
         code==ORBIT_DEPENDENCY_OK&&plan.count==2U);

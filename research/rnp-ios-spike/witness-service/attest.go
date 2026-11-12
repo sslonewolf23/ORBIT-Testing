@@ -196,7 +196,7 @@ func (s *service) verifyAttestation(keyID string, challenge, object []byte) ([]b
 }
 
 func mustDecodeKeyID(keyID string) []byte {
-	b, _ := decodeB64(keyID, 32, 32)
+	b, _ := decodeAppAttestKeyID(keyID)
 	return b
 }
 

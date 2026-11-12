@@ -164,7 +164,7 @@ func (s *service) authenticateAssertion(tx *sql.Tx, keyID string, request, asser
 	return result,counter,nil
 }
 
-func updateCounter(tx interfaceTx, keyID string, counter uint32) error {
+func updateCounter(tx *sql.Tx, keyID string, counter uint32) error {
 	res, err := tx.Exec("UPDATE installations SET assertion_counter=? WHERE key_id=? AND assertion_counter<?",
 		counter, keyID, counter)
 	if err != nil { return err }

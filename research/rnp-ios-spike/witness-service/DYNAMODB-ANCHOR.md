@@ -6,7 +6,7 @@ Create a dedicated table with:
 
 - Partition key: `installation_id` (String)
 - Sort key: `sequence` (Number)
-- Billing: on-demand or provisioned capacity sized for one append per accepted App Attest assertion
+- Billing: on-demand or provisioned capacity sized for one append per accepted App Attest assertion (including each read-only head request)
 - Point-in-time recovery: enabled for operational recovery, not as a rollback mechanism
 - Encryption at rest: enabled (AWS owned key minimum; customer-managed KMS key preferred)
 - Deletion protection: enabled
@@ -60,8 +60,11 @@ Minimum runtime permissions on the exact table ARN:
 Do not grant the runtime role `UpdateItem`, `DeleteItem`, `BatchWriteItem`,
 `DeleteTable`, `UpdateTable`, `RestoreTableToPointInTime`, `CreateTable`,
 or IAM permissions. The application performs conditional inserts only and
-strongly consistent reads. Every item is keyed by installation ID and
-monotonically increasing sequence. The checkpoint includes a hash of its
+strongly consistent reads. Every item is keyed by a stable installation ID (SHA-256 of the server-side
+recovery verifier) and monotonically increasing sequence. The client supplies
+the recovery credential in each signed-request wrapper so the service can
+recompute that ID and find the same checkpoint stream after a local SQLite
+restore, even when the local key ID or installation row is missing. The checkpoint includes a hash of its
 predecessor, and the service rejects non-contiguous writes.
 
 ## Administrative separation

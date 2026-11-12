@@ -123,6 +123,8 @@ int main(int argc, char **argv) {
 
     orbit_repository_trust_state state;
     expect("initial-pin-created", orbit_repository_trust_init(&state, trusted_fpr, recovery_fpr), true);
+    expect("independent-recovery-root-pinned-at-enrollment",
+        strcmp(state.recovery_fingerprint,recovery_fpr)==0,true);
     uint64_t now = (uint64_t)time(NULL);
     expect("time-floor-initialized", orbit_repository_trust_observe_time(&state, now), true);
     expect("old-key-authorized-initially", orbit_repository_trust_fingerprint_allowed(
@@ -134,6 +136,8 @@ int main(int argc, char **argv) {
         &state, "orbit-official", rotation, rotation_len, trusted, trusted_len,
         candidate, candidate_len, now)
         == ORBIT_TRUST_ACCEPTED, true);
+    expect("normal-rotation-cannot-replace-recovery-root",
+        strcmp(state.recovery_fingerprint,recovery_fpr)==0,true);
     expect("second-pending-rotation-blocked", orbit_repository_trust_authorize_rotation(
         &state, "orbit-official", rotation, rotation_len, trusted, trusted_len,
         candidate, candidate_len, now)
@@ -228,6 +232,8 @@ int main(int argc, char **argv) {
             emergency_now) == ORBIT_TRUST_ACCEPTED, true);
     expect("emergency-rotation-switches-current-pin",
         strcmp(recovery_state.current_fingerprint, candidate_fpr) == 0, true);
+    expect("emergency-rotation-preserves-independent-recovery-root",
+        strcmp(recovery_state.recovery_fingerprint,recovery_fpr)==0,true);
     expect("emergency-rotation-retains-only-current-old-key-at-zero-grace",
         strcmp(recovery_state.previous_fingerprint, trusted_fpr) == 0 &&
         recovery_state.previous_valid_until == emergency_now, true);

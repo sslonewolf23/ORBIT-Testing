@@ -201,6 +201,12 @@ func main() {
 	if err != nil { log.Fatal(err) }
 	anchor, err := newDynamoAnchor(dynamodb.NewFromConfig(awsCfg), cfg.anchorTable)
 	if err != nil { log.Fatal(err) }
+	anchorCtx, cancelAnchorCheck := context.WithTimeout(context.Background(),5*time.Second)
+	if err := anchor.Health(anchorCtx); err != nil {
+		cancelAnchorCheck()
+		log.Fatalf("independent monotonic anchor unavailable: %v",err)
+	}
+	cancelAnchorCheck()
 	s := &service{db: db, appID: cfg.appID, environment: cfg.environment,
 		roots: roots, now: time.Now, recoveryPepper: []byte(cfg.recoveryPepper), anchor: anchor}
 	mux := http.NewServeMux()

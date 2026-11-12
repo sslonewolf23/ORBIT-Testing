@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/x509"
 	"database/sql"
@@ -27,6 +28,7 @@ type service struct {
 	environment string
 	roots       *x509.CertPool
 	now         func() time.Time
+	recoveryPepper []byte
 }
 
 type cborAttestation struct {
@@ -245,4 +247,27 @@ func (s *service) verifyAssertion(publicDER, clientData, assertion []byte) (uint
 		return 0, errors.New("assertion signature invalid")
 	}
 	return counter, nil
+}
+
+
+// recoveryVerifier is a domain-separated HMAC so a database-only disclosure
+// does not expose a reusable verifier. The client credential must be 32 random bytes.
+func (s *service) recoveryVerifier(credential []byte) ([]byte, error) {
+	if len(credential) != 32 || len(s.recoveryPepper) < 32 { return nil, errors.New("invalid recovery credential configuration") }
+	mac := hmac.New(sha256.New, s.recoveryPepper)
+	mac.Write([]byte("ORBIT-RECOVERY-VERIFIER-V1\\x00"))
+	mac.Write(credential)
+	return mac.Sum(nil), nil
+}
+
+func recoveryProof(credential, challenge []byte, oldKeyID, newKeyID string) ([]byte, error) {
+	if len(credential) != 32 || len(challenge) != 32 || oldKeyID == "" || newKeyID == "" || oldKeyID == newKeyID { return nil, errors.New("invalid recovery proof input") }
+	mac := hmac.New(sha256.New, credential)
+	mac.Write([]byte("ORBIT-RECOVERY-AUTH-V1\\x00"))
+	mac.Write(challenge)
+	mac.Write([]byte{0})
+	mac.Write([]byte(oldKeyID))
+	mac.Write([]byte{0})
+	mac.Write([]byte(newKeyID))
+	return mac.Sum(nil), nil
 }

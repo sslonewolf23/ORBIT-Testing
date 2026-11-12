@@ -211,7 +211,9 @@ static orbit_trust_store_code store_save_locked(
 orbit_trust_store_code orbit_repository_trust_store_load(
     orbit_repository_trust_state *state,const char *repository_id,
     const orbit_trust_store_backend *backend) {
-    if(!state||!valid_repo(repository_id)||!backend_valid(backend))
+    if(!state)return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
+    memset(state,0,sizeof(*state));
+    if(!valid_repo(repository_id)||!backend_valid(backend))
         return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
     if(!backend->begin_transaction(backend->context,repository_id)) {
         memset(state,0,sizeof(*state));

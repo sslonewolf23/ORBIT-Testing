@@ -166,37 +166,6 @@ static orbit_archive_code check_path_collision(const path_set *set,
 }
 
 
-typedef struct {
-    uint8_t *bytes;
-    size_t length;
-    size_t capacity;
-} archive_buffer;
-
-static bool collect_decompressed(void *context, const uint8_t *bytes, size_t length) {
-    archive_buffer *buffer = (archive_buffer *)context;
-    if (!buffer || !bytes || length == 0U ||
-        length > (size_t)ORBIT_DECOMPRESS_OUTPUT_MAX - buffer->length)
-        return false;
-    size_t required = buffer->length + length;
-    if (required > buffer->capacity) {
-        size_t capacity = buffer->capacity ? buffer->capacity : ORBIT_DECOMPRESS_CHUNK_BYTES;
-        while (capacity < required) {
-            if (capacity > (size_t)ORBIT_DECOMPRESS_OUTPUT_MAX / 2U) {
-                capacity = (size_t)ORBIT_DECOMPRESS_OUTPUT_MAX;
-                break;
-            }
-            capacity *= 2U;
-        }
-        uint8_t *grown = (uint8_t *)realloc(buffer->bytes, capacity);
-        if (!grown) return false;
-        buffer->bytes = grown;
-        buffer->capacity = capacity;
-    }
-    memcpy(buffer->bytes + buffer->length, bytes, length);
-    buffer->length = required;
-    return true;
-}
-
 static bool member_compression(const char *name, const char *base,
                                orbit_decompress_format *format, bool *compressed) {
     *compressed = false;
@@ -218,128 +187,190 @@ static bool member_compression(const char *name, const char *base,
     return false;
 }
 
-static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length, orbit_archive_report *report);
+typedef struct {
+    path_set *paths;
+    orbit_archive_report *report;
+    uint8_t header[TAR_BLOCK_BYTES];
+    size_t header_used;
+    uint64_t payload_remaining;
+    uint64_t padding_remaining;
+    uint64_t input_bytes;
+    unsigned zero_blocks;
+    bool ended;
+    orbit_archive_code code;
+} tar_stream;
+
+static bool tar_stream_init(tar_stream *stream, orbit_archive_report *report) {
+    if (!stream || !report) return false;
+    memset(stream, 0, sizeof(*stream));
+    stream->paths = (path_set *)calloc(1U, sizeof(*stream->paths));
+    if (!stream->paths) return false;
+    stream->report = report;
+    stream->code = ORBIT_ARCHIVE_OK;
+    return true;
+}
+
+static void tar_stream_destroy(tar_stream *stream) {
+    if (!stream) return;
+    free(stream->paths);
+    stream->paths = NULL;
+}
+
+static orbit_archive_code tar_stream_header(tar_stream *stream) {
+    const uint8_t *h = stream->header;
+    if (all_bytes(h, TAR_BLOCK_BYTES, 0U)) {
+        ++stream->zero_blocks;
+        if (stream->zero_blocks >= 2U) stream->ended = true;
+        return ORBIT_ARCHIVE_OK;
+    }
+    if (stream->zero_blocks != 0U) return ORBIT_ARCHIVE_MALFORMED_TAR;
+    if (!tar_checksum_valid(h)) return ORBIT_ARCHIVE_MALFORMED_TAR;
+    if (memcmp(h + 257U, "ustar", 5U) != 0 ||
+        (h[262U] != '\\0' && h[262U] != ' '))
+        return ORBIT_ARCHIVE_UNSUPPORTED_ENTRY;
+
+    char path[ORBIT_TAR_MAX_PATH + 1U];
+    if (!join_tar_path(h, path, sizeof(path))) return ORBIT_ARCHIVE_UNSAFE_PATH;
+    char type = (char)h[156U];
+    bool directory = type == '5';
+    if (directory && (strcmp(path, ".") == 0 || strcmp(path, "./") == 0)) {
+        uint64_t root_size = 0U;
+        if (!parse_octal(h + 124U, 12U, &root_size) || root_size != 0U)
+            return ORBIT_ARCHIVE_MALFORMED_TAR;
+        return ORBIT_ARCHIVE_OK;
+    }
+
+    while (strncmp(path, "./", 2U) == 0)
+        memmove(path, path + 2U, strlen(path + 2U) + 1U);
+    size_t path_length = strlen(path);
+    if (directory && path_length > 0U && path[path_length - 1U] == '/')
+        path[path_length - 1U] = '\\0';
+    if (!orbit_package_archive_path_is_safe(path)) return ORBIT_ARCHIVE_UNSAFE_PATH;
+
+    uint64_t file_size = 0U;
+    if (!parse_octal(h + 124U, 12U, &file_size))
+        return ORBIT_ARCHIVE_MALFORMED_TAR;
+    if (!(type == '\\0' || type == '0' || directory) ||
+        (directory && file_size != 0U))
+        return ORBIT_ARCHIVE_UNSUPPORTED_ENTRY;
+    if (file_size > ORBIT_TAR_MAX_FILE_BYTES ||
+        stream->report->entries >= ORBIT_TAR_MAX_ENTRIES)
+        return ORBIT_ARCHIVE_LIMIT;
+
+    orbit_archive_code collision =
+        check_path_collision(stream->paths, path, directory);
+    if (collision != ORBIT_ARCHIVE_OK) return collision;
+    if (stream->paths->count >= ORBIT_TAR_MAX_ENTRIES)
+        return ORBIT_ARCHIVE_LIMIT;
+    strcpy(stream->paths->paths[stream->paths->count], path);
+    stream->paths->directories[stream->paths->count] = directory;
+    ++stream->paths->count;
+
+    if (!directory) {
+        uint64_t total = 0U;
+        if (!add_u64(stream->report->regular_file_bytes, file_size, &total) ||
+            total > ORBIT_TAR_MAX_TOTAL_BYTES)
+            return ORBIT_ARCHIVE_LIMIT;
+        stream->report->regular_file_bytes = total;
+        if (file_size > stream->report->largest_file_bytes)
+            stream->report->largest_file_bytes = file_size;
+    }
+    ++stream->report->entries;
+
+    uint64_t padded = file_size;
+    if (padded > UINT64_MAX - (TAR_BLOCK_BYTES - 1U))
+        return ORBIT_ARCHIVE_LIMIT;
+    padded = ((padded + TAR_BLOCK_BYTES - 1U) / TAR_BLOCK_BYTES) * TAR_BLOCK_BYTES;
+    stream->payload_remaining = file_size;
+    stream->padding_remaining = padded - file_size;
+    return ORBIT_ARCHIVE_OK;
+}
+
+static bool tar_stream_feed(void *context, const uint8_t *bytes, size_t length) {
+    tar_stream *stream = (tar_stream *)context;
+    if (!stream || (!bytes && length != 0U) || stream->code != ORBIT_ARCHIVE_OK)
+        return false;
+    if ((uint64_t)length > UINT64_MAX - stream->input_bytes) {
+        stream->code = ORBIT_ARCHIVE_LIMIT;
+        return false;
+    }
+    stream->input_bytes += (uint64_t)length;
+    size_t offset = 0U;
+    while (offset < length) {
+        if (stream->ended) {
+            if (!all_bytes(bytes + offset, length - offset, 0U)) {
+                stream->code = ORBIT_ARCHIVE_MALFORMED_TAR;
+                return false;
+            }
+            return true;
+        }
+        if (stream->payload_remaining != 0U) {
+            size_t take = stream->payload_remaining < (uint64_t)(length - offset) ?
+                (size_t)stream->payload_remaining : length - offset;
+            stream->payload_remaining -= (uint64_t)take;
+            offset += take;
+            continue;
+        }
+        if (stream->padding_remaining != 0U) {
+            size_t take = stream->padding_remaining < (uint64_t)(length - offset) ?
+                (size_t)stream->padding_remaining : length - offset;
+            if (!all_bytes(bytes + offset, take, 0U)) {
+                stream->code = ORBIT_ARCHIVE_MALFORMED_TAR;
+                return false;
+            }
+            stream->padding_remaining -= (uint64_t)take;
+            offset += take;
+            continue;
+        }
+        size_t need = TAR_BLOCK_BYTES - stream->header_used;
+        size_t take = need < length - offset ? need : length - offset;
+        memcpy(stream->header + stream->header_used, bytes + offset, take);
+        stream->header_used += take;
+        offset += take;
+        if (stream->header_used == TAR_BLOCK_BYTES) {
+            stream->code = tar_stream_header(stream);
+            stream->header_used = 0U;
+            if (stream->code != ORBIT_ARCHIVE_OK) return false;
+        }
+    }
+    return true;
+}
+
+static orbit_archive_code tar_stream_finish(tar_stream *stream) {
+    if (!stream) return ORBIT_ARCHIVE_INVALID_ARGUMENT;
+    if (stream->code != ORBIT_ARCHIVE_OK) return stream->code;
+    if (!stream->ended || stream->header_used != 0U ||
+        stream->payload_remaining != 0U || stream->padding_remaining != 0U ||
+        (stream->input_bytes % TAR_BLOCK_BYTES) != 0U)
+        return ORBIT_ARCHIVE_MALFORMED_TAR;
+    return ORBIT_ARCHIVE_OK;
+}
 
 static orbit_archive_code inspect_tar_member(
     const uint8_t *member, size_t member_length, bool compressed,
     orbit_decompress_format format, orbit_archive_report *report) {
-    if (!compressed) return inspect_tar(member, member_length, report);
-    archive_buffer decoded = { 0 };
-    uint64_t decoded_length = 0U;
-    orbit_decompress_code code = orbit_package_decompress_stream(
-        format, member, member_length, ORBIT_DECOMPRESS_OUTPUT_MAX,
-        collect_decompressed, &decoded, &decoded_length);
-    orbit_archive_code result;
-    if (code == ORBIT_DECOMPRESS_LIMIT ||
-        code == ORBIT_DECOMPRESS_SINK_ERROR) {
-        result = ORBIT_ARCHIVE_LIMIT;
-    } else if (code != ORBIT_DECOMPRESS_OK ||
-               decoded_length != (uint64_t)decoded.length) {
-        result = ORBIT_ARCHIVE_MALFORMED_TAR;
-    } else {
-        result = inspect_tar(decoded.bytes, decoded.length, report);
-    }
-    free(decoded.bytes);
-    return result;
-}
-
-static orbit_archive_code inspect_tar(const uint8_t *tar, size_t length,
-                                      orbit_archive_report *report) {
-    if (!tar || length < TAR_BLOCK_BYTES * 2U ||
-        (length % TAR_BLOCK_BYTES) != 0U) return ORBIT_ARCHIVE_MALFORMED_TAR;
-    path_set *set = (path_set *)0;
-    /* Avoid a large stack allocation; the caller's input is bounded and the
-       path set is allocated only for this inspection. */
-    set = (path_set *)calloc(1U, sizeof(*set));
-    if (!set) return ORBIT_ARCHIVE_LIMIT;
-    size_t offset = 0U;
-    uint64_t total = 0U;
-    bool ended = false;
+    tar_stream stream;
+    if (!tar_stream_init(&stream, report)) return ORBIT_ARCHIVE_LIMIT;
     orbit_archive_code result = ORBIT_ARCHIVE_OK;
-    while (offset + TAR_BLOCK_BYTES <= length) {
-        const uint8_t *h = tar + offset;
-        if (all_bytes(h, TAR_BLOCK_BYTES, 0U)) {
-            if (offset + TAR_BLOCK_BYTES * 2U > length ||
-                !all_bytes(tar + offset + TAR_BLOCK_BYTES,
-                           TAR_BLOCK_BYTES, 0U) ||
-                !all_bytes(tar + offset + TAR_BLOCK_BYTES * 2U,
-                           length - offset - TAR_BLOCK_BYTES * 2U, 0U)) {
-                result = ORBIT_ARCHIVE_MALFORMED_TAR;
-            } else {
-                ended = true;
-            }
-            break;
+    if (compressed) {
+        uint64_t decoded_length = 0U;
+        orbit_decompress_code decode = orbit_package_decompress_stream(
+            format, member, member_length, ORBIT_DECOMPRESS_OUTPUT_MAX,
+            tar_stream_feed, &stream, &decoded_length);
+        if (stream.code != ORBIT_ARCHIVE_OK) {
+            result = stream.code;
+        } else if (decode == ORBIT_DECOMPRESS_LIMIT) {
+            result = ORBIT_ARCHIVE_LIMIT;
+        } else if (decode != ORBIT_DECOMPRESS_OK) {
+            result = ORBIT_ARCHIVE_MALFORMED_TAR;
+        } else if (decoded_length != stream.input_bytes) {
+            result = ORBIT_ARCHIVE_MALFORMED_TAR;
         }
-        if (!tar_checksum_valid(h)) { result = ORBIT_ARCHIVE_MALFORMED_TAR; break; }
-        if (memcmp(h + 257U, "ustar", 5U) != 0 ||
-            (h[262U] != '\0' && h[262U] != ' ')) {
-            result = ORBIT_ARCHIVE_UNSUPPORTED_ENTRY; break;
-        }
-        char path[ORBIT_TAR_MAX_PATH + 1U];
-        if (!join_tar_path(h, path, sizeof(path))) {
-            result = ORBIT_ARCHIVE_UNSAFE_PATH; break;
-        }
-        char type = (char)h[156U];
-        bool directory = type == '5';
-        if (directory && (strcmp(path, ".") == 0 || strcmp(path, "./") == 0)) {
-            uint64_t root_size = 0U;
-            if (!parse_octal(h + 124U, 12U, &root_size) || root_size != 0U) {
-                result = ORBIT_ARCHIVE_MALFORMED_TAR; break;
-            }
-            offset += TAR_BLOCK_BYTES;
-            continue;
-        }
-        while (strncmp(path, "./", 2U) == 0)
-            memmove(path, path + 2U, strlen(path + 2U) + 1U);
-        size_t path_length = strlen(path);
-        if (directory && path_length > 0U && path[path_length - 1U] == '/')
-            path[path_length - 1U] = '\0';
-        if (!orbit_package_archive_path_is_safe(path)) {
-            result = ORBIT_ARCHIVE_UNSAFE_PATH; break;
-        }
-        uint64_t file_size = 0U;
-        if (!parse_octal(h + 124U, 12U, &file_size)) {
-            result = ORBIT_ARCHIVE_MALFORMED_TAR; break;
-        }
-        if (!(type == '\0' || type == '0' || directory) ||
-            (directory && file_size != 0U)) {
-            result = ORBIT_ARCHIVE_UNSUPPORTED_ENTRY; break;
-        }
-        if (file_size > ORBIT_TAR_MAX_FILE_BYTES ||
-            report->entries >= ORBIT_TAR_MAX_ENTRIES) {
-            result = ORBIT_ARCHIVE_LIMIT; break;
-        }
-        orbit_archive_code collision = check_path_collision(set, path, directory);
-        if (collision != ORBIT_ARCHIVE_OK) { result = collision; break; }
-        if (set->count >= ORBIT_TAR_MAX_ENTRIES) {
-            result = ORBIT_ARCHIVE_LIMIT; break;
-        }
-        strcpy(set->paths[set->count], path);
-        set->directories[set->count] = directory;
-        ++set->count;
-        if (!directory) {
-            if (!add_u64(total, file_size, &total) ||
-                total > ORBIT_TAR_MAX_TOTAL_BYTES) {
-                result = ORBIT_ARCHIVE_LIMIT; break;
-            }
-            report->regular_file_bytes = total;
-            if (file_size > report->largest_file_bytes)
-                report->largest_file_bytes = file_size;
-        }
-        ++report->entries;
-        uint64_t padded = file_size;
-        if (padded > UINT64_MAX - (TAR_BLOCK_BYTES - 1U)) {
-            result = ORBIT_ARCHIVE_LIMIT; break;
-        }
-        padded = ((padded + TAR_BLOCK_BYTES - 1U) / TAR_BLOCK_BYTES) * TAR_BLOCK_BYTES;
-        if (padded > (uint64_t)(length - offset - TAR_BLOCK_BYTES)) {
-            result = ORBIT_ARCHIVE_MALFORMED_TAR; break;
-        }
-        offset += TAR_BLOCK_BYTES + (size_t)padded;
+    } else if (!tar_stream_feed(&stream, member, member_length)) {
+        result = stream.code;
     }
-    if (result == ORBIT_ARCHIVE_OK && !ended)
-        result = ORBIT_ARCHIVE_MALFORMED_TAR;
-    free(set);
+    if (result == ORBIT_ARCHIVE_OK) result = tar_stream_finish(&stream);
+    tar_stream_destroy(&stream);
     return result;
 }
 

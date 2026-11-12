@@ -30,7 +30,8 @@ typedef struct {
 } orbit_packages_index;
 
 /* Parse a bounded Debian Packages control index. The caller must first verify
- * the exact index bytes against an authenticated Release SHA256 entry. */
+ * the exact index bytes against an authenticated Release SHA256 entry.
+ * result must be zero-initialized or previously released with destroy(). */
 bool orbit_packages_index_parse(const uint8_t *data, size_t length,
                                 orbit_packages_index *result);
 void orbit_packages_index_destroy(orbit_packages_index *index);

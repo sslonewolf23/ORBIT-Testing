@@ -14,7 +14,7 @@
 static unsigned checks;
 static unsigned failures;
 #define EXPECT(label, condition) do { ++checks; if (!(condition)) { ++failures; \
-    fprintf(stderr, "FAIL: %s\\n", label); } } while (0)
+    fprintf(stderr, "FAIL: %s\n", label); } } while (0)
 
 typedef struct {
     orbit_package_filesystem_journal_record *record;
@@ -357,7 +357,7 @@ int main(void) {
     EXPECT("temporary journal root removed", rmdir(base_path) == 0);
 
     free(memory.record);
-    printf("filesystem_journal_checks=%u failures=%u\\ndecision=%s\\n",
+    printf("filesystem_journal_checks=%u failures=%u\ndecision=%s\n",
            checks, failures, failures == 0U ? "PASS" : "FAIL");
     return failures == 0U ? EXIT_SUCCESS : EXIT_FAILURE;
 }

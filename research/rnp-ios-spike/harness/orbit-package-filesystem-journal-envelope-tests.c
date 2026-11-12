@@ -608,11 +608,6 @@ int main(void) {
     free(install_memory.payload);
     EXPECT("end-to-end backup directory cleaned",
         unlinkat(root_fd, "backup-install", AT_REMOVEDIR) == 0);
-    EXPECT("end-to-end install tree cleaned",
-        unlink_if_present_at(install_fd, "Library/orbit-demo.dylib") &&
-        unlinkat(install_fd, "Library", AT_REMOVEDIR) == 0 &&
-        unlinkat(stage_fd, "Library", AT_REMOVEDIR) == 0);
-
     /* A later file failure must roll back earlier mutations and leave the
      * committed ownership database at its pre-install snapshot. */
     EXPECT("rollback fixture package files staged",

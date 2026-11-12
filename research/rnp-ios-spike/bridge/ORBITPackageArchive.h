@@ -45,12 +45,25 @@ typedef struct {
 typedef bool (*orbit_archive_entry_callback)(
     void *context, const orbit_archive_entry *entry);
 
+typedef bool (*orbit_archive_data_chunk_callback)(
+    void *context, const char *path, uint64_t offset,
+    const uint8_t *bytes, size_t length, bool final_chunk);
+
 /* Reports data.tar entries only. Callbacks may receive partial results before
  * a later archive error; callers must stage and discard the whole manifest
  * unless this function returns ORBIT_ARCHIVE_OK. */
 orbit_archive_code orbit_package_archive_inspect_deb_with_data_entries(
     const uint8_t *deb, size_t deb_length, orbit_archive_entry_callback callback,
     void *callback_context, orbit_archive_report *report);
+
+/* Streams data.tar file bytes to a callback. Chunks are provisional until the
+ * whole .deb validates; callers must write only into disposable staging and
+ * discard it unless ORBIT_ARCHIVE_OK is returned. Offsets are per file. */
+orbit_archive_code orbit_package_archive_inspect_deb_with_data(
+    const uint8_t *deb, size_t deb_length,
+    orbit_archive_entry_callback entry_callback, void *entry_context,
+    orbit_archive_data_chunk_callback data_callback, void *data_context,
+    orbit_archive_report *report);
 
 /* Strict inspection only. No extraction, filesystem writes, or script execution.
  * Path collisions are validated using a sorted, bounded manifest. Supports

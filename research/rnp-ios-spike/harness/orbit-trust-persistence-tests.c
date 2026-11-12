@@ -344,7 +344,7 @@ int main(int argc,char **argv) {
     expect("failed-emergency-state-commit-is-reported",
         orbit_repository_trust_authorize_recovery_rotation_and_store(
             &failed_recovery_state,repo,repo,emergency,emergency_len,
-            recovery,recovery_len,recovery_fpr,candidate,candidate_len,
+            recovery,recovery_len,candidate,candidate_len,
             recovery_now,&failed_recovery_backend,&failed_recovery_decision)
             ==ORBIT_TRUST_STORE_IO_ERROR &&
         failed_recovery_decision==ORBIT_TRUST_ACCEPTED,true);

@@ -342,7 +342,7 @@ actor ORBITTransactionEnvelopeStore {
         guard fstat(descriptor, &status) == 0,
               (status.st_mode & S_IFMT) == S_IFREG,
               status.st_uid == geteuid(),
-              (status.st_mode & 0o077) == 0,
+              (status.st_mode & 0o777) == 0o600,
               status.st_size >= 32,
               status.st_size <= Int64(maxFileBytes) else {
             throw ORBITEnvelopeStoreError.unsafeFile
@@ -488,7 +488,7 @@ actor ORBITTransactionEnvelopeStore {
         guard fstat(descriptor, &status) == 0,
               (status.st_mode & S_IFMT) == S_IFDIR,
               status.st_uid == geteuid(),
-              (status.st_mode & 0o077) == 0 else {
+              (status.st_mode & 0o777) == 0o700 else {
             close(descriptor)
             throw ORBITEnvelopeStoreError.unsafeDirectory
         }

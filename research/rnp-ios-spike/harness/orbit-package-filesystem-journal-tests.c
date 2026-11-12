@@ -3,6 +3,7 @@
 
 #include "ORBITPackageFilesystemJournal.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -565,7 +566,28 @@ int main(void) {
     (void)unlinkat(base_fd, "a1000000000000000000000000000000", AT_REMOVEDIR);
     (void)unlinkat(base_fd, ORBIT_FILESYSTEM_LOCK_NAME, 0);
     close(base_fd);
-    EXPECT("temporary journal root removed", rmdir(base_path) == 0);
+    int root_remove_result = rmdir(base_path);
+    if (root_remove_result != 0) {
+        int root_remove_errno = errno;
+        fprintf(stderr, "journal test root cleanup: rmdir errno=%d (%s)\\n",
+                root_remove_errno, strerror(root_remove_errno));
+        DIR *remaining_directory = opendir(base_path);
+        if (remaining_directory) {
+            struct dirent *entry = NULL;
+            while ((entry = readdir(remaining_directory)) != NULL) {
+                if (strcmp(entry->d_name, ".") != 0 &&
+                    strcmp(entry->d_name, "..") != 0)
+                    fprintf(stderr, "journal test root leftover: %s\\n",
+                            entry->d_name);
+            }
+            closedir(remaining_directory);
+        } else {
+            fprintf(stderr, "journal test root could not be listed: %s\\n",
+                    strerror(errno));
+        }
+        errno = root_remove_errno;
+    }
+    EXPECT("temporary journal root removed", root_remove_result == 0);
 
     free(memory.record);
     printf("filesystem_journal_checks=%u failures=%u\ndecision=%s\n",

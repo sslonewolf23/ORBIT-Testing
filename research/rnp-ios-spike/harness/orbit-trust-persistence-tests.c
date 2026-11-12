@@ -1,4 +1,5 @@
 #include "ORBITRepositoryVerifier.h"
+#include "ORBITTrustPersistenceTesting.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -144,7 +145,7 @@ int main(int argc,char **argv) {
         "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC");
     ++forged_recovery_root.revision;
     expect("direct-store-cannot-replace-enrolled-recovery-root",
-        orbit_repository_trust_store_save(&forged_recovery_root,repo,&backend)
+        orbit_repository_trust_store_save_for_testing(&forged_recovery_root,repo,&backend)
             ==ORBIT_TRUST_STORE_RECOVERY_PIN_MISMATCH,true);
     expect("restored-revision-matches",loaded.revision==state.revision,true);
     storage.locked=true;
@@ -155,7 +156,7 @@ int main(int argc,char **argv) {
 
     orbit_repository_trust_state changed=loaded;
     changed.revision++;
-    expect("next-revision-saved",orbit_repository_trust_store_save(
+    expect("next-revision-saved",orbit_repository_trust_store_save_for_testing(
         &changed,repo,&backend)==ORBIT_TRUST_STORE_OK,true);
     uint8_t newer_record[ORBIT_TRUST_STORE_RECORD_MAX],newer_mac[ORBIT_TRUST_STORE_MAC_BYTES];
     size_t newer_length=storage.length;
@@ -164,9 +165,9 @@ int main(int argc,char **argv) {
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_OK && loaded.revision==changed.revision,true);
     orbit_repository_trust_state same_revision_forgery=changed;
     same_revision_forgery.current_fingerprint[0]='F';
-    expect("same-revision-state-substitution-rejected",orbit_repository_trust_store_save(
+    expect("same-revision-state-substitution-rejected",orbit_repository_trust_store_save_for_testing(
         &same_revision_forgery,repo,&backend)==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);
-    expect("identical-save-is-idempotent",orbit_repository_trust_store_save(
+    expect("identical-save-is-idempotent",orbit_repository_trust_store_save_for_testing(
         &changed,repo,&backend)==ORBIT_TRUST_STORE_OK,true);
 
     memcpy(storage.record,newer_record,newer_length);
@@ -182,7 +183,7 @@ int main(int argc,char **argv) {
     memcpy(storage.record,newer_record,newer_length);memcpy(storage.mac,newer_mac,sizeof(newer_mac));
 
     orbit_repository_trust_state rollback=state;
-    expect("older-revision-cannot-overwrite-counter",orbit_repository_trust_store_save(
+    expect("older-revision-cannot-overwrite-counter",orbit_repository_trust_store_save_for_testing(
         &rollback,repo,&backend)==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);
     uint8_t old_record[ORBIT_TRUST_STORE_RECORD_MAX],old_mac[ORBIT_TRUST_STORE_MAC_BYTES];
     memcpy(old_record,storage.record,newer_length);memcpy(old_mac,storage.mac,sizeof(old_mac));
@@ -197,14 +198,14 @@ int main(int argc,char **argv) {
 
     orbit_repository_trust_state next=changed;next.revision++;
     storage.fail_write=true;
-    expect("failed-atomic-write-reported",orbit_repository_trust_store_save(
+    expect("failed-atomic-write-reported",orbit_repository_trust_store_save_for_testing(
         &next,repo,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
     storage.fail_write=false;
     expect("failed-write-keeps-counter-unchanged",storage.counter==changed.revision,true);
     expect("old-record-remains-loadable-after-failed-write",orbit_repository_trust_store_load(
         &loaded,repo,&backend)==ORBIT_TRUST_STORE_OK && loaded.revision==changed.revision,true);
     storage.fail_advance=true;
-    expect("counter-advance-interruption-reported",orbit_repository_trust_store_save(
+    expect("counter-advance-interruption-reported",orbit_repository_trust_store_save_for_testing(
         &next,repo,&backend)==ORBIT_TRUST_STORE_IO_ERROR,true);
     storage.fail_advance=false;
     expect("staged-record-does-not-prematurely-advance-counter",
@@ -251,7 +252,7 @@ int main(int argc,char **argv) {
     lifecycle_state.pending_activation=100U;
     lifecycle_state.previous_valid_until=200U;
     ++lifecycle_state.revision;
-    expect("pending-state-committed",orbit_repository_trust_store_save(
+    expect("pending-state-committed",orbit_repository_trust_store_save_for_testing(
         &lifecycle_state,repo,&lifecycle_backend)==ORBIT_TRUST_STORE_OK,true);
     orbit_repository_trust_state before_advance=lifecycle_state;
     lifecycle_storage.fail_write=true;

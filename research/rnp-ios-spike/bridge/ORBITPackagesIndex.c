@@ -238,6 +238,8 @@ bool orbit_package_verify_artifact(const orbit_package_record *package,
                                    size_t artifact_length) {
     if(!package||!artifact_data||artifact_length==0U||
        package->size!=(uint64_t)artifact_length||
+       !memchr(package->filename,'\\0',sizeof(package->filename))||
+       !memchr(package->sha256,'\\0',sizeof(package->sha256))||
        !valid_relative_path(package->filename)||
        !package->sha256[0]||strlen(package->sha256)!=64U)return false;
     uint8_t expected[32],actual[32];

@@ -121,7 +121,9 @@ bool orbit_trust_rotation_proof_parse(const uint8_t *data, size_t length,
 bool orbit_repository_trust_init(orbit_repository_trust_state *state,
                                  const char *pinned_primary_fingerprint,
                                  const char *pinned_recovery_fingerprint) {
-    if (!state || !pinned_primary_fingerprint || !pinned_recovery_fingerprint) return false;
+    if (!state) return false;
+    memset(state,0,sizeof(*state));
+    if (!pinned_primary_fingerprint || !pinned_recovery_fingerprint) return false;
     orbit_repository_trust_state initial;
     memset(&initial, 0, sizeof(initial));
     if (!normalize_fingerprint(pinned_primary_fingerprint, initial.current_fingerprint) ||

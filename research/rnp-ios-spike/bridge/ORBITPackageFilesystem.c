@@ -534,6 +534,36 @@ orbit_filesystem_code orbit_package_filesystem_apply(
     if (staged != FILE_ID_MATCH)
         return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     if (staged_links != 1) return ORBIT_FILESYSTEM_CONFLICT;
+
+    if (change->preimage_exists) {
+        file_identity_result target_before_rename = file_identity_at(
+            target_parent_fd, change->target_name,
+            change->preimage_device, change->preimage_inode,
+            NULL, NULL, NULL);
+        nlink_t backup_before_rename_links = 0;
+        file_identity_result backup_before_rename = file_identity_at(
+            backup_parent_fd, change->backup_name,
+            change->preimage_device, change->preimage_inode,
+            NULL, NULL, &backup_before_rename_links);
+        if (target_before_rename == FILE_ID_ERROR ||
+            backup_before_rename == FILE_ID_ERROR)
+            return ORBIT_FILESYSTEM_IO_ERROR;
+        if (backup_before_rename != FILE_ID_MATCH ||
+            !((target_before_rename == FILE_ID_MATCH &&
+               backup_before_rename_links == 2) ||
+              (target_before_rename == FILE_ID_MISSING &&
+               backup_before_rename_links == 1)))
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    } else {
+        file_identity_result target_before_rename = file_identity_at(
+            target_parent_fd, change->target_name,
+            change->staged_device, change->staged_inode,
+            NULL, NULL, NULL);
+        if (target_before_rename != FILE_ID_MISSING)
+            return target_before_rename == FILE_ID_ERROR ?
+                ORBIT_FILESYSTEM_IO_ERROR : ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+
     if (renameat(staged_parent_fd, change->staged_name,
                  target_parent_fd, change->target_name) < 0)
         return ORBIT_FILESYSTEM_IO_ERROR;

@@ -86,7 +86,8 @@ int main(void) {
 
     char path[1600], package_dir[1200], deb_path[1200], log_path[1200];
     const char *dirs[] = {
-        "/var", "/var/lib", "/var/lib/dpkg", "/var/lib/apt",
+        "/var", "/var/lib", "/var/lib/dpkg", "/var/lib/dpkg/updates",
+        "/var/lib/dpkg/info", "/var/lib/dpkg/triggers", "/var/lib/dpkg/parts", "/var/lib/apt",
         "/var/lib/apt/lists", "/var/lib/apt/lists/partial",
         "/var/cache", "/var/cache/apt", "/var/cache/apt/archives",
         "/var/cache/apt/archives/partial", "/var/log", "/var/log/apt",

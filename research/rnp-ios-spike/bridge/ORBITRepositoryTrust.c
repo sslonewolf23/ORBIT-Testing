@@ -302,6 +302,7 @@ orbit_trust_code orbit_repository_trust_authorize_recovery_rotation(
 bool orbit_repository_trust_advance(orbit_repository_trust_state *state,
                                     uint64_t now_seconds) {
     if (!state || state->pending_fingerprint[0] == '\0' ||
+        state->previous_fingerprint[0] != '\0' ||
         now_seconds < state->pending_activation ||
         now_seconds < state->last_observed_time ||
         state->generation == UINT32_MAX || state->revision == UINT64_MAX) return false;

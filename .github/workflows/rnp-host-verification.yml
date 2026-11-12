@@ -777,6 +777,24 @@ jobs:
           "$RUNNER_TEMP/orbit-package-bootstrap-lockset-tests" | tee "$RUNNER_TEMP/package-bootstrap-lockset.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-bootstrap-lockset.out"
 
+      - name: Compile and run coordinated transaction lock-lifecycle tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageTransaction.c \
+            research/rnp-ios-spike/bridge/ORBITPackageTransactionCoordinator.c \
+            research/rnp-ios-spike/bridge/ORBITPackageNativeLock.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapProfile.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapLockset.c \
+            research/rnp-ios-spike/harness/orbit-package-transaction-coordinator-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-transaction-coordinator-tests"
+          "$RUNNER_TEMP/orbit-package-transaction-coordinator-tests" \
+            | tee "$RUNNER_TEMP/package-transaction-coordinator.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction-coordinator.out"
+
       - name: Compile and run canonical filesystem journal codec tests
         shell: bash
         run: |

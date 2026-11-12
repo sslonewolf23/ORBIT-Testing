@@ -54,6 +54,28 @@ synchronization, transparency logging, recovery keys, multi-signature
 authorization, and emergency revocation distribution are not implemented.
 
 
+## Emergency recovery root
+
+An independent offline recovery primary key can authorize an emergency
+rotation through `orbit_repository_trust_authorize_recovery_rotation`. Its
+fingerprint and public-key bundle are supplied as a separate out-of-band trust
+anchor; they are not learned from the repository's current signing key.
+
+The recovery document uses the same strict, authenticated rotation statement,
+but its activation and previous-key deadline must both equal the current
+persisted timestamp. This is an immediate transition with zero grace. It
+replaces the current signing pin, cancels any pending normal rotation, and
+discards any older previous-key grace pin. The compromised current key is
+accepted only at the exact recovery timestamp and is rejected afterward.
+The persisted wrapper commits the time floor and emergency transition before
+returning success.
+
+This research implementation has one independently pinned recovery signer,
+not a threshold/multisignature quorum. Recovery-root replacement, recovery-root
+revocation, and recovery-root backup custody procedures remain separate design
+work. The recovery private key must remain offline; it must never be bundled
+with ORBIT or the repository.
+
 ## Durable trust-state persistence
 
 `ORBITTrustPersistence.h/.c` adds a versioned, fixed-width, canonical record
@@ -115,7 +137,14 @@ The host fixture suite exercises:
 - pending-rotation duplication;
 - activation and previous-key grace boundaries;
 - failed verification not returning cleartext;
-- malformed/unknown rotation fields.
+- malformed, unknown, and duplicate rotation fields;
+- emergency recovery signed by an independent offline root;
+- delayed emergency statements, unauthorized recovery signers, wrong repository
+  identifiers, and mismatched replacement keys;
+- emergency recovery overriding a pending rotation and discarding older grace
+  pins;
+- persisted emergency rotation, reload, old-key rejection, and failed-commit
+  recovery.
 
 The iOS Simulator pipeline cross-compiles and statically links the trust layer.
 This is not physical-device validation or production readiness.

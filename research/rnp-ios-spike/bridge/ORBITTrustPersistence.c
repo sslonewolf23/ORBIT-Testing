@@ -168,7 +168,9 @@ static orbit_trust_store_code store_save_locked(
         return ORBIT_TRUST_STORE_INVALID_ARGUMENT;
     uint64_t counter=0;if(!backend->read_counter(backend->context,repository_id,&counter))
         return ORBIT_TRUST_STORE_IO_ERROR;
-    if(counter==UINT64_MAX || state->revision<counter||state->revision>counter+1U)
+    if(state->revision<counter ||
+       (counter==UINT64_MAX && state->revision!=counter) ||
+       (counter!=UINT64_MAX && state->revision>counter+1U))
         return ORBIT_TRUST_STORE_ROLLBACK_DETECTED;
     uint8_t record[ORBIT_TRUST_STORE_RECORD_MAX],mac[ORBIT_TRUST_STORE_MAC_BYTES];
     memset(record,0,sizeof(record));memset(mac,0,sizeof(mac));

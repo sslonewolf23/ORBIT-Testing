@@ -66,6 +66,12 @@ int main(void){
  EXPECT("unknown package removal blocked",orbit_package_ownership_plan_remove(&s,&b,&p)==ORBIT_OWNERSHIP_NOT_OWNER);
  orbit_package_ownership_record bad=own("../escape","bad",false);orbit_package_ownership_snapshot bs={&bad,1};
  EXPECT("corrupt database fails closed",orbit_package_ownership_plan_install(&bs,&a,files,2,&p)==ORBIT_OWNERSHIP_CORRUPT_DATABASE);
+ orbit_package_ownership_record versions[]={own("usr/lib/a","same",false),own("usr/lib/b","same",false)};
+ snprintf(versions[0].package_version,sizeof(versions[0].package_version),"1");
+ snprintf(versions[1].package_version,sizeof(versions[1].package_version),"2");
+ orbit_package_ownership_snapshot multi={versions,2};
+ EXPECT("multiple installed versions of one identity rejected",
+   orbit_package_ownership_plan_install(&multi,&a,files,2,&p)==ORBIT_OWNERSHIP_CORRUPT_DATABASE);
  unsigned char deb[8192];size_t deb_len=make_deb(deb,"Library/ORBIT/from-deb.dylib");
  orbit_package_ownership_snapshot empty={NULL,0};orbit_archive_report archive_report;
  EXPECT("Debian archive manifest feeds ownership planner",

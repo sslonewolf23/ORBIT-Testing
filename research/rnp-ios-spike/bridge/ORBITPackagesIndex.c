@@ -119,6 +119,16 @@ static bool commit_stanza(package_stanza *stanza,orbit_packages_index *index) {
            strcmp(index->packages[i].architecture,stanza->record.architecture)==0)
             return false;
     }
+    if(index->count==index->capacity) {
+        if(index->capacity>=ORBIT_PACKAGES_INDEX_MAX_PACKAGES)return false;
+        size_t next=index->capacity*2U;
+        if(next>ORBIT_PACKAGES_INDEX_MAX_PACKAGES)next=ORBIT_PACKAGES_INDEX_MAX_PACKAGES;
+        orbit_package_record *grown=(orbit_package_record*)realloc(
+            index->packages,next*sizeof(*index->packages));
+        if(!grown)return false;
+        memset(grown+index->capacity,0,(next-index->capacity)*sizeof(*grown));
+        index->packages=grown;index->capacity=next;
+    }
     index->packages[index->count++]=stanza->record;
     memset(stanza,0,sizeof(*stanza));
     return true;
@@ -181,13 +191,16 @@ static bool parse_field(package_stanza *stanza,char *line) {
 bool orbit_packages_index_parse(const uint8_t *data,size_t length,
                                 orbit_packages_index *result) {
     if(!result)return false;
-    result->packages=NULL;result->count=0U;
+    result->packages=NULL;result->count=0U;result->capacity=0U;
     if(!data||length==0U||length>ORBIT_PACKAGES_INDEX_MAX_BYTES||
        memchr(data,0,length)!=NULL)return false;
-    orbit_package_record *records=(orbit_package_record *)calloc(
-        ORBIT_PACKAGES_INDEX_MAX_PACKAGES,sizeof(*records));
+    size_t initial_capacity=16U;
+    if(initial_capacity>ORBIT_PACKAGES_INDEX_MAX_PACKAGES)
+        initial_capacity=ORBIT_PACKAGES_INDEX_MAX_PACKAGES;
+    orbit_package_record *records=(orbit_package_record*)calloc(
+        initial_capacity,sizeof(*records));
     if(!records)return false;
-    result->packages=records;
+    result->packages=records;result->capacity=initial_capacity;
     package_stanza stanza;memset(&stanza,0,sizeof(stanza));
     size_t offset=0U;
     bool ok=true;
@@ -232,11 +245,10 @@ bool orbit_packages_index_parse(const uint8_t *data,size_t length,
 void orbit_packages_index_destroy(orbit_packages_index *index) {
     if(!index)return;
     if(index->packages) {
-        memset(index->packages,0,
-               ORBIT_PACKAGES_INDEX_MAX_PACKAGES*sizeof(*index->packages));
+        memset(index->packages,0,index->count*sizeof(*index->packages));
         free(index->packages);
     }
-    index->packages=NULL;index->count=0U;
+    index->packages=NULL;index->count=0U;index->capacity=0U;
 }
 
 bool orbit_package_verify_artifact(const orbit_package_record *package,

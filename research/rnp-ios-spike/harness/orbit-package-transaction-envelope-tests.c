@@ -19,7 +19,12 @@ static const uint8_t ownership_old[] = {
     'O','R','O','W',1U,0U,0U,0U,0U,0U,0U,0U
 };
 static const uint8_t ownership_new[] = {
-    'O','R','O','W',1U,0U,0U,0U,0U,0U,0U,0U
+    'O','R','O','W',1U,0U,0U,0U,0U,0U,0U,1U,
+    0U,9U,'L','i','b','r','a','r','y','/','X',
+    0U,5U,'p','k','g','-','x',
+    0U,1U,'1',
+    0U,14U,'i','p','h','o','n','e','o','s','-','a','r','m','6','4',
+    0U
 };
 static const uint8_t journal_payload[] = {
     'O','R','J','P',1U,0U,0U,0U,1U,0U,0U,0U,0U,0U,0U,0U,

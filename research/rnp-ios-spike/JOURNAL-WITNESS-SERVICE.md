@@ -80,7 +80,7 @@ append-only monotonic checkpoint stream per installation:
 - App Attest key identifier and public key;
 - last accepted assertion counter;
 - journal revision (unsigned 64-bit semantics);
-- exact 32-byte SHA-256 digest of the complete authenticated ORBJ envelope;
+- exact 32-byte SHA-256 digest of the complete authenticated ORBE envelope file (canonical payload followed by its 32-byte HMAC);
 - tombstone flag;
 - server-side audit metadata;
 - local `anchor_sequence`, which must never exceed the external checkpoint sequence.
@@ -212,3 +212,24 @@ SQLite state ahead of the external checkpoint. This is still a reference
 implementation pending service tests, AWS deployment review, IAM/table
 protection, and failure-injection validation. Package installation must remain disabled until both
 gaps are closed and independently reviewed.
+
+
+## Combined ORBE envelope digest binding
+
+The transaction envelope is the canonical `ORBE` payload defined in
+`bridge/ORBITPackageTransactionEnvelope.h`. The local file is exactly
+`ORBE payload || HMAC-SHA-256 tag`, where the tag authenticates the
+complete canonical payload with the device-only Keychain MAC key. The App
+Attest witness head digest is SHA-256 over those exact complete file bytes,
+including the HMAC tag. Do not hash a decoded/re-encoded struct, omit the MAC,
+or use the former per-file ORJP payload digest as the witness head.
+
+The iOS persistence adapter uses a durable pending file before the witness
+compare-and-swap, then promotes it with a same-directory atomic rename. On
+recovery, it compares the current and pending file digests to the independently
+witnessed head: a matching pending file is promoted; a pending file exactly one
+revision ahead of the current witnessed file may be submitted for CAS; any
+other mismatch fails closed and preserves both files. The caller must hold
+the package-wide cross-process lock across this protocol. This adapter is
+research code pending simulator compilation, real-device App Attest tests,
+failure-injection tests, and independent security review.

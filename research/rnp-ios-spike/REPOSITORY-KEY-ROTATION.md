@@ -163,10 +163,12 @@ path is derived from the pinned component and architecture, and each package
 record must target that architecture or `all`. The
 verified catalog is returned as owned package records in the verification result; callers release it with `orbit_repository_verify_result_destroy`. The parser is data-only and does not install packages.
 
-`orbit_package_verify_artifact` separately checks downloaded `.deb` bytes
-against the selected record's exact byte count and SHA-256 using Botan. The
-caller must resolve the validated relative Filename beneath the configured
-repository origin and must verify the artifact before any future installation.
+`orbit_package_artifact_verifier` checks downloaded `.deb` bytes
+incrementally against the selected record's exact byte count and SHA-256 using
+Botan, so large artifacts do not need to be buffered in memory.
+`orbit_package_verify_artifact` is the convenience wrapper for in-memory data.
+The caller must resolve the validated relative Filename beneath the configured
+repository origin and verify the artifact before any future installation.
 The current work does not download packages, install them, resolve dependencies,
 or authorize package execution.
 

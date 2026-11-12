@@ -30,6 +30,8 @@ type service struct {
 	now         func() time.Time
 	recoveryPepper []byte
 	anchor anchorStore
+	allowedValidationCategories map[uint64]struct{}
+	allowedBundleVersions map[string]struct{}
 }
 
 type cborAttestation struct {
@@ -143,6 +145,56 @@ func verifyAppAttestExtensions(authData []byte, extensionOffset int,
 	return credentialPublicKey, nil
 }
 
+
+type appAttestExtensionInfo struct {
+	ValidationCategory uint64
+	BundleVersion string
+}
+
+// readAppAttestExtensionInfo extracts the two Apple extension values after
+// the optional attested COSE key. The values are checked against operator
+// policy during both enrollment and every subsequent assertion.
+func readAppAttestExtensionInfo(authData []byte, extensionOffset int,
+	hasCredentialPublicKey bool) (appAttestExtensionInfo, error) {
+	var info appAttestExtensionInfo
+	if len(authData) < 37 || extensionOffset < 37 || extensionOffset >= len(authData) {
+		return info, errors.New("missing App Attest extension data")
+	}
+	extensionBytes := authData[extensionOffset:]
+	if hasCredentialPublicKey {
+		_, remaining, err := parseCOSEPublicKey(extensionBytes)
+		if err != nil || len(remaining) == 0 {
+			return info, errors.New("malformed authenticator credential key")
+		}
+		extensionBytes = remaining
+	}
+	var extensions map[string]any
+	if err := decodeCBOR(extensionBytes, &extensions); err != nil {
+		return info, errors.New("malformed App Attest extension map")
+	}
+	category, ok := extensions["apple_validation_category_01"].(uint64)
+	if !ok || category == 0 || category > 255 {
+		return info, errors.New("invalid App Attest validation category")
+	}
+	version, ok := extensions["apple_bundle_version_01"].(string)
+	if !ok || version == "" || len(version) > 128 {
+		return info, errors.New("invalid App Attest bundle version")
+	}
+	info.ValidationCategory = category
+	info.BundleVersion = version
+	return info, nil
+}
+
+func (s *service) validateAppAttestExtensionPolicy(info appAttestExtensionInfo) error {
+	if _, ok := s.allowedValidationCategories[info.ValidationCategory]; !ok {
+		return errors.New("App Attest validation category is not allowlisted")
+	}
+	if _, ok := s.allowedBundleVersions[info.BundleVersion]; !ok {
+		return errors.New("App Attest bundle version is not allowlisted")
+	}
+	return nil
+}
+
 func parseAuthData(data []byte, requireAttested bool) (rpHash [32]byte, counter uint32, credentialID []byte, err error) {
 	if len(data) < 37 { err = errors.New("short authenticator data"); return }
 	copy(rpHash[:], data[:32])
@@ -213,6 +265,10 @@ func (s *service) verifyAttestation(keyID string, challenge, object []byte) ([]b
 		credentialPublicKey.Y.Cmp(pub.Y) != 0 {
 		return nil, errors.New("COSE key does not match attested certificate key")
 	}
+	extensionInfo, err := readAppAttestExtensionInfo(
+		envelope.AuthData, 55+len(credentialID), true)
+	if err != nil { return nil, err }
+	if err := s.validateAppAttestExtensionPolicy(extensionInfo); err != nil { return nil, err }
 	return x509.MarshalPKIXPublicKey(pub)
 }
 
@@ -234,6 +290,9 @@ func (s *service) verifyAssertion(publicDER, clientData, assertion []byte) (uint
 	if _, err := verifyAppAttestExtensions(authData, 37, false); err != nil {
 		return 0, err
 	}
+	extensionInfo, err := readAppAttestExtensionInfo(authData, 37, false)
+	if err != nil { return 0, err }
+	if err := s.validateAppAttestExtensionPolicy(extensionInfo); err != nil { return 0, err }
 	pubAny, err := x509.ParsePKIXPublicKey(publicDER)
 	if err != nil { return 0, err }
 	pub, ok := pubAny.(*ecdsa.PublicKey)

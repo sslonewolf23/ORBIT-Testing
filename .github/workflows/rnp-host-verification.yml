@@ -762,6 +762,21 @@ jobs:
           "$RUNNER_TEMP/orbit-package-bootstrap-profile-tests" | tee "$RUNNER_TEMP/package-bootstrap-profile.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-bootstrap-profile.out"
 
+      - name: Compile and run ordered bootstrap lockset tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageNativeLock.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapProfile.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapLockset.c \
+            research/rnp-ios-spike/harness/orbit-package-bootstrap-lockset-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-bootstrap-lockset-tests"
+          "$RUNNER_TEMP/orbit-package-bootstrap-lockset-tests" | tee "$RUNNER_TEMP/package-bootstrap-lockset.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-bootstrap-lockset.out"
+
       - name: Compile and run canonical filesystem journal codec tests
         shell: bash
         run: |

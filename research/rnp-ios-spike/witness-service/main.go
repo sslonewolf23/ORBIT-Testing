@@ -1,12 +1,10 @@
 package main
 
 import (
-	"context"
 	"crypto/x509"
 	"database/sql"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -121,8 +119,6 @@ func main() {
 	if err := server.ListenAndServeTLS(cfg.tlsCert, cfg.tlsKey); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
-	_ = context.Background()
-	_ = fmt.Sprintf
 }
 
 func securityHeaders(next http.Handler) http.Handler {

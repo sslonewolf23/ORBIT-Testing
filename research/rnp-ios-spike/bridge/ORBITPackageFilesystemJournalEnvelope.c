@@ -1,5 +1,6 @@
 #include "ORBITPackageFilesystemJournalEnvelope.h"
 #include "ORBITPackageFilesystemJournalCodec.h"
+#include "ORBITPackageOwnershipCodec.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,21 @@ static bool backend_valid(const orbit_package_filesystem_envelope_backend *backe
 static uint32_t read_u32(const uint8_t *bytes) {
     return ((uint32_t)bytes[0] << 24U) | ((uint32_t)bytes[1] << 16U) |
            ((uint32_t)bytes[2] << 8U) | (uint32_t)bytes[3];
+}
+
+static bool ownership_payload_valid(const uint8_t *payload, size_t length) {
+    if (!payload || length < 12U ||
+        length > ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP)
+        return false;
+    orbit_package_ownership_record *records =
+        (orbit_package_ownership_record *)calloc(
+            ORBIT_OWNERSHIP_MAX_RECORDS, sizeof(*records));
+    if (!records) return false;
+    orbit_package_ownership_snapshot snapshot;
+    orbit_ownership_codec_code result = orbit_package_ownership_decode(
+        payload, length, records, ORBIT_OWNERSHIP_MAX_RECORDS, &snapshot);
+    free(records);
+    return result == ORBIT_OWNERSHIP_CODEC_OK;
 }
 
 static void loaded_envelope_destroy(loaded_envelope *loaded) {
@@ -74,7 +90,12 @@ static orbit_filesystem_code loaded_envelope_read(
             loaded->committed, committed_length,
             loaded->pending, pending_length, &loaded->value);
     backend->release(backend->context, encoded);
-    if (decoded != ORBIT_TRANSACTION_ENVELOPE_OK) {
+    if (decoded != ORBIT_TRANSACTION_ENVELOPE_OK ||
+        !ownership_payload_valid(loaded->committed,
+            loaded->value.committed_ownership_length) ||
+        (loaded->value.state == ORBIT_TRANSACTION_ENVELOPE_ACTIVE &&
+         !ownership_payload_valid(loaded->pending,
+            loaded->value.pending_ownership_length))) {
         loaded_envelope_destroy(loaded);
         return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
@@ -282,6 +303,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_enveloped(
         expected_ownership_length > ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP ||
         !replacement_ownership || replacement_ownership_length < 12U ||
         replacement_ownership_length > ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP ||
+        !ownership_payload_valid(expected_ownership, expected_ownership_length) ||
+        !ownership_payload_valid(replacement_ownership, replacement_ownership_length) ||
         !executor)
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 

@@ -69,7 +69,8 @@ typedef struct {
 
 /* Opens the private backup directory named by the 16-byte transaction ID.
  * create=true creates it with mode 0700; an existing directory is accepted
- * only when it is owned by the effective user and has no group/other access. */
+ * only when it is owned by the effective user, has no group/other access,
+ * and is empty (to reject stale transaction contents). */
 orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
     int backup_base_directory_fd,
     const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],

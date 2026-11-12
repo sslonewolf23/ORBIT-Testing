@@ -184,6 +184,30 @@ static orbit_filesystem_code remove_staged_anchor(
                               change->staged_device, change->staged_inode);
 }
 
+static orbit_filesystem_code remove_staged_anchor_after_commit(
+    int target_parent_fd, int backup_parent_fd,
+    const orbit_package_file_change *change) {
+    char anchor[ORBIT_FILESYSTEM_COMPONENT_CAPACITY];
+    if (!staged_anchor_name(change, anchor))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    nlink_t target_links = 0, anchor_links = 0;
+    file_identity_result target = file_identity_at(
+        target_parent_fd, change->target_name, change->staged_device,
+        change->staged_inode, NULL, NULL, &target_links);
+    file_identity_result anchored = file_identity_at(
+        backup_parent_fd, anchor, change->staged_device,
+        change->staged_inode, NULL, NULL, &anchor_links);
+    if (target != FILE_ID_MATCH || anchored != FILE_ID_MATCH)
+        return target == FILE_ID_ERROR || anchored == FILE_ID_ERROR ?
+            ORBIT_FILESYSTEM_IO_ERROR : ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    if (target_links != 2 || anchor_links != 2)
+        return ORBIT_FILESYSTEM_CONFLICT;
+    if (unlinkat(backup_parent_fd, anchor, 0) < 0)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    return fsync(backup_parent_fd) == 0 ? ORBIT_FILESYSTEM_OK :
+           ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+}
+
 static orbit_filesystem_code verify_change(
     const orbit_package_file_change *change) {
     if (!change || change->version != ORBIT_FILESYSTEM_CHANGE_VERSION ||
@@ -891,7 +915,8 @@ orbit_filesystem_code orbit_package_filesystem_finalize(
     if (target_new_links != 2) return ORBIT_FILESYSTEM_CONFLICT;
     if (!change->preimage_exists) {
         if (backup != FILE_ID_MISSING) return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
-        return remove_staged_anchor(backup_parent_fd, change);
+        return remove_staged_anchor_after_commit(
+            target_parent_fd, backup_parent_fd, change);
     }
     if (backup != FILE_ID_MATCH && backup != FILE_ID_MISSING)
         return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;

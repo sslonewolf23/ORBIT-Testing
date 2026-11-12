@@ -76,6 +76,19 @@ and state transitions but cannot establish Apple's trust chain.
   extension parsing against Apple's current App Attest validation guide.
 - Verify Apple's current root/intermediate certificate rotation process.
 - Validate the App Attest validation-category and bundle-version extensions.
+- The current reference schema binds a journal head to the App Attest key ID
+  only. It does **not** bind a replacement App Attest key to the same user or
+  physical installation. A reinstall/new key can therefore create a new
+  initial head. Account/installation authentication and a non-resettable
+  re-enrollment policy are mandatory before this service can provide
+  production rollback resistance.
+- SQLite is durable for process/device crashes but can itself be rolled back
+  by restoring an older host/database snapshot. A production deployment needs
+  an independently protected monotonic witness or strongly consistent
+  externally anchored store; ordinary SQLite backups alone are insufficient.
+- The service checks the App Attest validation-category and bundle-version
+  extension structure, but does not yet enforce an operator-configured
+  allowlist or bind later assertions to the exact enrolled bundle version.
 - Add challenge and installation rate limits and expired-challenge cleanup.
 - Add durable audit logs, database backup/restore drills, and operational
   alerting.

@@ -22,7 +22,7 @@ A `COMMITTED` journal is cleanup-only: recovery clears it and does not undo a co
 
 ## Required platform backend guarantees
 
-The iOS/device adapter is not implemented here. Before this coordinator can be used on-device, its backend must provide:
+A research Swift persistence adapter now exists in `harness/ORBITTransactionEnvelopeStore.swift`; it is not yet connected to this package-level coordinator or a privileged production helper. Before this coordinator can be used on-device, its backend must provide:
 
 - Authenticated journal storage (MAC or equivalent device-bound integrity protection).
 - Atomic, durable journal replacement and clear operations.
@@ -44,7 +44,7 @@ Maintainer scripts and arbitrary package code remain disabled. A production pack
 
 ## Verification
 
-`orbit-package-transaction-tests.c` exercises successful commit, mixed install/remove actions, failure rollback, journal write failure after an apply, recovery of an in-flight operation, empty recovery, and corrupt-journal rejection. These tests are wired into the host verification workflow but have not yet been run.
+`orbit-package-transaction-tests.c` exercises successful commit, mixed install/remove actions, failure rollback, journal write failure after an apply, recovery of an in-flight operation, empty recovery, and corrupt-journal rejection. These tests are wired into the host verification workflow. A successful CI run is still required for the latest combined-envelope changes.
 
 
 ## Ownership integration status

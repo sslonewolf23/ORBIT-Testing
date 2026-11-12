@@ -188,6 +188,16 @@ int main(void) {
             stream_tar, stream_tar_length, 65519U, &report) == ORBIT_ARCHIVE_OK);
     EXPECT("incremental parser records exact payload length",
         report.regular_file_bytes == sizeof(payload));
+    EXPECT("incremental parser rejects truncated file payload",
+        orbit_package_archive_test_inspect_tar_chunks(
+            stream_tar, 512U + sizeof(payload) - 1U, 997U, &report) ==
+            ORBIT_ARCHIVE_MALFORMED_TAR);
+    stream_tar[512U + sizeof(payload)] = 1U;
+    EXPECT("incremental parser rejects nonzero tar padding",
+        orbit_package_archive_test_inspect_tar_chunks(
+            stream_tar, stream_tar_length, 1021U, &report) ==
+            ORBIT_ARCHIVE_MALFORMED_TAR);
+    stream_tar[512U + sizeof(payload)] = 0U;
 
     uint8_t deb[8192];
     size_t length = make_deb(deb, "./Library/ORBIT/example.dylib", '0');

@@ -249,7 +249,7 @@ jobs:
             "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-ios.o" \
             "$RUNNER_TEMP/ORBITRNPTimePolicy-ios.o" \
             $(pkg-config --static --libs librnp) \
-            $(pkg-config --static --libs botan-3 | sed 's/-fstack-protector//g') \
+            $(pkg-config --static --libs botan-3 | sed -e 's/-fstack-protector//g' -e 's/-pthread//g') \
             -L"$RUNNER_TEMP/rnp-ios-install/lib" -lsexpp \
             $(pkg-config --static --libs json-c) \
             -L"$VCPKG_INSTALLED_DIR/arm64-ios-simulator/lib" -lbz2 -lz -lc++ \

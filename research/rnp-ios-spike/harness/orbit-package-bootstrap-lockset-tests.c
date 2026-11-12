@@ -35,6 +35,11 @@ int main(void) {
     const orbit_bootstrap_profile *profile =
         orbit_bootstrap_profile_get(ORBIT_BOOTSTRAP_DOPAMINE_ELLEKIT_ROOTLESS);
     orbit_bootstrap_lockset lockset = { -1, 0, 0, { { -1, 0, 0 }, { -1, 0, 0 } } };
+    EXPECT("APT state override is rejected before lock acquisition",
+        profile && orbit_bootstrap_lockset_acquire(
+            root, profile, "custom/dpkg", geteuid(), &lockset) ==
+            ORBIT_NATIVE_LOCK_INVALID_ARGUMENT &&
+        lockset.directory_descriptor == -1 && lockset.count == 0);
     EXPECT("Dopamine lockset acquires frontend then dpkg locks",
         profile && orbit_bootstrap_lockset_acquire(
             root, profile, "var/lib/dpkg", geteuid(), &lockset) == ORBIT_NATIVE_LOCK_OK);

@@ -285,7 +285,7 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 	var oldKeyID, storedNew string
 	var expires int64
 	var consumed int
-	err = s.db.QueryRow("SELECT c.old_key_id,c.new_key_id,c.expires_at,c.consumed FROM recovery_challenges c JOIN installations i ON i.key_id=c.old_key_id WHERE c.digest=? AND i.recovery_verifier=?", challengeDigest[:], verifier).Scan(&oldKeyID,&storedNew,&expires,&consumed)
+	err = s.db.QueryRow("SELECT old_key_id,new_key_id,expires_at,consumed FROM recovery_challenges WHERE digest=?",challengeDigest[:]).Scan(&oldKeyID,&storedNew,&expires,&consumed)
 	if err != nil || consumed != 0 || expires < s.now().Unix() || storedNew != req.NewKeyID {
 		jsonError(w, 403, "recovery rejected"); return
 	}
@@ -294,10 +294,18 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.db.Begin()
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
+	checkpoint, err := s.reconcileAnchoredInstallation(r.Context(),tx,verifier)
+	if err != nil || checkpoint.KeyID != oldKeyID {
+		jsonError(w,403,"recovery rejected"); return
+	}
 	attDigest := sha256.Sum256(attestation)
 	if err = commitKeyRecovery(tx, oldKeyID, req.NewKeyID, verifier,
 		challengeDigest[:], publicDER, attDigest[:], s.now().Unix()); err != nil {
 		jsonError(w, 409, "recovery rejected"); return
+	}
+	if _, err = s.appendAnchoredState(r.Context(),tx,verifier,checkpoint,
+		req.NewKeyID,publicDER,0,checkpoint.Head); err != nil {
+		jsonError(w,503,"witness anchor unavailable"); return
 	}
 	if err = tx.Commit(); err != nil { jsonError(w, 503, "unavailable"); return }
 	w.WriteHeader(http.StatusNoContent)

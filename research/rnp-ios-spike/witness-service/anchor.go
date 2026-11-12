@@ -112,7 +112,7 @@ func (d *dynamoAnchor) Latest(ctx context.Context, installationID string) (ancho
 
 func (d *dynamoAnchor) Append(ctx context.Context, installationID string, c anchorCheckpoint) error {
 	if err := validateCheckpoint(c); err != nil { return err }
-	latest, found, err := d.Latest(context.Background(),installationID)
+	latest, found, err := d.Latest(ctx,installationID)
 	if err != nil { return err }
 	if found {
 		if latest.Hash == c.Hash { return nil }
@@ -133,7 +133,7 @@ func (d *dynamoAnchor) Append(ctx context.Context, installationID string, c anch
 	})
 	var conditional *types.ConditionalCheckFailedException
 	if errors.As(err, &conditional) {
-		latest, found, readErr := d.Latest(context.Background(),installationID)
+		latest, found, readErr := d.Latest(ctx,installationID)
 		if readErr == nil && found && latest.Hash == c.Hash { return nil }
 		return errAnchorConflict
 	}

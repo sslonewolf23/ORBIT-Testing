@@ -228,7 +228,7 @@ int main(int argc, char **argv) {
     expect("independent-recovery-root-authorizes-immediate-rotation",
         orbit_repository_trust_authorize_recovery_rotation(
             &recovery_state, "orbit-official", emergency, emergency_len,
-            recovery, recovery_len, recovery_fpr, candidate, candidate_len,
+            recovery, recovery_len, candidate, candidate_len,
             emergency_now) == ORBIT_TRUST_ACCEPTED, true);
     expect("emergency-rotation-switches-current-pin",
         strcmp(recovery_state.current_fingerprint, candidate_fpr) == 0, true);

@@ -254,10 +254,52 @@ static bool relation_atom_valid(const char *expression) {
         if(!((*p>='a'&&*p<='z')||(*p>='0'&&*p<='9')||*p=='-'||*p=='+'||*p=='.'))return false;
     return true;
 }
+/* Resolve dependency architecture qualifiers without treating them as package names.
+ * :native is the target architecture; :any requires Multi-Arch: allowed.
+ * Unqualified dependencies retain the existing same-architecture policy. */
+static bool package_satisfies_dependency(const orbit_package_record *package,
+                                         const char *expression,
+                                         const char *architecture,
+                                         bool *malformed_provides) {
+    if (malformed_provides) *malformed_provides = false;
+    if (!package || !expression || !architecture) return false;
+    char normalized[RELATION_MAX];
+    if (strlen(expression) >= sizeof(normalized)) return false;
+    strcpy(normalized, expression);
+    trim(normalized);
+    char *end = normalized;
+    while (*end && !isspace((unsigned char)*end) && *end != '(') ++end;
+    char *colon = NULL;
+    for (char *p = normalized; p < end; ++p) if (*p == ':') colon = p;
+    bool allow_foreign = false;
+    if (colon) {
+        *colon = '\\0';
+        const char *qualifier = colon + 1;
+        if (strcmp(qualifier, "native") == 0) {
+            if (strcmp(package->architecture, "all") != 0 &&
+                strcmp(package->architecture, architecture) != 0) return false;
+        } else if (strcmp(qualifier, "any") == 0) {
+            allow_foreign = true;
+            if (strcmp(package->architecture, "all") != 0 &&
+                strcmp(package->architecture, architecture) != 0 &&
+                strcmp(package->multi_arch, "allowed") != 0) return false;
+        } else {
+            if (malformed_provides) *malformed_provides = true;
+            return false;
+        }
+        size_t suffix = strlen(end);
+        memmove(colon + strlen(normalized), end, suffix + 1U);
+    } else if (strcmp(package->architecture, "all") != 0 &&
+               strcmp(package->architecture, architecture) != 0) {
+        return false;
+    }
+    (void)allow_foreign;
+    return package_satisfies_relation(package, normalized, malformed_provides);
+}
 static bool installed_satisfies(resolver *r,const char *expression) {
     for(size_t i=0;i<r->installed_count;++i) {
         const orbit_package_record *p=r->installed[i];
-        if(!p||!package_arch_ok(p,r->architecture))continue;
+        if(!p)continue;
         int self_check=0;
         if(!orbit_debian_version_compare(p->version,p->version,&self_check)) {
             r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;
@@ -266,7 +308,7 @@ static bool installed_satisfies(resolver *r,const char *expression) {
         if(strlen(expression)>=sizeof(copy))return false;
         strcpy(copy,expression);
         bool malformed=false;
-        if(package_satisfies_relation(p,copy,&malformed))return true;
+        if(package_satisfies_dependency(p,copy,r->architecture,&malformed))return true;
         if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
     }
     return false;
@@ -275,7 +317,7 @@ static bool available_candidate_satisfies(resolver *r,const char *expression,siz
     bool found=false;
     for(size_t i=0;i<r->available->count;++i) {
         const orbit_package_record *p=&r->available->packages[i];
-        if(!package_arch_ok(p,r->architecture))continue;
+        /* Architecture qualification is evaluated per dependency atom below. */
         int self_check=0;
         if(!orbit_debian_version_compare(p->version,p->version,&self_check)) {
             r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;
@@ -284,7 +326,7 @@ static bool available_candidate_satisfies(resolver *r,const char *expression,siz
         if(strlen(expression)>=sizeof(copy))return false;
         strcpy(copy,expression);
         bool malformed=false;
-        if(!package_satisfies_relation(p,copy,&malformed)) {
+        if(!package_satisfies_dependency(p,copy,r->architecture,&malformed)) {
             if(malformed){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
             continue;
         }

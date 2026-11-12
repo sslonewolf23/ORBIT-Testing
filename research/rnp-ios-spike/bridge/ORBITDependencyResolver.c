@@ -137,15 +137,27 @@ static bool installed_satisfies(resolver *r,const char *expression) {
     return false;
 }
 static bool available_candidate_satisfies(resolver *r,const char *expression,size_t *index) {
+    bool found=false;
     for(size_t i=0;i<r->available->count;++i) {
         const orbit_package_record *p=&r->available->packages[i];
         if(!package_arch_ok(p,r->architecture))continue;
+        int self_check=0;
+        if(!orbit_debian_version_compare(p->version,p->version,&self_check)) {
+            r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;
+        }
         char copy[RELATION_MAX];
         if(strlen(expression)>=sizeof(copy))return false;
         strcpy(copy,expression);
-        if(relation_satisfied(p,copy)){*index=i;return true;}
+        if(!relation_satisfied(p,copy))continue;
+        if(!found){*index=i;found=true;continue;}
+        int comparison=0;
+        if(!orbit_debian_version_compare(p->version,
+             r->available->packages[*index].version,&comparison)) {
+            r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;
+        }
+        if(comparison>0)*index=i;
     }
-    return false;
+    return found;
 }
 static bool resolve_index(resolver *r,size_t index);
 static bool resolve_relation(resolver *r,const char *relation) {

@@ -150,7 +150,7 @@ bounded Debian Packages stanza parse. It requires unique package/architecture
 identities and complete Version, Architecture, Filename, Size, and SHA256
 artifact fields; unsafe relative paths, duplicate critical fields, malformed
 digests, zero/overflow sizes, and incomplete records are rejected. The
-catalog parser is data-only and does not install packages.
+verified catalog is returned as owned package records in the verification result; callers release it with `orbit_repository_verify_result_destroy`. The parser is data-only and does not install packages.
 
 `orbit_package_verify_artifact` separately checks downloaded `.deb` bytes
 against the selected record's exact byte count and SHA-256 using Botan. The

@@ -37,7 +37,7 @@ The codec adapters decode incrementally into fixed-size output chunks. The curre
 
 - Debian container: 512 MiB.
 - ar members: 16.
-- tar entries per member: 4,096.
+- tar entries across control and data manifests: 4,096.
 - path length: 1,024 bytes.
 - one regular file: 256 MiB.
 - aggregate regular-file payload: 1 GiB.

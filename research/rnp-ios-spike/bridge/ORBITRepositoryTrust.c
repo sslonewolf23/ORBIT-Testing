@@ -119,11 +119,14 @@ bool orbit_trust_rotation_proof_parse(const uint8_t *data, size_t length,
 }
 
 bool orbit_repository_trust_init(orbit_repository_trust_state *state,
-                                 const char *pinned_primary_fingerprint) {
-    if (!state || !pinned_primary_fingerprint) return false;
+                                 const char *pinned_primary_fingerprint,
+                                 const char *pinned_recovery_fingerprint) {
+    if (!state || !pinned_primary_fingerprint || !pinned_recovery_fingerprint) return false;
     orbit_repository_trust_state initial;
     memset(&initial, 0, sizeof(initial));
-    if (!normalize_fingerprint(pinned_primary_fingerprint, initial.current_fingerprint))
+    if (!normalize_fingerprint(pinned_primary_fingerprint, initial.current_fingerprint) ||
+        !normalize_fingerprint(pinned_recovery_fingerprint, initial.recovery_fingerprint) ||
+        strcmp(initial.current_fingerprint, initial.recovery_fingerprint) == 0)
         return false;
     initial.revision = 1U;
     *state = initial;
@@ -161,6 +164,7 @@ static orbit_trust_code schedule_verified_rotation(
     if (strcmp(proof->repository, expected_repository) != 0)
         return ORBIT_TRUST_REPOSITORY_MISMATCH;
     if (strcmp(proof->next_fingerprint, state->current_fingerprint) == 0 ||
+        strcmp(proof->next_fingerprint, state->recovery_fingerprint) == 0 ||
         !orbit_rnp_key_bundle_has_primary_fingerprint(candidate_public_key_bundle,
                                                        candidate_bundle_length,
                                                        proof->next_fingerprint))
@@ -253,7 +257,6 @@ orbit_trust_code orbit_repository_trust_authorize_recovery_rotation(
     size_t recovery_inrelease_length,
     const uint8_t *recovery_public_key_bundle,
     size_t recovery_bundle_length,
-    const char *pinned_recovery_primary_fingerprint,
     const uint8_t *candidate_public_key_bundle,
     size_t candidate_bundle_length,
     uint64_t now_seconds) {
@@ -263,7 +266,7 @@ orbit_trust_code orbit_repository_trust_authorize_recovery_rotation(
         recovery_inrelease_length == 0U || !recovery_public_key_bundle ||
         recovery_bundle_length == 0U || !candidate_public_key_bundle ||
         candidate_bundle_length == 0U ||
-        !normalize_fingerprint(pinned_recovery_primary_fingerprint,recovery_pin) ||
+        !normalize_fingerprint(state->recovery_fingerprint,recovery_pin) ||
         !normalize_fingerprint(state->current_fingerprint,current_pin))
         return ORBIT_TRUST_INVALID_ARGUMENT;
     if (strcmp(recovery_pin,current_pin)==0)

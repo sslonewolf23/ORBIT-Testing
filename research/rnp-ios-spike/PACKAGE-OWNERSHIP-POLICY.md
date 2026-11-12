@@ -8,7 +8,7 @@ This module plans ownership changes only. It does not extract archives, mutate f
 - Regular-file paths are exclusive. A candidate cannot overwrite a path owned by another package.
 - Directory paths may be shared by packages.
 - A regular file cannot be an ancestor of another path.
-- Candidate paths are revalidated using the archive inspector path policy; duplicates and collisions fail closed.
+- Candidate paths are revalidated using the archive inspector path policy; duplicates and collisions fail closed. Ownership comparisons fold ASCII case conservatively so case-only path aliases cannot collide on a case-insensitive target volume.
 - Malformed or duplicate installed ownership records fail closed.
 - Bounds: 4,096 candidate paths and 8,192 installed ownership records.
 

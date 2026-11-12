@@ -646,6 +646,7 @@ jobs:
         run: |
           set -euo pipefail
           clang -std=c11 -Wall -Wextra -Werror \
+            -DORBIT_PACKAGE_ARCHIVE_TESTING=1 \
             -Iresearch/rnp-ios-spike/bridge \
             research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
             research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \

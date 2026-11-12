@@ -33,15 +33,6 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 	attestation, err := decodeB64(req.Attestation, 1, 512<<10)
 	if err != nil { jsonError(w, 400, "invalid request"); return }
 	attDigest := sha256.Sum256(attestation)
-	challengeDigest := sha256.Sum256(challenge)
-	var challengeValid int
-	if err := s.db.QueryRow(
-		"SELECT 1 FROM challenges WHERE digest=? AND consumed=0 AND expires_at>=?",
-		challengeDigest[:], s.now().Unix()).Scan(&challengeValid); err != nil {
-		jsonError(w, 409, "challenge expired or consumed")
-		return
-	}
-
 	// Lost-response retry: the exact same proof is idempotent, while any
 	// different proof for an already registered key is permanently rejected.
 	var prior []byte
@@ -51,6 +42,15 @@ func (s *service) register(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, 409, "registration conflict"); return
 	}
 	if err != sql.ErrNoRows { jsonError(w, 503, "unavailable"); return }
+
+	challengeDigest := sha256.Sum256(challenge)
+	var challengeValid int
+	if err := s.db.QueryRow(
+		"SELECT 1 FROM challenges WHERE digest=? AND consumed=0 AND expires_at>=?",
+		challengeDigest[:], s.now().Unix()).Scan(&challengeValid); err != nil {
+		jsonError(w, 409, "challenge expired or consumed")
+		return
+	}
 
 	publicDER, err := s.verifyAttestation(req.KeyID, challenge, attestation)
 	if err != nil { jsonError(w, 403, "attestation rejected"); return }

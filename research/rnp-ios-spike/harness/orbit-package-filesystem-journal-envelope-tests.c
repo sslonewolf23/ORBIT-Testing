@@ -42,6 +42,7 @@ typedef struct {
     size_t rollback_calls;
     size_t finalize_calls;
     bool fail_apply_once;
+    size_t fail_apply_at_call;
     bool fail_rollback_once;
     bool fail_finalize_once;
 } envelope_executor;
@@ -182,8 +183,11 @@ static orbit_filesystem_code execute_change(
     if (!executor || !change) return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     if (action == ORBIT_FILE_JOURNAL_APPLY) {
         ++executor->apply_calls;
-        if (executor->fail_apply_once) {
+        if (executor->fail_apply_once ||
+            (executor->fail_apply_at_call != 0U &&
+             executor->apply_calls == executor->fail_apply_at_call)) {
             executor->fail_apply_once = false;
+            executor->fail_apply_at_call = 0U;
             return ORBIT_FILESYSTEM_IO_ERROR;
         }
         return orbit_package_filesystem_apply(
@@ -526,6 +530,94 @@ int main(void) {
         unlinkat(root_fd, "backup-install", AT_REMOVEDIR) == 0);
     EXPECT("end-to-end install tree cleaned",
         unlinkat(install_fd, "Library/orbit-demo.dylib", 0) == 0 &&
+        unlinkat(install_fd, "Library", AT_REMOVEDIR) == 0 &&
+        unlinkat(stage_fd, "Library", AT_REMOVEDIR) == 0);
+
+    /* A later file failure must roll back earlier mutations and leave the
+     * committed ownership database at its pre-install snapshot. */
+    EXPECT("rollback fixture package files staged",
+        write_file_at(stage_library, "orbit-first.dylib", "first-payload") &&
+        write_file_at(stage_library, "orbit-second.dylib", "second-payload"));
+    orbit_archive_entry rollback_manifest[3];
+    memset(rollback_manifest, 0, sizeof(rollback_manifest));
+    rollback_manifest[0] = manifest[0];
+    (void)snprintf(rollback_manifest[1].path,
+                   sizeof(rollback_manifest[1].path),
+                   "Library/orbit-first.dylib");
+    rollback_manifest[1].size = strlen("first-payload");
+    (void)snprintf(rollback_manifest[2].path,
+                   sizeof(rollback_manifest[2].path),
+                   "Library/orbit-second.dylib");
+    rollback_manifest[2].size = strlen("second-payload");
+    int rollback_install_backup_fd = -1;
+    EXPECT("end-to-end rollback backup directory created",
+        create_backup_directory(root_fd, "backup-install-rollback",
+                                &rollback_install_backup_fd));
+    memory_envelope rollback_install_memory;
+    memset(&rollback_install_memory, 0, sizeof(rollback_install_memory));
+    EXPECT("end-to-end rollback envelope initialized",
+        memory_initialize(&rollback_install_memory));
+    orbit_package_filesystem_envelope_backend rollback_install_backend = {
+        &rollback_install_memory, memory_load, memory_release, memory_store
+    };
+    envelope_executor rollback_install_executor;
+    memset(&rollback_install_executor, 0, sizeof(rollback_install_executor));
+    rollback_install_executor.target_fd = install_fd;
+    rollback_install_executor.stage_fd = stage_fd;
+    rollback_install_executor.backup_fd = rollback_install_backup_fd;
+    rollback_install_executor.fail_apply_at_call = 2U;
+    memset(install_transaction_id, 0xB2, sizeof(install_transaction_id));
+    install_plan_result = ORBIT_PACKAGE_FILE_PLAN_INVALID_ARGUMENT;
+    install_journal_result = ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    EXPECT("failed second file triggers complete install rollback",
+        orbit_package_install_transaction_execute_enveloped(
+            &installed_snapshot, &candidate, rollback_manifest, 3U,
+            ownership_old, sizeof(ownership_old), install_transaction_id,
+            install_fd, stage_fd, rollback_install_backup_fd,
+            &rollback_install_backend, execute_change,
+            &rollback_install_executor,
+            &install_plan_result, &install_journal_result) ==
+                ORBIT_PACKAGE_INSTALL_TRANSACTION_JOURNAL_FAILED);
+    EXPECT("rollback restored staged files and removed partial installs",
+        rollback_install_executor.apply_calls == 2U &&
+        rollback_install_executor.rollback_calls >= 1U &&
+        faccessat(install_library, "orbit-first.dylib",
+                  F_OK, AT_SYMLINK_NOFOLLOW) != 0 &&
+        faccessat(install_library, "orbit-second.dylib",
+                  F_OK, AT_SYMLINK_NOFOLLOW) != 0 &&
+        file_equals_at(stage_library, "orbit-first.dylib", "first-payload") &&
+        file_equals_at(stage_library, "orbit-second.dylib", "second-payload"));
+    uint8_t *rollback_journal_buffer =
+        (uint8_t *)malloc(ORBIT_TRANSACTION_ENVELOPE_MAX_JOURNAL);
+    uint8_t *rollback_committed_buffer =
+        (uint8_t *)malloc(ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP);
+    uint8_t *rollback_pending_buffer =
+        (uint8_t *)malloc(ORBIT_TRANSACTION_ENVELOPE_MAX_OWNERSHIP);
+    orbit_package_transaction_envelope rollback_install_decoded;
+    EXPECT("failed install preserves old ownership and clears journal",
+        rollback_journal_buffer && rollback_committed_buffer &&
+        rollback_pending_buffer &&
+        decode_memory(&rollback_install_memory, &rollback_install_decoded,
+            rollback_journal_buffer, rollback_committed_buffer,
+            rollback_pending_buffer) &&
+        rollback_install_decoded.state == ORBIT_TRANSACTION_ENVELOPE_EMPTY &&
+        rollback_install_decoded.committed_ownership_length ==
+            sizeof(ownership_old) &&
+        memcmp(rollback_install_decoded.committed_ownership,
+               ownership_old, sizeof(ownership_old)) == 0);
+    free(rollback_journal_buffer);
+    free(rollback_committed_buffer);
+    free(rollback_pending_buffer);
+    free(rollback_install_memory.payload);
+    close(rollback_install_backup_fd);
+    EXPECT("end-to-end rollback backup directory cleaned",
+        unlinkat(root_fd, "backup-install-rollback", AT_REMOVEDIR) == 0);
+    EXPECT("end-to-end rollback staged fixtures cleaned",
+        unlinkat(stage_library, "orbit-first.dylib", 0) == 0 &&
+        unlinkat(stage_library, "orbit-second.dylib", 0) == 0);
+    close(stage_library);
+    close(install_library);
+    EXPECT("end-to-end package directories removed",
         unlinkat(install_fd, "Library", AT_REMOVEDIR) == 0 &&
         unlinkat(stage_fd, "Library", AT_REMOVEDIR) == 0);
 

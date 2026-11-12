@@ -12,15 +12,28 @@ static bool transaction_id_is_valid(
     return combined != 0U;
 }
 
+static int compare_ascii_casefold(const char *left, const char *right) {
+    while (*left && *right) {
+        unsigned char a = (unsigned char)*left++;
+        unsigned char b = (unsigned char)*right++;
+        if (a >= 'A' && a <= 'Z') a = (unsigned char)(a + ('a' - 'A'));
+        if (b >= 'A' && b <= 'Z') b = (unsigned char)(b + ('a' - 'A'));
+        if (a != b) return a < b ? -1 : 1;
+    }
+    if (*left) return 1;
+    if (*right) return -1;
+    return 0;
+}
+
 static int compare_change_targets(
     const orbit_package_filesystem_journal_record *record,
     size_t left, size_t right) {
-    int parent_order = strcmp(
+    int parent_order = compare_ascii_casefold(
         record->changes[left].target_parent_path,
         record->changes[right].target_parent_path);
     if (parent_order != 0) return parent_order;
-    return strcmp(record->changes[left].target_name,
-                  record->changes[right].target_name);
+    return compare_ascii_casefold(record->changes[left].target_name,
+                                  record->changes[right].target_name);
 }
 
 static void swap_indices(size_t *left, size_t *right) {

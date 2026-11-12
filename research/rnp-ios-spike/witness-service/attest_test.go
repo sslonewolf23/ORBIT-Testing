@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"math/big"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
@@ -43,10 +42,8 @@ func TestStrictCBORRejectsDuplicateKeysAndIndefiniteMaps(t *testing.T) {
 }
 
 func TestCOSECredentialKeyAndAttestationExtensions(t *testing.T) {
-	x, y, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
+	_, pubX, pubY, err := elliptic.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil { t.Fatal(err) }
-	pubX, pubY := elliptic.P256().ScalarBaseMult(x)
-	_ = y
 	xBytes := pubX.FillBytes(make([]byte, 32))
 	yBytes := pubY.FillBytes(make([]byte, 32))
 	coseKey, err := cbor.Marshal(map[int64]any{
@@ -91,5 +88,4 @@ func TestCOSERejectsWrongCurveAndAlgorithm(t *testing.T) {
 			t.Fatal("unsupported COSE credential key accepted")
 		}
 	}
-	_ = big.NewInt(0)
 }

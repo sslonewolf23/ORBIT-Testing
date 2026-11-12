@@ -296,6 +296,7 @@ int main(int argc, char **argv) {
     printf("decision=%s checks=%u failures=%u\n", failures ? "FAIL" : "PASS", checks, failures);
     free(trusted); free(rotation); free(trusted_fpr); free(candidate);
     free(candidate_fpr); free(wrong_candidate); free(combined); free(unauthorized);
-    free(expired); free(expired_fpr); free(revoked); free(revoked_fpr);\n    free(recovery); free(recovery_fpr); free(emergency); free(emergency_time_text); free(non_immediate);
+    free(expired); free(expired_fpr); free(revoked); free(revoked_fpr);
+    free(recovery); free(recovery_fpr); free(emergency); free(emergency_time_text); free(non_immediate);
     return failures ? 1 : 0;
 }

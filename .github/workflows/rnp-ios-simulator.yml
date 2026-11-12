@@ -2,6 +2,8 @@ name: RNP iOS Simulator Cross-Compile
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
   contents: read

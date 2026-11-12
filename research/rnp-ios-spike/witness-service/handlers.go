@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -93,9 +94,15 @@ func (s *service) head(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.db.Begin()
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
+	verifier, checkpoint, err := s.reconcileByKeyID(context.Background(), tx, req.KeyID)
+	if err != nil || checkpoint.KeyID != req.KeyID { jsonError(w, 503, "witness anchor unavailable"); return }
 	stored, counter, err := s.authenticateAssertion(tx, req.KeyID, raw, assertion)
 	if err != nil { jsonError(w, 403, "request rejected"); return }
 	if err = updateCounter(tx, req.KeyID, counter); err != nil { jsonError(w, 409, "assertion replay"); return }
+	if _, err = s.appendAnchoredState(context.Background(),tx,verifier,checkpoint,
+		req.KeyID,stored.PublicKey,counter,stored.Head); err != nil {
+		jsonError(w,503,"witness anchor unavailable"); return
+	}
 	if err = tx.Commit(); err != nil { jsonError(w, 503, "unavailable"); return }
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
@@ -113,6 +120,8 @@ func (s *service) compareAndSwap(w http.ResponseWriter, r *http.Request) {
 	tx, err := s.db.Begin()
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
+	verifier, checkpoint, err := s.reconcileByKeyID(context.Background(), tx, req.KeyID)
+	if err != nil || checkpoint.KeyID != req.KeyID { jsonError(w, 503, "witness anchor unavailable"); return }
 	stored, counter, err := s.authenticateAssertion(tx, req.KeyID, raw, assertion)
 	if err != nil { jsonError(w, 403, "request rejected"); return }
 	current := stored.Head
@@ -120,6 +129,10 @@ func (s *service) compareAndSwap(w http.ResponseWriter, r *http.Request) {
 		// Idempotent retry after the server committed but the response was lost.
 		if current == next {
 			if err = updateCounter(tx, req.KeyID, counter); err != nil { jsonError(w, 409, "assertion replay"); return }
+			if _, err = s.appendAnchoredState(context.Background(),tx,verifier,checkpoint,
+				req.KeyID,stored.PublicKey,counter,current); err != nil {
+				jsonError(w,503,"witness anchor unavailable"); return
+			}
 			if err = tx.Commit(); err != nil { jsonError(w, 503, "unavailable"); return }
 			w.WriteHeader(http.StatusNoContent); return
 		}
@@ -132,6 +145,10 @@ func (s *service) compareAndSwap(w http.ResponseWriter, r *http.Request) {
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	changed, err := res.RowsAffected()
 	if err != nil || changed != 1 { jsonError(w, 409, "head conflict"); return }
+	if _, err = s.appendAnchoredState(context.Background(),tx,verifier,checkpoint,
+		req.KeyID,stored.PublicKey,counter,next); err != nil {
+		jsonError(w,503,"witness anchor unavailable"); return
+	}
 	if err = tx.Commit(); err != nil { jsonError(w, 503, "unavailable"); return }
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -290,4 +307,15 @@ func commitKeyRecovery(tx *sql.Tx, oldKeyID, newKeyID string, verifier,
 	changed, err = res.RowsAffected()
 	if err != nil || changed != 1 { return errors.New("installation key replacement conflict") }
 	return nil
+}
+
+
+func (s *service) reconcileByKeyID(ctx context.Context, tx *sql.Tx, keyID string) ([]byte,anchorCheckpoint,error) {
+	var verifier []byte
+	if err := tx.QueryRow("SELECT recovery_verifier FROM installations WHERE key_id=?",keyID).Scan(&verifier); err != nil {
+		return nil,anchorCheckpoint{},err
+	}
+	if len(verifier)!=32 { return nil,anchorCheckpoint{},errors.New("installation has no recovery verifier") }
+	checkpoint,err := s.reconcileAnchoredInstallation(ctx,tx,verifier)
+	return verifier,checkpoint,err
 }

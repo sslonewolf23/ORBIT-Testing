@@ -172,6 +172,11 @@ repository origin and verify the artifact before any future installation.
 The current work does not download packages, install them, resolve dependencies,
 or authorize package execution.
 
+The unrestricted low-level record-save entry point is absent from the
+production persistence header; it exists only in a test-only header for
+storage fault/tamper harnesses. Production writes go through policy-aware
+transactional wrappers.
+
 All persistent trust mutations (bootstrap, normal rotation, emergency
 recovery, time-floor updates, activation, and grace pruning) hold the
 repository-scoped backend transaction lock across the complete read/modify/

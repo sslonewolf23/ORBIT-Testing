@@ -60,6 +60,21 @@ typedef orbit_filesystem_code (*orbit_package_filesystem_journal_executor)(
     orbit_file_journal_action action,
     const orbit_package_file_change *change);
 
+typedef struct {
+    int install_root_fd;
+    int staging_root_fd;
+    int backup_root_fd;
+    uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES];
+} orbit_package_filesystem_executor_context;
+
+/* Standard descriptor-resolving executor for the journal. The backup root
+ * must already be opened for the supplied transaction ID. */
+orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
+    void *context,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
+    orbit_file_journal_action action,
+    const orbit_package_file_change *change);
+
 /* Persists the complete file plan before the first mutation. On apply failure,
  * it attempts reverse rollback. If rollback cannot finish, the journal remains. */
 orbit_filesystem_code orbit_package_filesystem_journal_execute(

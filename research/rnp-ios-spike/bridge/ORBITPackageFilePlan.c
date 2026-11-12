@@ -222,3 +222,57 @@ orbit_package_file_plan_code orbit_package_file_plan_build_install(
     }
     return ORBIT_PACKAGE_FILE_PLAN_OK;
 }
+
+orbit_package_file_plan_code orbit_package_file_plan_build_remove(
+    const orbit_package_ownership_snapshot *installed,
+    const orbit_package_record *package,
+    int install_root_fd, int backup_directory_fd,
+    orbit_package_file_change *changes, size_t change_capacity,
+    size_t *change_count,
+    orbit_package_ownership_record *ownership_output,
+    size_t ownership_capacity,
+    orbit_package_ownership_snapshot *replacement_ownership) {
+    if (!installed || !package || install_root_fd < 0 ||
+        backup_directory_fd < 0 || !changes || !change_count ||
+        !ownership_output || !replacement_ownership)
+        return ORBIT_PACKAGE_FILE_PLAN_INVALID_ARGUMENT;
+    *change_count = 0U;
+    memset(replacement_ownership, 0, sizeof(*replacement_ownership));
+    if (change_capacity > ORBIT_FILESYSTEM_JOURNAL_MAX_CHANGES)
+        return ORBIT_PACKAGE_FILE_PLAN_LIMIT;
+
+    orbit_ownership_code ownership_result =
+        orbit_package_ownership_snapshot_remove(
+            installed, package, ownership_output, ownership_capacity,
+            replacement_ownership);
+    if (ownership_result != ORBIT_OWNERSHIP_OK)
+        return ownership_result == ORBIT_OWNERSHIP_LIMIT ?
+            ORBIT_PACKAGE_FILE_PLAN_LIMIT :
+            ORBIT_PACKAGE_FILE_PLAN_OWNERSHIP_ERROR;
+
+    for (size_t i = 0U; i < installed->count; ++i) {
+        const orbit_package_ownership_record *record = &installed->records[i];
+        if (!package_identity_matches(record, package) || record->directory)
+            continue;
+        if (*change_count >= change_capacity) {
+            *change_count = 0U;
+            memset(replacement_ownership, 0, sizeof(*replacement_ownership));
+            return ORBIT_PACKAGE_FILE_PLAN_LIMIT;
+        }
+        orbit_package_file_plan_code planned = append_remove(
+            record, install_root_fd, backup_directory_fd,
+            *change_count + 1U, &changes[*change_count]);
+        if (planned != ORBIT_PACKAGE_FILE_PLAN_OK) {
+            *change_count = 0U;
+            memset(replacement_ownership, 0, sizeof(*replacement_ownership));
+            return planned;
+        }
+        ++(*change_count);
+    }
+
+    if (*change_count == 0U) {
+        memset(replacement_ownership, 0, sizeof(*replacement_ownership));
+        return ORBIT_PACKAGE_FILE_PLAN_INVALID_ARGUMENT;
+    }
+    return ORBIT_PACKAGE_FILE_PLAN_OK;
+}

@@ -39,6 +39,23 @@ orbit_package_install_transaction_execute_enveloped(
     orbit_package_file_plan_code *plan_result,
     orbit_filesystem_code *journal_result);
 
+
+/* Remove an installed package identity through the same authenticated
+ * filesystem/ownership transaction. Only files owned by this exact
+ * name+architecture identity are removed; directory rows and other owners
+ * remain protected. The package must own at least one regular file. */
+orbit_package_install_transaction_code
+orbit_package_remove_transaction_execute_enveloped(
+    const orbit_package_ownership_snapshot *installed,
+    const orbit_package_record *package,
+    const uint8_t *expected_ownership, size_t expected_ownership_length,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
+    int install_root_fd, int backup_directory_fd,
+    const orbit_package_filesystem_envelope_backend *backend,
+    orbit_package_filesystem_journal_executor executor,
+    void *executor_context,
+    orbit_package_file_plan_code *plan_result,
+    orbit_filesystem_code *journal_result);
 #ifdef __cplusplus
 }
 #endif

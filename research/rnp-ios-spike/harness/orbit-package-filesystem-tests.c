@@ -3,6 +3,7 @@
 
 #include "ORBITPackageFilesystem.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -60,6 +61,31 @@ static bool exists_at(int directory_fd, const char *name) {
 static bool remove_if_present(int directory_fd, const char *name) {
     if (unlinkat(directory_fd, name, 0) == 0) return true;
     return errno == ENOENT;
+}
+
+/* Test teardown only: remove staged-inode anchors left by deliberate
+   recovery-required scenarios after their safety assertions have run. */
+static bool remove_staged_anchor_fixtures(int directory_fd) {
+    int iterator_fd = dup(directory_fd);
+    if (iterator_fd < 0) return false;
+    DIR *directory = fdopendir(iterator_fd);
+    if (!directory) { close(iterator_fd); return false; }
+
+    bool ok = true;
+    errno = 0;
+    struct dirent *entry;
+    while ((entry = readdir(directory)) != NULL) {
+        if (strncmp(entry->d_name, ".orbit-stage-", 13U) != 0) {
+            errno = 0;
+            continue;
+        }
+        if (unlinkat(directory_fd, entry->d_name, 0) < 0 && errno != ENOENT)
+            ok = false;
+        errno = 0;
+    }
+    if (errno != 0) ok = false;
+    if (closedir(directory) < 0) ok = false;
+    return ok;
 }
 
 int main(void) {
@@ -332,6 +358,8 @@ int main(void) {
     if (cleanup_backup >= 0) {
         for (size_t i = 0U; i < sizeof(backup_names) / sizeof(backup_names[0]); ++i)
             (void)unlinkat(cleanup_backup, backup_names[i], 0);
+        EXPECT("test staged-anchor fixtures removed",
+            remove_staged_anchor_fixtures(cleanup_backup));
         close(cleanup_backup);
     }
     (void)unlinkat(base_fd, "target", AT_REMOVEDIR);

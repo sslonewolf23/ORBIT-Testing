@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <sys/types.h>
@@ -52,7 +53,7 @@ static bool valid_parent_path(const char *path, size_t capacity) {
 
 static bool valid_stored_parent_path(const char *path, size_t capacity) {
     if (!path) return false;
-    const char *terminator = (const char *)memchr(path, '\\0', capacity);
+    const char *terminator = (const char *)memchr(path, '\0', capacity);
     if (!terminator) return false;
     size_t length = (size_t)(terminator - path);
     for (size_t i = length + 1U; i < capacity; ++i)

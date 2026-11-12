@@ -212,3 +212,33 @@ orbit_ownership_code orbit_package_ownership_plan_install_deb(
     free(manifest.entries);
     return result;
 }
+
+
+orbit_ownership_code orbit_package_ownership_snapshot_install(
+ const orbit_package_ownership_snapshot *installed,const orbit_package_record *candidate,
+ const orbit_archive_entry *entries,size_t entry_count,orbit_package_ownership_record *output,
+ size_t output_capacity,orbit_package_ownership_snapshot *snapshot) {
+ if(!installed||!candidate||!output||!snapshot||(entry_count&&!entries))return ORBIT_OWNERSHIP_INVALID_ARGUMENT;
+ memset(snapshot,0,sizeof(*snapshot));orbit_package_ownership_plan candidate_plan;memset(&candidate_plan,0,sizeof(candidate_plan));
+ orbit_ownership_code rc=orbit_package_ownership_plan_install(installed,candidate,entries,entry_count,&candidate_plan);
+ if(rc!=ORBIT_OWNERSHIP_OK)return rc;size_t kept=0U;
+ for(size_t i=0;i<installed->count;i++){const orbit_package_ownership_record *r=&installed->records[i];if(same_identity(r,candidate))continue;
+  if(kept>=output_capacity){orbit_package_ownership_plan_destroy(&candidate_plan);return ORBIT_OWNERSHIP_LIMIT;}output[kept++]=*r;}
+ if(candidate_plan.count>output_capacity-kept){orbit_package_ownership_plan_destroy(&candidate_plan);return ORBIT_OWNERSHIP_LIMIT;}
+ if(candidate_plan.count)memcpy(output+kept,candidate_plan.records,candidate_plan.count*sizeof(*output));kept+=candidate_plan.count;
+ orbit_package_ownership_plan_destroy(&candidate_plan);orbit_package_ownership_snapshot result={output,kept};rc=validate(&result);
+ if(rc!=ORBIT_OWNERSHIP_OK)return rc;*snapshot=result;return ORBIT_OWNERSHIP_OK;
+}
+
+orbit_ownership_code orbit_package_ownership_snapshot_remove(
+ const orbit_package_ownership_snapshot *installed,const orbit_package_record *package,
+ orbit_package_ownership_record *output,size_t output_capacity,orbit_package_ownership_snapshot *snapshot) {
+ if(!installed||!package||!output||!snapshot)return ORBIT_OWNERSHIP_INVALID_ARGUMENT;memset(snapshot,0,sizeof(*snapshot));
+ orbit_package_ownership_plan removal;memset(&removal,0,sizeof(removal));orbit_ownership_code rc=orbit_package_ownership_plan_remove(installed,package,&removal);
+ if(rc!=ORBIT_OWNERSHIP_OK)return rc;orbit_package_ownership_plan_destroy(&removal);size_t kept=0U;
+ for(size_t i=0;i<installed->count;i++){const orbit_package_ownership_record *r=&installed->records[i];
+  if(strcmp(r->package_name,package->name)==0&&strcmp(r->architecture,package->architecture)==0)continue;
+  if(kept>=output_capacity)return ORBIT_OWNERSHIP_LIMIT;output[kept++]=*r;}
+ orbit_package_ownership_snapshot result={output,kept};rc=validate(&result);if(rc!=ORBIT_OWNERSHIP_OK)return rc;
+ *snapshot=result;return ORBIT_OWNERSHIP_OK;
+}

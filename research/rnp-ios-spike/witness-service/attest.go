@@ -35,11 +35,28 @@ type cborAttestation struct {
 	AuthData []byte `cbor:"authData"`
 }
 
+func strictCBORMode() (cbor.DecMode, error) {
+	opts := cbor.DecOptions{
+		DupMapKey: cbor.DupMapKeyEnforcedAPF,
+		IndefLength: cbor.IndefLengthForbidden,
+		TagsMd: cbor.TagsForbidden,
+		MaxNestedLevels: 16,
+		MaxArrayElements: 256,
+		MaxMapPairs: 128,
+	}
+	return opts.DecMode()
+}
+
 func decodeCBOR(data []byte, target any) error {
-	var opts cbor.DecOptions
-	mode, err := opts.DecMode()
+	mode, err := strictCBORMode()
 	if err != nil { return err }
 	return mode.Unmarshal(data, target)
+}
+
+func decodeCBORFirst(data []byte, target any) ([]byte, error) {
+	mode, err := strictCBORMode()
+	if err != nil { return nil, err }
+	return mode.UnmarshalFirst(data, target)
 }
 
 func cborBytes(value any) ([]byte, bool) {
@@ -109,7 +126,7 @@ func verifyAppAttestExtensions(authData []byte, extensionOffset int,
 		extensionBytes = remaining
 	}
 	var extensions map[string]any
-	if err := cbor.Unmarshal(extensionBytes, &extensions); err != nil {
+	if err := decodeCBOR(extensionBytes, &extensions); err != nil {
 		return nil, errors.New("malformed App Attest extension map")
 	}
 	category, ok := extensions["apple_validation_category_01"].(uint64)

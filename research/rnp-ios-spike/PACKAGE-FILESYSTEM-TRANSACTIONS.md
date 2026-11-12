@@ -31,6 +31,18 @@ The caller must hold an exclusive package filesystem transaction lock from prepa
 
 The version-2 fixed-size change record includes target/stage relative parent locators and is a recovery payload, not a self-authenticating journal. The caller must encode and persist it using the authenticated, monotonic journal backend; do not write a raw C struct as an unauthenticated file. No adapter currently connects these per-file records to the existing package transaction journal, so durable per-file recovery is not yet integrated.
 
+## Per-file write-ahead journal
+
+`ORBITPackageFilesystemJournal` coordinates up to 4,096 file changes as one package file transaction. It stores the entire validated plan before the first mutation, then uses durable phases:
+
+- `APPLYING`: recovery chooses reverse rollback, including operations that may not have started (their rollback is idempotent).
+- `ROLLING_BACK`: recovery retries reverse rollback.
+- `COMMITTED`: recovery retries backup finalization and then clears the journal.
+
+The record carries each target/stage parent path relative to trusted install/staging roots, plus the exact file identities. The executor resolves those paths with no-follow descriptor traversal and derives the private backup root from the transaction ID. The journal rejects duplicate targets, including ASCII case-folded duplicates.
+
+The backend contract requires authenticated loads, atomic stores, a monotonic revision retained even after clear, and compare-by-revision clearing. It must encode fields canonically; raw C struct persistence is not acceptable. The host harness uses an in-memory backend only. No production iOS persistence adapter is connected yet.
+
 ## Limitations
 
 - Regular files only; directory creation/removal and directory-mode rollback are not handled here.

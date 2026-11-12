@@ -104,6 +104,7 @@ func (s *service) appendAnchoredState(ctx context.Context, tx *sql.Tx,
 		return anchorCheckpoint{}, errors.New("monotonic anchor sequence exhausted")
 	}
 	next := anchorCheckpoint{
+		InstallationID: installationID,
 		Sequence: previous.Sequence+1,
 		KeyID: keyID,
 		PublicKey: append([]byte(nil),publicKey...),

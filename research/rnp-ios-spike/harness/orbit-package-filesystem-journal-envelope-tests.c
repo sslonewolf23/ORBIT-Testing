@@ -323,7 +323,7 @@ int main(void) {
             ownership_old, sizeof(ownership_old),
             execute_change, &executor) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
     EXPECT("rolling-back envelope retains committed and pending snapshots",
-        decode_memory(&memory, NULL, &decoded, journal_buffer,
+        decode_memory(&memory, &decoded, journal_buffer,
                       committed_buffer, pending_buffer) &&
         decoded.state == ORBIT_TRANSACTION_ENVELOPE_ACTIVE &&
         decoded.phase == ORBIT_TRANSACTION_ENVELOPE_ROLLING_BACK &&
@@ -335,7 +335,7 @@ int main(void) {
         orbit_package_filesystem_journal_recover_enveloped(
             &backend, execute_change, &executor) == ORBIT_FILESYSTEM_OK);
     EXPECT("rollback recovery keeps old committed ownership",
-        decode_memory(&memory, NULL, &decoded, journal_buffer,
+        decode_memory(&memory, &decoded, journal_buffer,
                       committed_buffer, pending_buffer) &&
         decoded.state == ORBIT_TRANSACTION_ENVELOPE_EMPTY &&
         decoded.committed_ownership_length == sizeof(ownership_new) &&
@@ -369,7 +369,7 @@ int main(void) {
             ownership_old, sizeof(ownership_old),
             execute_change, &executor) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
     EXPECT("committed envelope keeps old ownership until finalization",
-        decode_memory(&memory, NULL, &decoded, journal_buffer,
+        decode_memory(&memory, &decoded, journal_buffer,
                       committed_buffer, pending_buffer) &&
         decoded.state == ORBIT_TRANSACTION_ENVELOPE_ACTIVE &&
         decoded.phase == ORBIT_TRANSACTION_ENVELOPE_COMMITTED &&
@@ -381,7 +381,7 @@ int main(void) {
         orbit_package_filesystem_journal_recover_enveloped(
             &backend, execute_change, &executor) == ORBIT_FILESYSTEM_OK);
     EXPECT("commit recovery promoted ownership only after finalization",
-        decode_memory(&memory, NULL, &decoded, journal_buffer,
+        decode_memory(&memory, &decoded, journal_buffer,
                       committed_buffer, pending_buffer) &&
         decoded.state == ORBIT_TRANSACTION_ENVELOPE_EMPTY &&
         decoded.committed_ownership_length == sizeof(ownership_old) &&

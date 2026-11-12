@@ -72,3 +72,32 @@ func TestCASRequestExactLength(t *testing.T) {
 	if _, _, err := parseCASRequest(raw, keyID); err != nil { t.Fatal(err) }
 	if bytes.Equal(raw, nil) { t.Fatal("unexpected empty request") }
 }
+
+func TestRejectDuplicateJSONKeys(t *testing.T) {
+	for _, raw := range []string{
+		`{"keyID":"first","keyID":"second"}`,
+		`{"outer":{"value":1,"value":2}}`,
+		`{"items":[{"id":1,"id":2}]}`,
+	} {
+		if err := rejectDuplicateJSONKeys([]byte(raw)); err == nil {
+			t.Fatalf("duplicate JSON key accepted: %s", raw)
+		}
+	}
+	for _, raw := range []string{
+		`{"keyID":"one","request":"two"}`,
+		`{"outer":{"left":1,"right":2},"items":[{"id":1},{"id":2}]}`,
+	} {
+		if err := rejectDuplicateJSONKeys([]byte(raw)); err != nil {
+			t.Fatalf("valid JSON rejected: %s: %v", raw, err)
+		}
+	}
+	for _, raw := range []string{
+		`{"keyID":"one"} trailing`,
+		`{"keyID":`,
+		`{"items":[1,2}`,
+	} {
+		if err := rejectDuplicateJSONKeys([]byte(raw)); err == nil {
+			t.Fatalf("malformed or trailing JSON accepted: %s", raw)
+		}
+	}
+}

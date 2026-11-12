@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/sha256"
+	"context"
 	"crypto/x509"
 	"database/sql"
 	"encoding/asn1"
@@ -29,6 +30,7 @@ type service struct {
 	roots       *x509.CertPool
 	now         func() time.Time
 	recoveryPepper []byte
+	anchor anchorStore
 }
 
 type cborAttestation struct {

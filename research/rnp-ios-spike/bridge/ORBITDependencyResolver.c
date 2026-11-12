@@ -224,6 +224,7 @@ static bool check_conflict_relation(resolver *r,const orbit_package_record *p,
     char buffer[RELATION_MAX];strcpy(buffer,relations);char *save=NULL;
     for(char *item=strtok_r(buffer,",",&save);item;item=strtok_r(NULL,",",&save)) {
         trim(item);
+        if(strchr(item,'|')){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return false;}
         char validation[RELATION_MAX];strcpy(validation,item);
         char *validation_save=NULL;
         for(char *atom=strtok_r(validation,"|",&validation_save);atom;atom=strtok_r(NULL,"|",&validation_save)) {
@@ -261,6 +262,7 @@ static bool record_rejects_candidate(resolver *r,
         char *save=NULL;
         for(char *item=strtok_r(buffer,",",&save);item;item=strtok_r(NULL,",",&save)) {
             trim(item);
+            if(strchr(item,'|')){r->error=ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;return true;}
             char validation[RELATION_MAX];strcpy(validation,item);
             char *validation_save=NULL;
             for(char *atom=strtok_r(validation,"|",&validation_save);atom;atom=strtok_r(NULL,"|",&validation_save)) {
@@ -316,6 +318,11 @@ orbit_dependency_code orbit_dependency_plan_build(
         if(strcmp(available->packages[i].name,requested)==0&&
            package_arch_ok(&available->packages[i],architecture)){root=i;break;}
     if(root==SIZE_MAX)return ORBIT_DEPENDENCY_PACKAGE_NOT_FOUND;
+    int root_version_check=0;
+    if(!orbit_debian_version_compare(available->packages[root].version,
+                                     available->packages[root].version,
+                                     &root_version_check))
+        return ORBIT_DEPENDENCY_UNSUPPORTED_EXPRESSION;
     resolver r;memset(&r,0,sizeof(r));r.available=available;r.installed=installed;
     r.installed_count=installed_count;r.architecture=architecture;r.error=ORBIT_DEPENDENCY_OK;
     r.ordered=(const orbit_package_record**)calloc(ORBIT_DEPENDENCY_PLAN_MAX,sizeof(*r.ordered));

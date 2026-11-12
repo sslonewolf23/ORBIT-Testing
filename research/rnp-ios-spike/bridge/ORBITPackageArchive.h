@@ -57,9 +57,10 @@ orbit_archive_code orbit_package_archive_inspect_deb_with_data_entries(
     const uint8_t *deb, size_t deb_length, orbit_archive_entry_callback callback,
     void *callback_context, orbit_archive_report *report);
 
-/* Streams data.tar file bytes to a callback. Chunks are provisional until the
- * whole .deb validates; callers must write only into disposable staging and
- * discard it unless ORBIT_ARCHIVE_OK is returned. Offsets are per file. */
+/* Streams data.tar file bytes to a callback. Path and byte pointers are valid
+ * only during the callback. Chunks are provisional until the whole .deb
+ * validates; callers must use disposable staging and discard unless OK.
+ * Offsets are per file; final_chunk marks the last bytes (including empty files). */
 orbit_archive_code orbit_package_archive_inspect_deb_with_data(
     const uint8_t *deb, size_t deb_length,
     orbit_archive_entry_callback entry_callback, void *entry_context,

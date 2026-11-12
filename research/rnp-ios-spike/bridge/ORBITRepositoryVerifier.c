@@ -29,6 +29,7 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
     size_t public_key_bundle_length,
     const uint8_t *inrelease_data,
     size_t inrelease_length,
+    const char *expected_origin,
     const char *expected_suite,
     const char *expected_codename,
     const char *required_architecture,
@@ -51,7 +52,7 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
         !nonempty(expected_primary_fingerprint) ||
         public_key_bundle == NULL || public_key_bundle_length == 0U ||
         inrelease_data == NULL || inrelease_length == 0U ||
-        !nonempty(expected_suite) || !nonempty(expected_codename) ||
+        !nonempty(expected_origin) || !nonempty(expected_suite) || !nonempty(expected_codename) ||
         !nonempty(required_architecture) || !nonempty(required_component) ||
         !nonempty(relative_index_path) || index_data == NULL ||
         index_length == 0U || now_seconds == 0U ||
@@ -114,8 +115,8 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
     secure_clear(authenticated_payload, ORBIT_REPOSITORY_VERIFY_PAYLOAD_MAX);
     free(authenticated_payload);
 
-    if (!orbit_release_metadata_matches_policy(
-            metadata, expected_suite, expected_codename,
+    if (!orbit_release_metadata_matches_repository_policy(
+            metadata, expected_origin, expected_suite, expected_codename,
             required_architecture, required_component)) {
         free(metadata);
         return finish(result, ORBIT_REPOSITORY_VERIFY_REPOSITORY_POLICY_REJECTED);

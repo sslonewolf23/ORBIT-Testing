@@ -736,6 +736,19 @@ jobs:
           "$RUNNER_TEMP/orbit-package-filesystem-journal-tests" | tee "$RUNNER_TEMP/package-filesystem-journal.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem-journal.out"
 
+      - name: Compile and run native package-manager lock coordination tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageNativeLock.c \
+            research/rnp-ios-spike/harness/orbit-package-native-lock-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-native-lock-tests"
+          "$RUNNER_TEMP/orbit-package-native-lock-tests" | tee "$RUNNER_TEMP/package-native-lock.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-native-lock.out"
+
       - name: Compile and run canonical filesystem journal codec tests
         shell: bash
         run: |

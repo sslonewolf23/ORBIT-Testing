@@ -155,6 +155,9 @@ int main(int argc,char **argv) {
         orbit_repository_trust_store_load(&loaded,repo,&backend)==ORBIT_TRUST_STORE_IO_ERROR &&
         loaded.current_fingerprint[0]=='\0',true);
     storage.locked=false;
+    expect("state-reloads-after-lock-contention",
+        orbit_repository_trust_store_load(&loaded,repo,&backend)==ORBIT_TRUST_STORE_OK &&
+        loaded.revision==state.revision,true);
 
     orbit_repository_trust_state changed=loaded;
     changed.revision++;
@@ -560,7 +563,7 @@ int main(int argc,char **argv) {
         7ULL*24ULL*60ULL*60ULL,300U,&verify_backend,&verify_result);
     expect("expired-Release-valid-until-rejected",
         verify_code==ORBIT_REPOSITORY_VERIFY_FRESHNESS_REJECTED,true);
-    free(trusted_fpr);free(recovery);free(recovery_fpr);free(emergency);
+    free(trusted_fpr);free(trusted);free(normal_rotation);free(recovery);free(recovery_fpr);free(emergency);
     free(candidate);free(candidate_fpr);free(time_text);free(index_inrelease);free(packages);free(artifact);
     printf("decision=%s checks=%u failures=%u\n",failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;

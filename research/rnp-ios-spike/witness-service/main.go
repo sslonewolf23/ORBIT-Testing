@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"strconv"
 	"time"
 
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -31,6 +32,41 @@ type config struct {
 	recoveryPepper string
 	awsRegion string
 	anchorTable string
+	allowedValidationCategories map[uint64]struct{}
+	allowedBundleVersions map[string]struct{}
+}
+
+
+func parseAllowedValidationCategories(raw string) (map[uint64]struct{}, error) {
+	if raw == "" || strings.TrimSpace(raw) != raw { return nil, errors.New("empty or padded category allowlist") }
+	result := make(map[uint64]struct{})
+	for _, item := range strings.Split(raw, ",") {
+		if item == "" || strings.TrimSpace(item) != item { return nil, errors.New("invalid category entry") }
+		value, err := strconv.ParseUint(item, 10, 8)
+		if err != nil || value == 0 { return nil, errors.New("invalid category value") }
+		if _, exists := result[value]; exists { return nil, errors.New("duplicate category") }
+		result[value] = struct{}{}
+	}
+	return result, nil
+}
+
+func parseAllowedBundleVersions(raw string) (map[string]struct{}, error) {
+	if raw == "" || strings.TrimSpace(raw) != raw { return nil, errors.New("empty or padded bundle-version allowlist") }
+	result := make(map[string]struct{})
+	for _, item := range strings.Split(raw, ",") {
+		if item == "" || len(item) > 128 || strings.TrimSpace(item) != item {
+			return nil, errors.New("invalid bundle version")
+		}
+		for _, ch := range item {
+			if !(ch >= 'a' && ch <= 'z') && !(ch >= 'A' && ch <= 'Z') &&
+				!(ch >= '0' && ch <= '9') && ch != '.' && ch != '-' && ch != '_' && ch != '+' {
+				return nil, errors.New("invalid bundle version character")
+			}
+		}
+		if _, exists := result[item]; exists { return nil, errors.New("duplicate bundle version") }
+		result[item] = struct{}{}
+	}
+	return result, nil
 }
 
 func loadConfig() (config, error) {
@@ -46,9 +82,16 @@ func loadConfig() (config, error) {
 		awsRegion: strings.TrimSpace(os.Getenv("AWS_REGION")),
 		anchorTable: strings.TrimSpace(os.Getenv("ORBIT_ANCHOR_TABLE")),
 	}
+	categoryRaw := os.Getenv("ORBIT_APP_ATTEST_ALLOWED_CATEGORIES")
+	versionRaw := os.Getenv("ORBIT_APP_ATTEST_ALLOWED_BUNDLE_VERSIONS")
+	var parseErr error
+	c.allowedValidationCategories, parseErr = parseAllowedValidationCategories(categoryRaw)
+	if parseErr != nil { return c, errors.New("ORBIT_APP_ATTEST_ALLOWED_CATEGORIES must be a comma-separated list of unique integers from 1 to 255") }
+	c.allowedBundleVersions, parseErr = parseAllowedBundleVersions(versionRaw)
+	if parseErr != nil { return c, errors.New("ORBIT_APP_ATTEST_ALLOWED_BUNDLE_VERSIONS must be a comma-separated list of exact, non-empty bundle versions") }
 	if c.appID == "" || c.rootPEM == "" || c.dbPath == "" ||
 		c.tlsCert == "" || c.tlsKey == "" || c.recoveryPepper == "" || c.awsRegion == "" || c.anchorTable == "" {
-		return c, errors.New("ORBIT_APP_ID, ORBIT_APP_ATTEST_ROOT_PEM, ORBIT_DB_PATH, ORBIT_TLS_CERT, ORBIT_TLS_KEY, ORBIT_RECOVERY_PEPPER, AWS_REGION and ORBIT_ANCHOR_TABLE are required")
+		return c, errors.New("ORBIT_APP_ID, ORBIT_APP_ATTEST_ROOT_PEM, ORBIT_DB_PATH, ORBIT_TLS_CERT, ORBIT_TLS_KEY, ORBIT_RECOVERY_PEPPER, AWS_REGION, ORBIT_ANCHOR_TABLE, ORBIT_APP_ATTEST_ALLOWED_CATEGORIES and ORBIT_APP_ATTEST_ALLOWED_BUNDLE_VERSIONS are required")
 	}
 	appParts := strings.SplitN(c.appID, ".", 2)
 	if len(appParts) != 2 || len(appParts[0]) != 10 || appParts[1] == "" ||
@@ -208,7 +251,9 @@ func main() {
 	}
 	cancelAnchorCheck()
 	s := &service{db: db, appID: cfg.appID, environment: cfg.environment,
-		roots: roots, now: time.Now, recoveryPepper: []byte(cfg.recoveryPepper), anchor: anchor}
+		roots: roots, now: time.Now, recoveryPepper: []byte(cfg.recoveryPepper), anchor: anchor,
+		allowedValidationCategories: cfg.allowedValidationCategories,
+		allowedBundleVersions: cfg.allowedBundleVersions}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Ping(); err != nil {

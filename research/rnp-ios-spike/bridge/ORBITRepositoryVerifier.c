@@ -150,7 +150,6 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
     if (!orbit_packages_index_parse(index_data, index_length, &parsed_packages)) {
         return finish(result, ORBIT_REPOSITORY_VERIFY_PACKAGE_INDEX_MALFORMED);
     }
-    result->package_count = parsed_packages.count;
 
     /* Recheck the pin after the expensive signature and digest work so a
      * concurrent emergency rotation cannot leave a stale authorization. */
@@ -167,6 +166,7 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
     }
 
     result->packages = parsed_packages;
+    result->package_count = parsed_packages.count;
     parsed_packages.packages = NULL;
     parsed_packages.count = 0U;
     result->verified_index_bytes = index_length;

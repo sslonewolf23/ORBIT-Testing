@@ -253,6 +253,7 @@ int main(int argc,char **argv) {
         !orbit_repository_trust_fingerprint_allowed(&lifecycle_state,pin,199U),true);
 
 
+    uint64_t recovery_now=emergency_now+30U;
     memory_store recovery_storage;memset(&recovery_storage,0,sizeof(recovery_storage));
     orbit_trust_store_backend recovery_backend=backend_for(&recovery_storage);
     orbit_repository_trust_state persisted_recovery_state,reloaded_recovery_state;
@@ -263,21 +264,21 @@ int main(int argc,char **argv) {
         orbit_repository_trust_authorize_recovery_rotation_and_store(
             &persisted_recovery_state,repo,repo,emergency,emergency_len,
             recovery,recovery_len,recovery_fpr,candidate,candidate_len,
-            emergency_now,&recovery_backend,&recovery_decision)==ORBIT_TRUST_STORE_OK &&
+            recovery_now,&recovery_backend,&recovery_decision)==ORBIT_TRUST_STORE_OK &&
         recovery_decision==ORBIT_TRUST_ACCEPTED &&
         strcmp(persisted_recovery_state.current_fingerprint,candidate_fpr)==0 &&
         persisted_recovery_state.generation==1U,true);
     expect("persisted-emergency-pin-survives-reload",
         orbit_repository_trust_store_load(&reloaded_recovery_state,repo,&recovery_backend)==ORBIT_TRUST_STORE_OK &&
         strcmp(reloaded_recovery_state.current_fingerprint,candidate_fpr)==0 &&
-        reloaded_recovery_state.last_observed_time==emergency_now,true);
+        reloaded_recovery_state.last_observed_time==recovery_now,true);
     expect("persisted-recovery-lookup-enforces-new-key",
         orbit_repository_trust_fingerprint_allowed_and_store(
-            &persisted_recovery_state,repo,candidate_fpr,emergency_now+1U,
+            &persisted_recovery_state,repo,candidate_fpr,recovery_now+1U,
             &recovery_backend,&lifecycle_store_result),true);
     expect("persisted-recovery-rejects-compromised-old-key",
         !orbit_repository_trust_fingerprint_allowed_and_store(
-            &persisted_recovery_state,repo,trusted_fpr,emergency_now+1U,
+            &persisted_recovery_state,repo,trusted_fpr,recovery_now+1U,
             &recovery_backend,&lifecycle_store_result),true);
 
     memory_store failed_recovery_storage;memset(&failed_recovery_storage,0,sizeof(failed_recovery_storage));
@@ -292,13 +293,13 @@ int main(int argc,char **argv) {
         orbit_repository_trust_authorize_recovery_rotation_and_store(
             &failed_recovery_state,repo,repo,emergency,emergency_len,
             recovery,recovery_len,recovery_fpr,candidate,candidate_len,
-            emergency_now,&failed_recovery_backend,&failed_recovery_decision)
+            recovery_now,&failed_recovery_backend,&failed_recovery_decision)
             ==ORBIT_TRUST_STORE_IO_ERROR &&
         failed_recovery_decision==ORBIT_TRUST_ACCEPTED,true);
     expect("failed-emergency-commit-reloads-last-durable-pin",
         strcmp(failed_recovery_state.current_fingerprint,trusted_fpr)==0 &&
         failed_recovery_state.pending_fingerprint[0]=='\0' &&
-        failed_recovery_state.last_observed_time==emergency_now,true);
+        failed_recovery_state.last_observed_time==recovery_now,true);
     free(trusted_fpr);free(recovery);free(recovery_fpr);free(emergency);
     free(candidate);free(candidate_fpr);free(time_text);
     printf("decision=%s checks=%u failures=%u\n",failures?"FAIL":"PASS",checks,failures);

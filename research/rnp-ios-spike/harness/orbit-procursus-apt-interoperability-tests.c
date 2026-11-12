@@ -118,7 +118,7 @@ int main(void) {
     expect("local package payload created", write_text(path, "installed\n"));
 
     snprintf(package_dir, sizeof(package_dir), "%s/tmp-pkg", root);
-    snprintf(deb_path, sizeof(deb_path), "%s/orbit-lock-probe.deb", root);
+    snprintf(deb_path, sizeof(deb_path), "%s/var/cache/apt/archives/orbit-lock-probe.deb", root);
     pid_t build = fork();
     if (build == 0) {
         execlp("dpkg-deb", "dpkg-deb", "--build", package_dir, deb_path, (char *)NULL);
@@ -148,10 +148,12 @@ int main(void) {
     int blocked = run_apt(root, deb_path, log_path);
     expect("real apt-get is blocked while ORBIT holds native locks",
         blocked != 0 && file_contains(log_path, "lock"));
-    expect("APT reports lock contention",
+    int reports_contention =
         file_contains(log_path, "Could not get lock") ||
         file_contains(log_path, "Unable to acquire") ||
-        file_contains(log_path, "locked"));
+        file_contains(log_path, "locked");
+    expect("APT reports lock contention", reports_contention);
+    if (!reports_contention) dump_log(log_path);
 
     orbit_native_lock_code released = orbit_bootstrap_lockset_release(&lockset);
     expect("ORBIT releases native locks", released == ORBIT_NATIVE_LOCK_OK);

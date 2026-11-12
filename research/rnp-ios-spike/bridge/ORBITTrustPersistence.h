@@ -69,9 +69,9 @@ orbit_trust_store_code orbit_repository_trust_load_or_initialize(
     const char *bootstrap_primary_fingerprint,
     const orbit_trust_store_backend *backend);
 
-/* Transactional wrappers: an in-memory mutation is rolled back if durable
- * persistence fails. trust_result reports the cryptographic/policy decision;
- * the return value reports the storage commit result. */
+/* Transactional wrappers commit trust changes or reload the last durable
+ * state (invalidating memory if reload fails). trust_result reports the
+ * cryptographic/policy decision; the return value reports storage status. */
 orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
     orbit_repository_trust_state *state,
     const char *repository_id,
@@ -86,8 +86,8 @@ orbit_trust_store_code orbit_repository_trust_authorize_rotation_and_store(
     const orbit_trust_store_backend *backend,
     orbit_trust_code *trust_result);
 
-/* Production lookup: persist/advance the time floor first, then evaluate
- * the requested primary fingerprint at that exact committed timestamp. */
+/* Persisted emergency recovery: validate with the separately pinned offline
+ * root and commit the immediate, zero-grace replacement before returning. */
 orbit_trust_store_code orbit_repository_trust_authorize_recovery_rotation_and_store(
     orbit_repository_trust_state *state,
     const char *repository_id,
@@ -103,6 +103,8 @@ orbit_trust_store_code orbit_repository_trust_authorize_recovery_rotation_and_st
     const orbit_trust_store_backend *backend,
     orbit_trust_code *trust_result);
 
+/* Production lookup: persist/advance the time floor first, then evaluate
+ * the requested primary fingerprint at that exact committed timestamp. */
 bool orbit_repository_trust_fingerprint_allowed_and_store(
     orbit_repository_trust_state *state, const char *repository_id,
     const char *primary_fingerprint, uint64_t now_seconds,

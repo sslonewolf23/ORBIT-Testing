@@ -96,7 +96,6 @@ CREATE TABLE IF NOT EXISTS installations (
   created_at INTEGER NOT NULL,
   recovery_verifier BLOB
 );
-CREATE UNIQUE INDEX IF NOT EXISTS installations_recovery_verifier_unique ON installations(recovery_verifier) WHERE recovery_verifier IS NOT NULL;
 CREATE TABLE IF NOT EXISTS recovery_challenges (
   digest BLOB PRIMARY KEY NOT NULL,
   old_key_id TEXT NOT NULL,
@@ -115,6 +114,7 @@ CREATE TABLE IF NOT EXISTS key_recovery_history (
 );`
 	if _, err = db.Exec(schema); err != nil { db.Close(); return nil, err }
 	if _, err = db.Exec("ALTER TABLE installations ADD COLUMN recovery_verifier BLOB"); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") { db.Close(); return nil, err }
+	if _, err = db.Exec("CREATE UNIQUE INDEX IF NOT EXISTS installations_recovery_verifier_unique ON installations(recovery_verifier) WHERE recovery_verifier IS NOT NULL"); err != nil { db.Close(); return nil, err }
 	if err = os.Chmod(path, 0600); err != nil { db.Close(); return nil, err }
 	return db, nil
 }

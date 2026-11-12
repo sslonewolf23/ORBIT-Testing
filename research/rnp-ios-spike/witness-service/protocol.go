@@ -29,7 +29,7 @@ type registerRequest struct {
 }
 
 type recoveryChallengeRequest struct { OldKeyID string `json:"oldKeyID"`; NewKeyID string `json:"newKeyID"` }
-type recoveryRequest struct { OldKeyID string `json:"oldKeyID"`; NewKeyID string `json:"newKeyID"`; Challenge string `json:"challenge"`; Proof string `json:"proof"`; Attestation string `json:"attestation"` }
+type recoveryRequest struct { OldKeyID string `json:"oldKeyID"`; NewKeyID string `json:"newKeyID"`; Challenge string `json:"challenge"`; RecoveryCredential string `json:"recoveryCredential"`; Attestation string `json:"attestation"` }
 
 type witnessHead struct {
 	Revision  uint64

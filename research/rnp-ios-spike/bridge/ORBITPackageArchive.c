@@ -212,7 +212,7 @@ static orbit_archive_code validate_path_set(path_set *set) {
         char descendant_prefix[ORBIT_TAR_MAX_PATH + 2U];
         memcpy(descendant_prefix, record->path, length);
         descendant_prefix[length] = '/';
-        descendant_prefix[length + 1U] = '\\0';
+        descendant_prefix[length + 1U] = '\0';
         size_t descendant = path_lower_bound(set, descendant_prefix);
         if (descendant < set->count &&
             strncmp(set->records[descendant].path, descendant_prefix,

@@ -45,16 +45,18 @@ static char *read_fixture_text(const char *path) {
     memcpy(out,data,n);out[n]='\0';free(data);return out;
 }
 static bool read_counter(void *ctx,const char *repo,uint64_t *counter) {
-    (void)repo;memory_store *m=ctx;*counter=m->counter;return true;
+    (void)repo;memory_store *m=ctx;if(!m->locked)return false;*counter=m->counter;return true;
 }
 static bool advance_counter(void *ctx,const char *repo,uint64_t expected,uint64_t next) {
     (void)repo;memory_store *m=ctx;
+    if(!m->locked)return false;
     if(m->fail_advance||m->counter!=expected||next!=expected+1U)return false;
     m->counter=next;return true;
 }
 static orbit_trust_store_read_result read_record(void *ctx,const char *repo,uint8_t *out,size_t cap,
                         size_t *length,uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES]) {
     (void)repo;memory_store *m=ctx;
+    if(!m->locked)return ORBIT_TRUST_BACKEND_ERROR;
     if(m->fail_read)return ORBIT_TRUST_BACKEND_ERROR;
     if(!m->has_record)return ORBIT_TRUST_BACKEND_NOT_FOUND;
     if(m->length>cap)return ORBIT_TRUST_BACKEND_ERROR;
@@ -64,6 +66,7 @@ static orbit_trust_store_read_result read_record(void *ctx,const char *repo,uint
 static bool write_record(void *ctx,const char *repo,const uint8_t *record,size_t length,
                          const uint8_t mac[ORBIT_TRUST_STORE_MAC_BYTES]) {
     (void)repo;memory_store *m=ctx;
+    if(!m->locked)return false;
     if(m->fail_write||(m->fail_write_on_call&&m->writes_until_failure==0U))return false;
     if(m->fail_write_on_call&&m->writes_until_failure>0U)--m->writes_until_failure;
     if(length>sizeof(m->record))return false;
@@ -74,7 +77,7 @@ static bool write_record(void *ctx,const char *repo,const uint8_t *record,size_t
  * device-protected HMAC key and a hardware-backed monotonic counter. */
 static bool test_mac(void *ctx,const char *repo,const uint8_t *data,size_t length,
                      uint8_t out[ORBIT_TRUST_STORE_MAC_BYTES]) {
-    (void)ctx;uint32_t h=2166136261U;
+    memory_store *m=ctx;if(!m->locked)return false;uint32_t h=2166136261U;
     for(const unsigned char *p=(const unsigned char *)repo;*p;++p){h^=*p;h*=16777619U;}
     for(size_t i=0;i<length;++i){h^=data[i];h*=16777619U;}
     for(size_t i=0;i<ORBIT_TRUST_STORE_MAC_BYTES;++i){h^=(uint32_t)i+0x9e3779b9U;h*=16777619U;out[i]=(uint8_t)(h>>(8U*(i%4U)));}

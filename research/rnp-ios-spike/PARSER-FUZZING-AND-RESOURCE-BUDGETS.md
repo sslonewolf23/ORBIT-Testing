@@ -10,11 +10,11 @@ The decompression layer applies these ceilings before or during decoding:
 - expanded output: 256 MiB maximum
 - expansion ratio: 200:1 maximum
 - output callback chunk: 64 KiB
-- decoder working-memory ceiling: 64 MiB for XZ and Zstandard window policy
+- XZ decoder memory cap: 64 MiB; Zstandard maximum window: 64 MiB
 - decoder iterations: 16,384 maximum per stream
 - exactly one stream: truncated, concatenated, or trailing data is rejected
 
-The iteration ceiling is a deterministic work bound, not a wall-clock guarantee for an individual codec call. The host fuzz runner additionally applies a two-second per-input timeout and a 1 GiB process RSS limit.
+The iteration ceiling is a deterministic loop bound, not a wall-clock guarantee for an individual codec call; total compressed input and expanded output are independently capped. The host fuzz runner additionally applies a two-second per-input timeout and a 1 GiB process RSS limit.
 
 ## Fuzz target
 

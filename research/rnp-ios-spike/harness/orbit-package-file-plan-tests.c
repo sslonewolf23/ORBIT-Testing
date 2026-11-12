@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "ORBITPackageFilePlan.h"
+#include "ORBITPackageInstallTransaction.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -27,6 +28,18 @@ static bool write_file_at(int directory_fd, const char *name, const char *value)
     }
     bool ok = fsync(fd) == 0 && close(fd) == 0;
     return ok;
+}
+
+static orbit_filesystem_code no_op_executor(
+    void *context,
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],
+    orbit_file_journal_action action,
+    const orbit_package_file_change *change) {
+    (void)context;
+    (void)transaction_id;
+    (void)action;
+    (void)change;
+    return ORBIT_FILESYSTEM_OK;
 }
 
 static void fill_record(orbit_package_ownership_record *record,
@@ -120,6 +133,29 @@ int main(void) {
         faccessat(install_library, "old-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0 &&
         faccessat(stage_library, "new-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0 &&
         faccessat(install_library, "new-file", F_OK, AT_SYMLINK_NOFOLLOW) != 0);
+
+    /* The orchestration entry point must refuse a stale ownership database
+     * before it can plan or invoke the authenticated journal backend. */
+    const uint8_t stale_ownership[] = { 0x00U };
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 1U };
+    orbit_package_filesystem_envelope_backend unused_backend;
+    memset(&unused_backend, 0, sizeof(unused_backend));
+    orbit_package_file_plan_code orchestration_plan =
+        ORBIT_PACKAGE_FILE_PLAN_OK;
+    orbit_filesystem_code orchestration_journal = ORBIT_FILESYSTEM_OK;
+    orbit_package_install_transaction_code orchestration =
+        orbit_package_install_transaction_execute_enveloped(
+            &installed, &candidate, manifest, 2U,
+            stale_ownership, sizeof(stale_ownership), transaction_id,
+            install_fd, stage_fd, backup_fd, &unused_backend,
+            no_op_executor, NULL, &orchestration_plan, &orchestration_journal);
+    EXPECT("enveloped install rejects stale ownership before execution",
+        orchestration == ORBIT_PACKAGE_INSTALL_TRANSACTION_INVALID_ARGUMENT &&
+        orchestration_plan == ORBIT_PACKAGE_FILE_PLAN_INVALID_ARGUMENT &&
+        orchestration_journal == ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+    EXPECT("stale ownership rejection leaves installed files untouched",
+        faccessat(install_library, "old-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0 &&
+        faccessat(stage_library, "new-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0);
 
     size_t insufficient_count = 99U;
     orbit_package_ownership_snapshot insufficient_snapshot;

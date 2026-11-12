@@ -14,6 +14,12 @@ static void secure_clear(void *memory, size_t length) {
     while (length-- != 0U) *p++ = 0U;
 }
 
+void orbit_repository_verify_result_destroy(orbit_repository_verify_result *result) {
+    if(!result)return;
+    orbit_packages_index_destroy(&result->packages);
+    memset(result,0,sizeof(*result));
+}
+
 static orbit_repository_verify_code finish(
     orbit_repository_verify_result *result,
     orbit_repository_verify_code code) {
@@ -145,7 +151,6 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
         return finish(result, ORBIT_REPOSITORY_VERIFY_PACKAGE_INDEX_MALFORMED);
     }
     result->package_count = parsed_packages.count;
-    orbit_packages_index_destroy(&parsed_packages);
 
     /* Recheck the pin after the expensive signature and digest work so a
      * concurrent emergency rotation cannot leave a stale authorization. */
@@ -153,12 +158,17 @@ orbit_repository_verify_code orbit_repository_verify_packages_index(
         trust_state, repository_id, expected_primary_fingerprint, now_seconds,
         trust_backend, &result->trust_store_code);
     if (result->trust_store_code != ORBIT_TRUST_STORE_OK) {
+        orbit_packages_index_destroy(&parsed_packages);
         return finish(result, ORBIT_REPOSITORY_VERIFY_TRUST_STORE_ERROR);
     }
     if (!still_authorized) {
+        orbit_packages_index_destroy(&parsed_packages);
         return finish(result, ORBIT_REPOSITORY_VERIFY_SIGNER_NOT_TRUSTED);
     }
 
+    result->packages = parsed_packages;
+    parsed_packages.packages = NULL;
+    parsed_packages.count = 0U;
     result->verified_index_bytes = index_length;
     return finish(result, ORBIT_REPOSITORY_VERIFY_VALID);
 }

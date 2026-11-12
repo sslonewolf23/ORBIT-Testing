@@ -34,6 +34,28 @@ static bool same_volume_directories(int first_fd, int second_fd) {
            first.st_dev == second.st_dev;
 }
 
+static bool same_directory_object(int first_fd, int second_fd) {
+    struct stat first, second;
+    return first_fd >= 0 && second_fd >= 0 &&
+           fstat(first_fd, &first) == 0 && fstat(second_fd, &second) == 0 &&
+           S_ISDIR(first.st_mode) && S_ISDIR(second.st_mode) &&
+           first.st_dev == second.st_dev && first.st_ino == second.st_ino;
+}
+
+static bool aliased_component_names(
+    int target_fd, const char *target_name,
+    int staged_fd, const char *staged_name,
+    int backup_fd, const char *backup_name,
+    bool has_staged) {
+    if (same_directory_object(target_fd, backup_fd) &&
+        strcmp(target_name, backup_name) == 0) return true;
+    if (!has_staged) return false;
+    if (same_directory_object(target_fd, staged_fd) &&
+        strcmp(target_name, staged_name) == 0) return true;
+    return same_directory_object(staged_fd, backup_fd) &&
+           strcmp(staged_name, backup_name) == 0;
+}
+
 static bool all_parent_directories_same_volume(
     int target_fd, int staged_fd, int backup_fd, bool needs_staged) {
     if (!same_volume_directories(target_fd, backup_fd)) return false;
@@ -82,14 +104,9 @@ static orbit_filesystem_code verify_change(
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
         if (!valid_component(change->staged_name, sizeof(change->staged_name)) ||
-            strcmp(change->target_name, change->staged_name) == 0 ||
-            strcmp(change->target_name, change->backup_name) == 0 ||
-            strcmp(change->staged_name, change->backup_name) == 0 ||
             change->staged_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
-        if (strcmp(change->target_name, change->backup_name) == 0)
-            return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
         if (change->staged_name[0] != '\0' || !change->preimage_exists ||
             change->preimage_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
@@ -217,11 +234,10 @@ orbit_filesystem_code orbit_package_filesystem_prepare_replace(
     if (!change || !valid_component(target_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
         !valid_component(staged_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
         !valid_component(backup_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
-        strcmp(target_name, staged_name) == 0 ||
-        strcmp(target_name, backup_name) == 0 ||
-        strcmp(staged_name, backup_name) == 0 ||
         !all_parent_directories_same_volume(
-            target_parent_fd, staged_parent_fd, backup_parent_fd, true))
+            target_parent_fd, staged_parent_fd, backup_parent_fd, true) ||
+        aliased_component_names(target_parent_fd, target_name,
+            staged_parent_fd, staged_name, backup_parent_fd, backup_name, true))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
     struct stat target_parent_status;
@@ -270,7 +286,9 @@ orbit_filesystem_code orbit_package_filesystem_prepare_remove(
     if (!change || !valid_component(target_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
         !valid_component(backup_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
         strcmp(target_name, backup_name) == 0 ||
-        !same_volume_directories(target_parent_fd, backup_parent_fd))
+        !same_volume_directories(target_parent_fd, backup_parent_fd) ||
+        aliased_component_names(target_parent_fd, target_name,
+            -1, "", backup_parent_fd, backup_name, false))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
     struct stat target_parent_status;
@@ -307,7 +325,10 @@ orbit_filesystem_code orbit_package_filesystem_apply(
     if (valid != ORBIT_FILESYSTEM_OK) return valid;
     bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE;
     if (!all_parent_directories_same_volume(
-            target_parent_fd, staged_parent_fd, backup_parent_fd, needs_staged))
+            target_parent_fd, staged_parent_fd, backup_parent_fd, needs_staged) ||
+        aliased_component_names(target_parent_fd, change->target_name,
+            staged_parent_fd, change->staged_name, backup_parent_fd,
+            change->backup_name, needs_staged))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
     if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
@@ -411,7 +432,10 @@ orbit_filesystem_code orbit_package_filesystem_rollback(
     if (valid != ORBIT_FILESYSTEM_OK) return valid;
     bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE;
     if (!all_parent_directories_same_volume(
-            target_parent_fd, staged_parent_fd, backup_parent_fd, needs_staged))
+            target_parent_fd, staged_parent_fd, backup_parent_fd, needs_staged) ||
+        aliased_component_names(target_parent_fd, change->target_name,
+            staged_parent_fd, change->staged_name, backup_parent_fd,
+            change->backup_name, needs_staged))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
     if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
@@ -482,7 +506,10 @@ orbit_filesystem_code orbit_package_filesystem_finalize(
     if (valid != ORBIT_FILESYSTEM_OK) return valid;
     bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE;
     if (!all_parent_directories_same_volume(
-            target_parent_fd, staged_parent_fd, backup_parent_fd, needs_staged))
+            target_parent_fd, staged_parent_fd, backup_parent_fd, needs_staged) ||
+        aliased_component_names(target_parent_fd, change->target_name,
+            staged_parent_fd, change->staged_name, backup_parent_fd,
+            change->backup_name, needs_staged))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
     if (change->operation == ORBIT_FILESYSTEM_REMOVE) {

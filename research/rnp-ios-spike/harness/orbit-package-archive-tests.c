@@ -294,6 +294,32 @@ int main(void) {
             stream_tar, stream_tar_length, 513U, &report) == ORBIT_ARCHIVE_MALFORMED_TAR);
     stream_tar[1535U] = 0U;
 
+    uint8_t collision_tar[2560U];
+    size_t collision_tar_length = make_tar_three_entries(
+        collision_tar, "Library/ORBIT/shared.dylib", '0',
+        "Library/ORBIT/shared.dylib", '0',
+        "Library/ORBIT/other.dylib", '0');
+    EXPECT("archive rejects duplicate normalized paths",
+        orbit_package_archive_test_inspect_tar_chunks(
+            collision_tar, collision_tar_length, 509U, &report) ==
+            ORBIT_ARCHIVE_DUPLICATE_PATH);
+    collision_tar_length = make_tar_three_entries(
+        collision_tar, "Library/ORBIT/not-a-directory", '0',
+        "Library/ORBIT/not-a-directory/child", '0',
+        "Library/ORBIT/other.dylib", '0');
+    EXPECT("archive rejects regular-file ancestor collisions",
+        orbit_package_archive_test_inspect_tar_chunks(
+            collision_tar, collision_tar_length, 503U, &report) ==
+            ORBIT_ARCHIVE_UNSAFE_PATH);
+    collision_tar_length = make_tar_three_entries(
+        collision_tar, "Library/ORBIT/directory", '5',
+        "Library/ORBIT/directory/child", '0',
+        "Library/ORBIT/other.dylib", '0');
+    EXPECT("archive accepts explicit directory parents",
+        orbit_package_archive_test_inspect_tar_chunks(
+            collision_tar, collision_tar_length, 521U, &report) ==
+            ORBIT_ARCHIVE_OK);
+
     uint8_t payload[70001U];
     memset(payload, 0xA5, sizeof(payload));
     stream_tar_length = make_tar_with_payload(

@@ -21,6 +21,8 @@ typedef struct {
     orbit_package_record record;
     unsigned seen;
     char last_field[FIELD_NAME_MAX];
+    char field_names[64U][FIELD_NAME_MAX];
+    size_t field_count;
     bool has_field;
 } package_stanza;
 
@@ -134,6 +136,10 @@ static bool parse_field(package_stanza *stanza,char *line) {
     }
     char field[FIELD_NAME_MAX];
     memcpy(field,line,name_length);field[name_length]='\0';
+    if(stanza->field_count>=64U)return false;
+    for(size_t i=0U;i<stanza->field_count;++i)
+        if(strcmp(stanza->field_names[i],field)==0)return false;
+    memcpy(stanza->field_names[stanza->field_count++],field,name_length+1U);
     char *value=colon+1;
     if(*value==' ')++value;
     size_t value_length=strlen(value);

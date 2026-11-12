@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "ORBITPackageFilePlan.h"
+#include "ORBITPackageFilesystemJournal.h"
 
 #include <stdio.h>
 #include <string.h>

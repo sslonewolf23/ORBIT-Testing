@@ -788,6 +788,7 @@ int main(void) {
             base_fd, crash_recovery_id, true, &crash_backup_fd) ==
             ORBIT_FILESYSTEM_OK);
     orbit_package_file_change crash_change;
+    memset(&crash_change, 0, sizeof(crash_change));
     EXPECT("crash-recovery directory operation prepared",
         crash_backup_fd >= 0 &&
         orbit_package_filesystem_prepare_create_directory(

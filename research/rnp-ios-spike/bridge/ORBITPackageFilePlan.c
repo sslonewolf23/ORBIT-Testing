@@ -119,9 +119,14 @@ static bool first_missing_directory(
 }
 
 static bool path_is_within_directory(const char *path, const char *directory) {
+    if (!path || !directory) return false;
     size_t length = strlen(directory);
-    return path_equal(path, directory) ||
-        (strncmp(path, directory, length) == 0 && path[length] == '/');
+    if (strlen(path) < length) return false;
+    for (size_t i = 0U; i < length; ++i) {
+        if (fold_ascii((unsigned char)path[i]) !=
+            fold_ascii((unsigned char)directory[i])) return false;
+    }
+    return path[length] == '\\0' || path[length] == '/';
 }
 
 static orbit_package_file_plan_code append_create_directory(

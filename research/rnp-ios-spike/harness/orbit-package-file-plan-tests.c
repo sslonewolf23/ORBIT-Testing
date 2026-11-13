@@ -201,21 +201,29 @@ int main(void) {
         mkdirat(stage_fd, "Missing", 0700) == 0);
     int missing_stage_fd = openat(stage_fd, "Missing",
         O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    EXPECT("staged missing directory payload created",
-        missing_stage_fd >= 0 && write_file_at(missing_stage_fd, "new-file", "new"));
+    EXPECT("nested staged directory created",
+        missing_stage_fd >= 0 && mkdirat(missing_stage_fd, "Deep", 0700) == 0);
+    int deep_stage_fd = missing_stage_fd >= 0 ? openat(missing_stage_fd, "Deep",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) : -1;
+    EXPECT("staged nested directory payload created",
+        deep_stage_fd >= 0 && write_file_at(deep_stage_fd, "new-file", "new"));
+    if (deep_stage_fd >= 0) close(deep_stage_fd);
     if (missing_stage_fd >= 0) close(missing_stage_fd);
-    orbit_archive_entry missing_manifest[2];
+    orbit_archive_entry missing_manifest[3];
     memset(missing_manifest, 0, sizeof(missing_manifest));
     (void)snprintf(missing_manifest[0].path, sizeof(missing_manifest[0].path),
                    "Missing");
     missing_manifest[0].directory = true;
     (void)snprintf(missing_manifest[1].path, sizeof(missing_manifest[1].path),
-                   "Missing/new-file");
+                   "Missing/Deep");
+    missing_manifest[1].directory = true;
+    (void)snprintf(missing_manifest[2].path, sizeof(missing_manifest[2].path),
+                   "Missing/Deep/new-file");
     orbit_package_ownership_snapshot empty_installed = { NULL, 0U };
     size_t missing_count = 0U;
     orbit_package_ownership_snapshot missing_ownership;
     result = orbit_package_file_plan_build_install(
-        &empty_installed, &candidate, missing_manifest, 2U,
+        &empty_installed, &candidate, missing_manifest, 3U,
         install_fd, stage_fd, backup_fd, changes, 8U, &missing_count,
         ownership_output, 8U, &missing_ownership);
     EXPECT("missing parent plans as one transactional directory move",
@@ -226,12 +234,12 @@ int main(void) {
         strcmp(changes[0].staged_parent_path, "") == 0);
     EXPECT("directory move plan leaves both roots untouched",
         faccessat(install_fd, "Missing", F_OK, AT_SYMLINK_NOFOLLOW) != 0 &&
-        faccessat(stage_fd, "Missing/new-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0);
+        faccessat(stage_fd, "Missing/Deep/new-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0);
 
     close(stage_library);
     close(install_library);
     unlinkat(install_fd, "Library/old-file", 0);
-    unlinkat(stage_fd, "Library/new-file", 0);\n    int cleanup_missing = openat(stage_fd, "Missing", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n    if (cleanup_missing >= 0) { (void)unlinkat(cleanup_missing, "new-file", 0); close(cleanup_missing); }\n    (void)unlinkat(stage_fd, "Missing", AT_REMOVEDIR);
+    unlinkat(stage_fd, "Library/new-file", 0);\n    int cleanup_missing = openat(stage_fd, "Missing", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n    if (cleanup_missing >= 0) {\n        int cleanup_deep = openat(cleanup_missing, "Deep", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n        if (cleanup_deep >= 0) { (void)unlinkat(cleanup_deep, "new-file", 0); close(cleanup_deep); }\n        (void)unlinkat(cleanup_missing, "Deep", AT_REMOVEDIR); close(cleanup_missing);\n    }\n    (void)unlinkat(stage_fd, "Missing", AT_REMOVEDIR);
     unlinkat(install_fd, "Library", AT_REMOVEDIR);
     unlinkat(stage_fd, "Library", AT_REMOVEDIR);
     close(backup_fd);

@@ -326,7 +326,8 @@ static bool record_is_valid(
     if (unique) {
         size_t staged_count = 0U;
         for (size_t i = 0U; i < record->change_count; ++i) {
-            if (record->changes[i].operation == ORBIT_FILESYSTEM_REPLACE)
+            if (record->changes[i].operation == ORBIT_FILESYSTEM_REPLACE ||
+                record->changes[i].operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY)
                 indices[staged_count++] = i;
         }
         sort_change_indices(indices, staged_count, record, CHANGE_KEY_STAGED);

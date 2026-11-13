@@ -661,8 +661,6 @@ int main(void) {
         orbit_package_filesystem_set_parent_paths(
             &directory_commit_change, "", "") == ORBIT_FILESYSTEM_OK);
     if (directory_commit_backup_fd >= 0) close(directory_commit_backup_fd);
-    memcpy(directory_executor.transaction_id, directory_commit_id,
-           sizeof(directory_commit_id));
     EXPECT("journal commits staged directory subtree",
         orbit_package_filesystem_journal_execute(
             &backend, directory_commit_id, &directory_commit_change, 1U,

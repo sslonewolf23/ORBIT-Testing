@@ -237,6 +237,40 @@ int main(void) {
         faccessat(install_fd, "Missing", F_OK, AT_SYMLINK_NOFOLLOW) != 0 &&
         faccessat(stage_fd, "Missing/Deep/new-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0);
 
+    /* Existing install parent + missing child: the planner must move only
+     * the new child subtree, not replace or disturb the existing parent. */
+    EXPECT("existing-parent staged child created",
+        mkdirat(stage_library, "NewChild", 0700) == 0);
+    int child_stage_fd = openat(stage_library, "NewChild",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("existing-parent staged child payload created",
+        child_stage_fd >= 0 && write_file_at(child_stage_fd, "payload", "child"));
+    if (child_stage_fd >= 0) close(child_stage_fd);
+    orbit_archive_entry child_manifest[2];
+    memset(child_manifest, 0, sizeof(child_manifest));
+    (void)snprintf(child_manifest[0].path, sizeof(child_manifest[0].path),
+                   "Library/NewChild");
+    child_manifest[0].directory = true;
+    (void)snprintf(child_manifest[1].path, sizeof(child_manifest[1].path),
+                   "Library/NewChild/payload");
+    size_t child_change_count = 0U;
+    orbit_package_ownership_snapshot child_ownership;
+    result = orbit_package_file_plan_build_install(
+        &empty_installed, &candidate, child_manifest, 2U,
+        install_fd, stage_fd, backup_fd, changes, 8U, &child_change_count,
+        ownership_output, 8U, &child_ownership);
+    EXPECT("existing parent plans only the missing child directory",
+        result == ORBIT_PACKAGE_FILE_PLAN_OK && child_change_count == 1U &&
+        changes[0].operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY &&
+        strcmp(changes[0].target_parent_path, "Library") == 0 &&
+        strcmp(changes[0].target_name, "NewChild") == 0 &&
+        strcmp(changes[0].staged_parent_path, "Library") == 0);
+    EXPECT("existing install parent remains untouched during planning",
+        fstatat(install_fd, "Library", &(struct stat){0},
+                AT_SYMLINK_NOFOLLOW) == 0 &&
+        faccessat(stage_library, "NewChild/payload", F_OK,
+                  AT_SYMLINK_NOFOLLOW) == 0);
+
     close(stage_library);
     close(install_library);
     unlinkat(install_fd, "Library/old-file", 0);

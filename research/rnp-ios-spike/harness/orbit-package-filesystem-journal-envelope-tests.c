@@ -140,11 +140,6 @@ static bool memory_initialize(memory_envelope *memory) {
     return true;
 }
 
-static bool unlink_if_present_at(int directory_fd, const char *name) {
-    if (unlinkat(directory_fd, name, 0) == 0) return true;
-    return errno == ENOENT;
-}
-
 static bool write_file_at(int directory_fd, const char *name, const char *value) {
     int fd = openat(directory_fd, name,
         O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);

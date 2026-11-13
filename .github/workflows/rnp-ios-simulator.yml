@@ -97,7 +97,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          "$RUNNER_TEMP/vcpkg/vcpkg" install "botan[zlib]" json-c zlib bzip2 \
+          "$RUNNER_TEMP/vcpkg/vcpkg" install "botan[zlib]" json-c zlib bzip2 liblzma zstd \
             --triplet arm64-ios-simulator \
             --overlay-triplets="$RUNNER_TEMP/ios-triplets"
           echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg/installed" >> "$GITHUB_ENV"

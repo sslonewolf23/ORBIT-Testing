@@ -138,7 +138,7 @@ orbit_journal_codec_code orbit_package_filesystem_journal_encode(
     uint8_t *cursor = output;
     memcpy(cursor, codec_magic, sizeof(codec_magic));
     cursor += sizeof(codec_magic);
-    *cursor++ = 1U;
+    *cursor++ = 2U;
     write_u32(cursor, record->phase);
     cursor += 4U;
     memcpy(cursor, record->transaction_id, ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES);
@@ -190,7 +190,7 @@ orbit_journal_codec_code orbit_package_filesystem_journal_decode(
     if (payload_length < CODEC_HEADER_SIZE ||
         payload_length > ORBIT_FILESYSTEM_JOURNAL_CODEC_MAX_PAYLOAD ||
         memcmp(payload, codec_magic, sizeof(codec_magic)) != 0 ||
-        payload[4] != 1U)
+        payload[4] != 2U)
         return ORBIT_JOURNAL_CODEC_MALFORMED;
 
     const uint8_t *cursor = payload + 5U;

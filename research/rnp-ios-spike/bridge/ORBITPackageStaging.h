@@ -26,6 +26,7 @@ typedef struct {
     char active_file_path[ORBIT_TAR_MAX_PATH + 1U];
     uint64_t active_file_size;
     uint64_t active_file_written;
+    uint32_t active_file_mode;
     bool complete;
     bool failed;
 } orbit_package_staging;

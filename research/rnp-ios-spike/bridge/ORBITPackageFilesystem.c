@@ -795,19 +795,6 @@ orbit_filesystem_code orbit_package_filesystem_apply(
         if (anchored != ORBIT_FILESYSTEM_OK) return anchored;
     }
 
-    if (change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY) {
-        file_identity_result target = directory_identity_at(
-            target_parent_fd, change->target_name,
-            change->staged_device, change->staged_inode);
-        file_identity_result staged = directory_identity_at(
-            staged_parent_fd, change->staged_name,
-            change->staged_device, change->staged_inode);
-        return target == FILE_ID_MATCH && staged == FILE_ID_MISSING ?
-            ORBIT_FILESYSTEM_OK :
-            (target == FILE_ID_ERROR || staged == FILE_ID_ERROR ?
-                ORBIT_FILESYSTEM_IO_ERROR : ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
-    }
-
     if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
         file_identity_result target = file_identity_at(
             target_parent_fd, change->target_name,
@@ -1095,6 +1082,19 @@ orbit_filesystem_code orbit_package_filesystem_finalize(
             staged_parent_fd, change->staged_name, backup_parent_fd,
             change->backup_name, needs_staged))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    if (change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY) {
+        file_identity_result target = directory_identity_at(
+            target_parent_fd, change->target_name,
+            change->staged_device, change->staged_inode);
+        file_identity_result staged = directory_identity_at(
+            staged_parent_fd, change->staged_name,
+            change->staged_device, change->staged_inode);
+        return target == FILE_ID_MATCH && staged == FILE_ID_MISSING ?
+            ORBIT_FILESYSTEM_OK :
+            (target == FILE_ID_ERROR || staged == FILE_ID_ERROR ?
+                ORBIT_FILESYSTEM_IO_ERROR : ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    }
 
     if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
         file_identity_result target = file_identity_at(

@@ -156,6 +156,7 @@ jobs:
           for source in \
             ORBITPackageArchive \
             ORBITPackageDecompress \
+            ORBITPackageStaging \
             ORBITPackageFilesystem \
             ORBITPackageFilesystemJournalCodec \
             ORBITPackageOwnership \
@@ -271,6 +272,7 @@ jobs:
             "$RUNNER_TEMP/ORBITPackageTransactionEnvelope-ios.o" \
             "$RUNNER_TEMP/ORBITPackageArchive-ios.o" \
             "$RUNNER_TEMP/ORBITPackageDecompress-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageStaging-ios.o" \
             "$RUNNER_TEMP/ORBITPackageFilesystem-ios.o" \
             "$RUNNER_TEMP/ORBITPackageFilesystemJournalCodec-ios.o" \
             "$RUNNER_TEMP/ORBITPackageOwnership-ios.o" \

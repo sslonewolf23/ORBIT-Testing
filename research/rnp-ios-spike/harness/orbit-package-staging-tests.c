@@ -191,6 +191,14 @@ int main(void) {
     EXPECT("zero-length stage discarded",
         orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK);
 
+    EXPECT("group/world-writable staging base is rejected",
+        chmod(base_path, 0777) == 0 &&
+        orbit_package_staging_begin(base_fd, "stage-untrusted", &staging) ==
+            ORBIT_STAGING_INVALID_ARGUMENT &&
+        !path_exists_at(base_fd, "stage-untrusted"));
+    EXPECT("trusted staging base permissions restored",
+        chmod(base_path, 0700) == 0);
+
     EXPECT("unsafe staging name rejected",
         orbit_package_staging_begin(base_fd, "../outside", &staging) ==
             ORBIT_STAGING_UNSAFE_PATH);

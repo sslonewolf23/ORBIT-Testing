@@ -638,6 +638,92 @@ int main(void) {
         orbit_package_filesystem_journal_cleanup_backup_directory(
             &backend, base_fd, directory_rollback_id) == ORBIT_FILESYSTEM_OK);
 
+    /* Interrupt rollback after the directory operation has applied. Recovery
+     * runs with a fresh executor context, as it would after process restart. */
+    uint8_t rollback_crash_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xD5U };
+    int rollback_crash_backup_fd = -1;
+    EXPECT("rollback-crash staged tree created",
+        mkdirat(stage_fd, "rollback-crash-tree", 0700) == 0);
+    recover_tree_fd = openat(stage_fd, "rollback-crash-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("rollback-crash payload created",
+        recover_tree_fd >= 0 && write_file_at(recover_tree_fd, "payload", "rollback"));
+    if (recover_tree_fd >= 0) close(recover_tree_fd);
+    EXPECT("rollback-crash later staged file created",
+        write_file_at(stage_fd, "rollback-crash-stale", "original"));
+    EXPECT("rollback-crash backup directory created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, rollback_crash_id, true,
+            &rollback_crash_backup_fd) == ORBIT_FILESYSTEM_OK);
+    orbit_package_file_change rollback_crash_changes[2];
+    EXPECT("rollback-crash directory operation prepared",
+        rollback_crash_backup_fd >= 0 &&
+        orbit_package_filesystem_prepare_create_directory(
+            target_fd, "rollback-crash-tree", stage_fd, "rollback-crash-tree",
+            rollback_crash_backup_fd, "unused-rollback-crash-backup",
+            &rollback_crash_changes[0]) == ORBIT_FILESYSTEM_OK &&
+        orbit_package_filesystem_set_parent_paths(
+            &rollback_crash_changes[0], "", "") == ORBIT_FILESYSTEM_OK);
+    EXPECT("rollback-crash later replacement prepared",
+        rollback_crash_backup_fd >= 0 &&
+        orbit_package_filesystem_prepare_replace(
+            target_fd, "rollback-crash-target", stage_fd,
+            "rollback-crash-stale", rollback_crash_backup_fd,
+            "rollback-crash-backup", &rollback_crash_changes[1]) ==
+            ORBIT_FILESYSTEM_OK &&
+        orbit_package_filesystem_set_parent_paths(
+            &rollback_crash_changes[1], "", "") == ORBIT_FILESYSTEM_OK);
+    filesystem_executor rollback_crash_executor = {
+        target_fd, stage_fd, rollback_crash_backup_fd,
+        0U, 2U, false, true, false
+    };
+    EXPECT("failed later apply plus interrupted directory rollback retains journal",
+        orbit_package_filesystem_journal_execute(
+            &backend, rollback_crash_id, rollback_crash_changes, 2U,
+            execute_change, &rollback_crash_executor) ==
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("rollback interruption leaves durable rolling-back record",
+        memory.record != NULL &&
+        memory.record->phase == ORBIT_FILE_JOURNAL_ROLLING_BACK);
+    EXPECT("directory remains installed while rollback is interrupted",
+        exists_at(target_fd, "rollback-crash-tree") &&
+        !exists_at(stage_fd, "rollback-crash-tree"));
+    if (rollback_crash_backup_fd >= 0) close(rollback_crash_backup_fd);
+    filesystem_executor restarted_rollback_executor = {
+        target_fd, stage_fd, -1, 0U, 0U, false, false, false
+    };
+    /* The flat harness executor uses the already-open backup directory. Reopen
+     * it to model descriptor reconstruction by the restarted process. */
+    EXPECT("rollback-crash backup directory reopens after restart",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, rollback_crash_id, false,
+            &rollback_crash_backup_fd) == ORBIT_FILESYSTEM_OK);
+    restarted_rollback_executor.backup_fd = rollback_crash_backup_fd;
+    EXPECT("restart recovery completes interrupted directory rollback",
+        rollback_crash_backup_fd >= 0 &&
+        orbit_package_filesystem_journal_recover(
+            &backend, execute_change, &restarted_rollback_executor) ==
+            ORBIT_FILESYSTEM_OK);
+    EXPECT("restart recovery restores directory and payload to staging",
+        !exists_at(target_fd, "rollback-crash-tree") &&
+        exists_at(stage_fd, "rollback-crash-tree"));
+    recover_tree_fd = openat(stage_fd, "rollback-crash-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("restart recovery preserves rollback payload",
+        recover_tree_fd >= 0 &&
+        file_equals_at(recover_tree_fd, "payload", "rollback"));
+    if (recover_tree_fd >= 0) {
+        (void)unlinkat(recover_tree_fd, "payload", 0);
+        close(recover_tree_fd);
+    }
+    (void)unlinkat(stage_fd, "rollback-crash-tree", AT_REMOVEDIR);
+    (void)unlinkat(stage_fd, "rollback-crash-stale", 0);
+    if (rollback_crash_backup_fd >= 0) close(rollback_crash_backup_fd);
+    EXPECT("restart recovery leaves no active journal and permits backup cleanup",
+        memory.record == NULL &&
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, rollback_crash_id) == ORBIT_FILESYSTEM_OK);
+
     EXPECT("successful directory transaction staged tree created",
         mkdirat(stage_fd, "committed-tree", 0700) == 0);
     recover_tree_fd = openat(stage_fd, "committed-tree",

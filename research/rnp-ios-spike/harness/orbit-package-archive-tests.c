@@ -294,7 +294,7 @@ int main(void) {
             stream_tar, stream_tar_length, 513U, &report) == ORBIT_ARCHIVE_MALFORMED_TAR);
     stream_tar[1535U] = 0U;
 
-    uint8_t collision_tar[2560U];
+    /* Reuse the earlier collision_tar buffer for the additional cases. */
     size_t collision_tar_length = make_tar_three_entries(
         collision_tar, "Library/ORBIT/shared.dylib", '0',
         "Library/ORBIT/shared.dylib", '0',

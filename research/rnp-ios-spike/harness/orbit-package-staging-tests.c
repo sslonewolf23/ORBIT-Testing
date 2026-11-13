@@ -119,7 +119,8 @@ int main(void) {
             base_fd, "stage-good", deb, deb_length, &staging,
             &staged_report, &staged_archive_code) == ORBIT_STAGING_OK &&
         staged_archive_code == ORBIT_ARCHIVE_OK &&
-        staged_report.entries == 1U);
+        staged_report.entries == 2U && staged_report.saw_data_archive &&
+        staged_report.regular_file_bytes == sizeof(payload));
 
     int library_fd = openat(staging.staging_directory_fd, "Library",
         O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);

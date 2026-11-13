@@ -63,11 +63,31 @@ The archive regression harness also covers duplicate normalized paths, regular-f
 
 The host staging harness covers normal payloads, empty files, malformed archive preflight with no stage creation, symlink parent refusal, and safe discard. The host workflow is the authoritative execution gate; a source change or queued run is not evidence of a passing test.
 
+## Ownership-first install orchestration
+
+`orbit_package_install_transaction_execute_deb_enveloped` now composes the read-only archive inspector, ownership snapshot validation, private staging, file planner, and authenticated filesystem journal for a complete .deb install attempt.
+
+The orchestration order is deliberately fail-closed:
+
+1. Encode the caller's installed ownership snapshot and require byte-for-byte equality with the committed ownership payload before doing archive work.
+2. Verify the install root and staging base are directories on the same filesystem.
+3. Inspect the complete .deb and collect the data manifest without creating a staging tree.
+4. Build/validate the candidate ownership snapshot. A foreign package manager's ownership conflict aborts before extraction.
+5. Extract validated regular-file payloads into a private staging child.
+6. Execute the file plan through the authenticated journal, which persists the APPLYING state before live filesystem mutations and supports rollback/recovery.
+
+The caller must hold ORBIT's cross-process transaction lock for the entire operation and through recovery. The caller must retain the staging object until the transaction is committed or recovery has completed, then explicitly discard it. A journal failure does not cause the orchestrator to delete staging data that recovery may still need. The staging base descriptor must refer to a trusted, owner-controlled directory; the caller is responsible for establishing that trust. Maintainer scripts are not executed.
+
+The current file planner requires destination parent directories to exist already in the install root. It does not yet create missing destination directories transactionally; missing parents fail closed. This is a known limitation, not a reason to create directories outside the journal.
+
+The new orchestration regression harness verifies that a candidate colliding with a path owned by another package manager is rejected before a staging directory is created. The separate journal-envelope harness exercises transaction apply, rollback recovery, committed-finalization recovery, write-ahead-store failure, and staged package install/removal flows. The host workflow is the authoritative execution gate; a source change or queued run is not evidence of a passing test.
+
 ## Remaining work
 
-1. Verify the host sanitizer/fuzz and iOS cross-compile runs on the current branch.
-2. Expand staging tests for mode sanitization, write failures, cleanup interruption, and descriptor/path race conditions.
-3. Integrate ownership preflight, private staging, the file planner, and durable transaction journal as one locked package operation.
-4. Capture and verify exact preimages, test crash recovery across every stage boundary, and preserve all files owned by other package managers.
+1. Complete current host sanitizer and iOS simulator CI runs, including the new orchestration harness.
+2. Add a positive-path .deb orchestration test that covers archive inspection through private extraction and journal commit, plus failure injection at staging and journal boundaries.
+3. Add transactional destination-directory creation or keep the existing-parent limitation explicit and tested.
+4. Tighten staging-base trust checks and exercise mode sanitization, write failures, cleanup interruption, and descriptor/path race conditions.
+5. Run broader parser fuzzing and device-specific validation after the production helper and App Attest integration exist.
 
-Installation must remain disabled. This component is still inspection-only and is not a production extractor.
+Installation must remain disabled. These APIs are research-stage components and are not yet integrated into a production package manager or privileged helper. They must not remove, overwrite, or modify files belonging to other package managers.

@@ -11,6 +11,9 @@
 #include <sys/file.h>
 #include <sys/types.h>
 #include <unistd.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#endif
 
 typedef enum {
     FILE_ID_ERROR = -1,
@@ -251,6 +254,87 @@ static orbit_filesystem_code remove_staged_anchor_after_commit(
            ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
 }
 
+
+static file_identity_result directory_identity_at(
+    int directory_fd, const char *name, uint64_t device, uint64_t inode) {
+    struct stat status;
+    if (fstatat(directory_fd, name, &status, AT_SYMLINK_NOFOLLOW) < 0)
+        return errno == ENOENT ? FILE_ID_MISSING : FILE_ID_ERROR;
+    if (!S_ISDIR(status.st_mode)) return FILE_ID_OTHER;
+    return (uint64_t)status.st_dev == device &&
+           (uint64_t)status.st_ino == inode ? FILE_ID_MATCH : FILE_ID_OTHER;
+}
+
+static int rename_directory_noreplace(
+    int source_fd, const char *source_name,
+    int target_fd, const char *target_name) {
+#if defined(__APPLE__)
+#ifndef RENAME_EXCL
+#define RENAME_EXCL 0x00000004
+#endif
+    return renameatx_np(source_fd, source_name, target_fd, target_name,
+                        RENAME_EXCL);
+#elif defined(__linux__) && defined(SYS_renameat2)
+#ifndef RENAME_NOREPLACE
+#define RENAME_NOREPLACE (1U << 0)
+#endif
+    return (int)syscall(SYS_renameat2, source_fd, source_name,
+                        target_fd, target_name, RENAME_NOREPLACE);
+#else
+    (void)source_fd; (void)source_name; (void)target_fd; (void)target_name;
+    errno = ENOTSUP;
+    return -1;
+#endif
+}
+
+static orbit_filesystem_code apply_create_directory(
+    int target_parent_fd, int staged_parent_fd,
+    const orbit_package_file_change *change) {
+    file_identity_result target = directory_identity_at(
+        target_parent_fd, change->target_name,
+        change->staged_device, change->staged_inode);
+    file_identity_result staged = directory_identity_at(
+        staged_parent_fd, change->staged_name,
+        change->staged_device, change->staged_inode);
+    if (target == FILE_ID_MATCH && staged == FILE_ID_MISSING)
+        return ORBIT_FILESYSTEM_OK;
+    if (target == FILE_ID_ERROR || staged == FILE_ID_ERROR)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    if (target != FILE_ID_MISSING || staged != FILE_ID_MATCH)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    if (rename_directory_noreplace(staged_parent_fd, change->staged_name,
+                                   target_parent_fd, change->target_name) < 0)
+        return errno == EEXIST ? ORBIT_FILESYSTEM_CONFLICT :
+               ORBIT_FILESYSTEM_IO_ERROR;
+    if (fsync(staged_parent_fd) < 0 || fsync(target_parent_fd) < 0)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    return ORBIT_FILESYSTEM_OK;
+}
+
+static orbit_filesystem_code rollback_create_directory(
+    int target_parent_fd, int staged_parent_fd,
+    const orbit_package_file_change *change) {
+    file_identity_result target = directory_identity_at(
+        target_parent_fd, change->target_name,
+        change->staged_device, change->staged_inode);
+    file_identity_result staged = directory_identity_at(
+        staged_parent_fd, change->staged_name,
+        change->staged_device, change->staged_inode);
+    if (target == FILE_ID_MISSING && staged == FILE_ID_MATCH)
+        return ORBIT_FILESYSTEM_OK;
+    if (target == FILE_ID_ERROR || staged == FILE_ID_ERROR)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    if (target != FILE_ID_MATCH || staged != FILE_ID_MISSING)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    if (rename_directory_noreplace(target_parent_fd, change->target_name,
+                                   staged_parent_fd, change->staged_name) < 0)
+        return errno == EEXIST ? ORBIT_FILESYSTEM_CONFLICT :
+               ORBIT_FILESYSTEM_IO_ERROR;
+    if (fsync(target_parent_fd) < 0 || fsync(staged_parent_fd) < 0)
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    return ORBIT_FILESYSTEM_OK;
+}
+
 static orbit_filesystem_code verify_change(
     const orbit_package_file_change *change) {
     if (!change || change->version != ORBIT_FILESYSTEM_CHANGE_VERSION ||
@@ -273,6 +357,13 @@ static orbit_filesystem_code verify_change(
                                       sizeof(change->staged_parent_path)) ||
             change->staged_parent_path[0] != '\0' ||
             !change->preimage_exists || change->preimage_inode == 0U)
+            return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    } else if (change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY) {
+        if (!valid_stored_component(change->staged_name, sizeof(change->staged_name)) ||
+            !valid_stored_parent_path(change->staged_parent_path,
+                                      sizeof(change->staged_parent_path)) ||
+            change->preimage_exists || change->staged_inode == 0U ||
+            change->preimage_device != 0U || change->preimage_inode != 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else {
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
@@ -478,7 +569,8 @@ orbit_filesystem_code orbit_package_filesystem_set_parent_paths(
     if (!valid_parent_path(target_parent_relative_path,
                            ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY))
         return ORBIT_FILESYSTEM_UNSAFE_PATH;
-    if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
+    if (change->operation == ORBIT_FILESYSTEM_REPLACE ||
+        change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY) {
         if (!valid_parent_path(staged_parent_relative_path,
                                ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY))
             return ORBIT_FILESYSTEM_UNSAFE_PATH;
@@ -490,7 +582,8 @@ orbit_filesystem_code orbit_package_filesystem_set_parent_paths(
     memset(change->staged_parent_path, 0, sizeof(change->staged_parent_path));
     memcpy(change->target_parent_path, target_parent_relative_path,
            strlen(target_parent_relative_path) + 1U);
-    if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
+    if (change->operation == ORBIT_FILESYSTEM_REPLACE ||
+        change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY) {
         memcpy(change->staged_parent_path, staged_parent_relative_path,
                strlen(staged_parent_relative_path) + 1U);
     }
@@ -604,6 +697,42 @@ orbit_filesystem_code orbit_package_filesystem_prepare_replace(
     return ORBIT_FILESYSTEM_OK;
 }
 
+orbit_filesystem_code orbit_package_filesystem_prepare_create_directory(
+    int target_parent_fd, const char *target_name,
+    int staged_parent_fd, const char *staged_name,
+    int backup_parent_fd, const char *backup_name,
+    orbit_package_file_change *change) {
+    if (!change || !valid_component(target_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
+        !valid_component(staged_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
+        !valid_component(backup_name, ORBIT_FILESYSTEM_COMPONENT_CAPACITY) ||
+        !all_parent_directories_same_volume(target_parent_fd, staged_parent_fd,
+                                              backup_parent_fd, true) ||
+        aliased_component_names(target_parent_fd, target_name,
+            staged_parent_fd, staged_name, backup_parent_fd, backup_name, true))
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    struct stat target_parent_status, staged_status;
+    if (fstat(target_parent_fd, &target_parent_status) < 0 ||
+        fstatat(target_parent_fd, target_name, &staged_status,
+                AT_SYMLINK_NOFOLLOW) == 0 || errno != ENOENT)
+        return ORBIT_FILESYSTEM_CONFLICT;
+    if (fstatat(staged_parent_fd, staged_name, &staged_status,
+                AT_SYMLINK_NOFOLLOW) < 0)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    if (!S_ISDIR(staged_status.st_mode) ||
+        staged_status.st_dev != target_parent_status.st_dev ||
+        !backup_is_missing(backup_parent_fd, backup_name))
+        return ORBIT_FILESYSTEM_CONFLICT;
+    memset(change, 0, sizeof(*change));
+    change->version = ORBIT_FILESYSTEM_CHANGE_VERSION;
+    change->operation = ORBIT_FILESYSTEM_CREATE_DIRECTORY;
+    memcpy(change->target_name, target_name, strlen(target_name) + 1U);
+    memcpy(change->staged_name, staged_name, strlen(staged_name) + 1U);
+    memcpy(change->backup_name, backup_name, strlen(backup_name) + 1U);
+    change->staged_device = (uint64_t)staged_status.st_dev;
+    change->staged_inode = (uint64_t)staged_status.st_ino;
+    return ORBIT_FILESYSTEM_OK;
+}
+
 orbit_filesystem_code orbit_package_filesystem_prepare_remove(
     int target_parent_fd, const char *target_name,
     int backup_parent_fd, const char *backup_name,
@@ -655,10 +784,26 @@ orbit_filesystem_code orbit_package_filesystem_apply(
             change->backup_name, needs_staged))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
+    if (change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY)
+        return apply_create_directory(target_parent_fd, staged_parent_fd, change);
+
     if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
         orbit_filesystem_code anchored = ensure_staged_anchor(
             staged_parent_fd, backup_parent_fd, change);
         if (anchored != ORBIT_FILESYSTEM_OK) return anchored;
+    }
+
+    if (change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY) {
+        file_identity_result target = directory_identity_at(
+            target_parent_fd, change->target_name,
+            change->staged_device, change->staged_inode);
+        file_identity_result staged = directory_identity_at(
+            staged_parent_fd, change->staged_name,
+            change->staged_device, change->staged_inode);
+        return target == FILE_ID_MATCH && staged == FILE_ID_MISSING ?
+            ORBIT_FILESYSTEM_OK :
+            (target == FILE_ID_ERROR || staged == FILE_ID_ERROR ?
+                ORBIT_FILESYSTEM_IO_ERROR : ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
     }
 
     if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
@@ -795,6 +940,9 @@ orbit_filesystem_code orbit_package_filesystem_rollback(
             staged_parent_fd, change->staged_name, backup_parent_fd,
             change->backup_name, needs_staged))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+
+    if (change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY)
+        return rollback_create_directory(target_parent_fd, staged_parent_fd, change);
 
     if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
         char anchor[ORBIT_FILESYSTEM_COMPONENT_CAPACITY];

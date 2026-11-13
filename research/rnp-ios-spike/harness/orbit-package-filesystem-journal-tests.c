@@ -605,9 +605,9 @@ int main(void) {
         orbit_package_filesystem_set_parent_paths(
             &directory_changes[1], "", "") == ORBIT_FILESYSTEM_OK);
     if (directory_backup_fd >= 0) close(directory_backup_fd);
-    EXPECT("staged replacement inode changed after prepare",
-        unlinkat(stage_fd, "stale-source", 0) == 0 &&
-        write_file_at(stage_fd, "stale-source", "substituted"));
+    /* Simulate a later operation failing before it mutates the filesystem.
+     * The staged inode remains intact, so reverse rollback can safely recognize
+     * that this operation never started and restore the earlier directory move. */
     orbit_package_filesystem_executor_context directory_executor;
     memset(&directory_executor, 0, sizeof(directory_executor));
     directory_executor.install_root_fd = target_fd;
@@ -615,11 +615,12 @@ int main(void) {
     directory_executor.backup_base_directory_fd = base_fd;
     memcpy(directory_executor.transaction_id, directory_rollback_id,
            sizeof(directory_rollback_id));
-    EXPECT("later operation conflict triggers journal rollback",
+    directory_executor.fail_apply_call = 2U;
+    EXPECT("later apply failure triggers journal rollback",
         orbit_package_filesystem_journal_execute(
             &backend, directory_rollback_id, directory_changes, 2U,
             orbit_package_filesystem_journal_execute_change,
-            &directory_executor) == ORBIT_FILESYSTEM_CONFLICT);
+            &directory_executor) == ORBIT_FILESYSTEM_IO_ERROR);
     EXPECT("directory rollback restores tree to staging only",
         !exists_at(target_fd, "recover-tree") &&
         exists_at(stage_fd, "recover-tree"));

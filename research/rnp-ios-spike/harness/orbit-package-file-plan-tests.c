@@ -13,7 +13,8 @@
 static unsigned checks;
 static unsigned failures;
 #define EXPECT(label, condition) do { ++checks; if (!(condition)) { ++failures; \
-    fprintf(stderr, "FAIL: %s\n", label); } } while (0)
+    fprintf(stderr, "FAIL: %s
+", label); } } while (0)
 
 static bool write_file_at(int directory_fd, const char *name, const char *value) {
     int fd = openat(directory_fd, name,
@@ -239,7 +240,14 @@ int main(void) {
     close(stage_library);
     close(install_library);
     unlinkat(install_fd, "Library/old-file", 0);
-    unlinkat(stage_fd, "Library/new-file", 0);\n    int cleanup_missing = openat(stage_fd, "Missing", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n    if (cleanup_missing >= 0) {\n        int cleanup_deep = openat(cleanup_missing, "Deep", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n        if (cleanup_deep >= 0) { (void)unlinkat(cleanup_deep, "new-file", 0); close(cleanup_deep); }\n        (void)unlinkat(cleanup_missing, "Deep", AT_REMOVEDIR); close(cleanup_missing);\n    }\n    (void)unlinkat(stage_fd, "Missing", AT_REMOVEDIR);
+    unlinkat(stage_fd, "Library/new-file", 0);
+    int cleanup_missing = openat(stage_fd, "Missing", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (cleanup_missing >= 0) {
+        int cleanup_deep = openat(cleanup_missing, "Deep", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (cleanup_deep >= 0) { (void)unlinkat(cleanup_deep, "new-file", 0); close(cleanup_deep); }
+        (void)unlinkat(cleanup_missing, "Deep", AT_REMOVEDIR); close(cleanup_missing);
+    }
+    (void)unlinkat(stage_fd, "Missing", AT_REMOVEDIR);
     unlinkat(install_fd, "Library", AT_REMOVEDIR);
     unlinkat(stage_fd, "Library", AT_REMOVEDIR);
     close(backup_fd);
@@ -251,7 +259,9 @@ int main(void) {
     close(root_fd);
     rmdir(root_path);
 
-    printf("package_file_plan_checks=%u failures=%u\ndecision=%s\n",
+    printf("package_file_plan_checks=%u failures=%u
+decision=%s
+",
         checks, failures, failures == 0U ? "PASS" : "FAIL");
     return failures == 0U ? EXIT_SUCCESS : EXIT_FAILURE;
 }

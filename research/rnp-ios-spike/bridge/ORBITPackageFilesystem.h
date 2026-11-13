@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define ORBIT_FILESYSTEM_COMPONENT_CAPACITY 64U
-#define ORBIT_FILESYSTEM_CHANGE_VERSION 2U
+#define ORBIT_FILESYSTEM_CHANGE_VERSION 3U
 #define ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY 1025U
 #define ORBIT_FILESYSTEM_LOCK_NAME ".orbit-package-transaction.lock"
 
@@ -23,7 +23,8 @@ typedef enum {
 
 typedef enum {
     ORBIT_FILESYSTEM_REPLACE = 1,
-    ORBIT_FILESYSTEM_REMOVE = 2
+    ORBIT_FILESYSTEM_REMOVE = 2,
+    ORBIT_FILESYSTEM_CREATE_DIRECTORY = 3
 } orbit_filesystem_operation;
 
 /* Fixed-size recovery record. Persist this record durably before apply().
@@ -63,6 +64,12 @@ orbit_filesystem_code orbit_package_filesystem_validate_change(
     const orbit_package_file_change *change);
 
 orbit_filesystem_code orbit_package_filesystem_prepare_replace(
+    int target_parent_fd, const char *target_name,
+    int staged_parent_fd, const char *staged_name,
+    int backup_parent_fd, const char *backup_name,
+    orbit_package_file_change *change);
+
+orbit_filesystem_code orbit_package_filesystem_prepare_create_directory(
     int target_parent_fd, const char *target_name,
     int staged_parent_fd, const char *staged_name,
     int backup_parent_fd, const char *backup_name,

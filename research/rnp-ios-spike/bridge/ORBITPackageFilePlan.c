@@ -127,7 +127,7 @@ static bool path_is_within_directory(const char *path, const char *directory) {
         if (fold_ascii((unsigned char)path[i]) !=
             fold_ascii((unsigned char)directory[i])) return false;
     }
-    return path[length] == '\\' || path[length] == '/';
+    return path[length] == '\0' || path[length] == '\\' || path[length] == '/';
 }
 
 static orbit_package_file_plan_code append_create_directory(

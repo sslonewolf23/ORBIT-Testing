@@ -153,6 +153,10 @@ int main(void) {
     if (backup_fd >= 0) close(backup_fd);
     if (stage_base_fd >= 0) close(stage_base_fd);
     if (install_fd >= 0) close(install_fd);
+    EXPECT("empty test directories removed",
+        unlinkat(root_fd, "backup", AT_REMOVEDIR) == 0 &&
+        unlinkat(root_fd, "stage-base", AT_REMOVEDIR) == 0 &&
+        unlinkat(root_fd, "install", AT_REMOVEDIR) == 0);
     close(root_fd);
     EXPECT("temporary root removed", rmdir(root_path) == 0);
     printf("orchestrator_checks=%u failures=%u\ndecision=%s\n",

@@ -32,8 +32,10 @@ typedef struct {
 } orbit_package_staging;
 
 /* staging must be fresh storage or a fully discarded/closed instance.
- * base_directory_fd must identify a trusted directory opened by the caller.
- * The staging directory is created as a new 0700 child and never follows links. */
+ * base_directory_fd must identify a directory owned by the effective caller
+ * and not writable by group/other users (mode & 0022 must be zero). The caller
+ * remains responsible for selecting a trusted location. The staging directory
+ * is created as a new 0700 child and never follows links. */
 orbit_staging_code orbit_package_staging_begin(
     int base_directory_fd, const char *staging_name,
     orbit_package_staging *staging);

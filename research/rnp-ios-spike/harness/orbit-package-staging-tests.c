@@ -26,10 +26,10 @@ static void octal(uint8_t *output, size_t length, uint64_t value) {
 }
 
 static void make_tar_header(uint8_t *header, const char *path,
-                            uint64_t size, char type) {
+                            uint64_t size, char type, uint32_t mode) {
     memset(header, 0, 512U);
     memcpy(header, path, strlen(path));
-    octal(header + 100U, 8U, type == '5' ? 0755U : 0644U);
+    octal(header + 100U, 8U, mode);
     octal(header + 108U, 8U, 0U);
     octal(header + 116U, 8U, 0U);
     octal(header + 124U, 12U, size);
@@ -48,11 +48,12 @@ static void make_tar_header(uint8_t *header, const char *path,
 }
 
 static size_t make_tar(uint8_t *output, const char *path,
-                       const uint8_t *payload, size_t payload_length) {
+                       const uint8_t *payload, size_t payload_length,
+                       uint32_t mode) {
     size_t padded = ((payload_length + 511U) / 512U) * 512U;
     size_t total = 512U + padded + 1024U;
     memset(output, 0, total);
-    make_tar_header(output, path, payload_length, '0');
+    make_tar_header(output, path, payload_length, '0', mode);
     if (payload_length != 0U)
         memcpy(output + 512U, payload, payload_length);
     return total;
@@ -75,11 +76,11 @@ static size_t append_ar_member(uint8_t *output, size_t offset,
 }
 
 static size_t make_deb(uint8_t *output, const uint8_t *payload,
-                       size_t payload_length) {
+                       size_t payload_length, uint32_t file_mode) {
     uint8_t control_tar[2048], data_tar[4096];
-    size_t control_length = make_tar(control_tar, "control", NULL, 0U);
+    size_t control_length = make_tar(control_tar, "control", NULL, 0U, 0644U);
     size_t data_length = make_tar(
-        data_tar, "Library/ORBIT/staged.bin", payload, payload_length);
+        data_tar, "Library/ORBIT/staged.bin", payload, payload_length, file_mode);
     memcpy(output, "!<arch>\n", 8U);
     size_t offset = 8U;
     static const uint8_t version[] = "2.0\n";
@@ -109,7 +110,7 @@ int main(void) {
 
     static const uint8_t payload[] = "ORBIT staged package bytes";
     uint8_t deb[8192];
-    size_t deb_length = make_deb(deb, payload, sizeof(payload));
+    size_t deb_length = make_deb(deb, payload, sizeof(payload), 0644U);
     orbit_package_staging staging;
     orbit_archive_report staged_report;
     orbit_archive_code staged_archive_code = ORBIT_ARCHIVE_INVALID_ARGUMENT;
@@ -142,7 +143,28 @@ int main(void) {
     EXPECT("discard removed staging directory",
         !path_exists_at(base_fd, "stage-good"));
 
-    size_t empty_deb_length = make_deb(deb, NULL, 0U);
+    deb_length = make_deb(deb, payload, sizeof(payload), 0777U);
+    EXPECT("world-writable archive mode is staged in a private tree",
+        orbit_package_staging_extract_deb(
+            base_fd, "stage-mode", deb, deb_length, &staging,
+            &staged_report, &staged_archive_code) == ORBIT_STAGING_OK);
+    int mode_library_fd = openat(staging.staging_directory_fd, "Library",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int mode_orbit_fd = mode_library_fd >= 0 ? openat(mode_library_fd, "ORBIT",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) : -1;
+    int mode_file_fd = mode_orbit_fd >= 0 ? openat(mode_orbit_fd, "staged.bin",
+        O_RDONLY | O_NOFOLLOW | O_CLOEXEC) : -1;
+    struct stat sanitized_status;
+    EXPECT("archive group/other write bits are stripped",
+        mode_file_fd >= 0 && fstat(mode_file_fd, &sanitized_status) == 0 &&
+        (sanitized_status.st_mode & 0777U) == 0755U);
+    if (mode_file_fd >= 0) close(mode_file_fd);
+    if (mode_orbit_fd >= 0) close(mode_orbit_fd);
+    if (mode_library_fd >= 0) close(mode_library_fd);
+    EXPECT("mode-sanitization stage discarded",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK);
+
+    size_t empty_deb_length = make_deb(deb, NULL, 0U, 0644U);
     EXPECT("zero-length file staging directory created",
         orbit_package_staging_begin(base_fd, "stage-empty", &staging) == ORBIT_STAGING_OK);
     EXPECT("zero-length package file is finalized by empty final chunk",

@@ -944,6 +944,31 @@ jobs:
             | tee "$RUNNER_TEMP/package-file-plan.out"
           grep -q '^decision=PASS' "$RUNNER_TEMP/package-file-plan.out"
 
+      - name: Compile and run ownership-first package install orchestration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/bridge/ORBITPackageStaging.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnership.c \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnershipCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilePlan.c \
+            research/rnp-ios-spike/bridge/ORBITPackageInstallTransaction.c \
+            research/rnp-ios-spike/harness/orbit-package-install-orchestrator-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-install-orchestrator-tests"
+          "$RUNNER_TEMP/orbit-package-install-orchestrator-tests" \
+            | tee "$RUNNER_TEMP/package-install-orchestrator.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-install-orchestrator.out"
+
       - name: Fuzz package archive and decompression parsers
         shell: bash
         run: |

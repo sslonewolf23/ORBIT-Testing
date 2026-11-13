@@ -270,6 +270,76 @@ int main(void) {
         faccessat(stage_library, "NewChild/payload", F_OK,
                   AT_SYMLINK_NOFOLLOW) == 0);
 
+    /* Unsafe path and type transitions must fail before a partial plan escapes. */
+    EXPECT("symlink install-path fixture created",
+        symlinkat("Library", install_fd, "Link") == 0);
+    orbit_archive_entry symlink_manifest;
+    memset(&symlink_manifest, 0, sizeof(symlink_manifest));
+    (void)snprintf(symlink_manifest.path, sizeof(symlink_manifest.path),
+                   "Link/new-file");
+    size_t rejected_count = 77U;
+    result = orbit_package_file_plan_build_install(
+        &empty_installed, &candidate, &symlink_manifest, 1U,
+        install_fd, stage_fd, backup_fd, changes, 8U, &rejected_count,
+        ownership_output, 8U, &insufficient_snapshot);
+    EXPECT("planner rejects symlinked install path",
+        result == ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR &&
+        rejected_count == 0U && insufficient_snapshot.count == 0U);
+    EXPECT("symlink fixture removed without following it",
+        unlinkat(install_fd, "Link", 0) == 0);
+
+    EXPECT("file-to-directory conflict fixture created",
+        write_file_at(install_fd, "TypeFile", "keep") &&
+        mkdirat(stage_fd, "TypeFile", 0700) == 0);
+    orbit_archive_entry file_to_directory[2];
+    memset(file_to_directory, 0, sizeof(file_to_directory));
+    (void)snprintf(file_to_directory[0].path,
+                   sizeof(file_to_directory[0].path), "TypeFile");
+    file_to_directory[0].directory = true;
+    (void)snprintf(file_to_directory[1].path,
+                   sizeof(file_to_directory[1].path), "TypeFile/child");
+    rejected_count = 77U;
+    result = orbit_package_file_plan_build_install(
+        &empty_installed, &candidate, file_to_directory, 2U,
+        install_fd, stage_fd, backup_fd, changes, 8U, &rejected_count,
+        ownership_output, 8U, &insufficient_snapshot);
+    EXPECT("planner rejects file-to-directory transition",
+        result == ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR &&
+        rejected_count == 0U && insufficient_snapshot.count == 0U);
+    (void)unlinkat(install_fd, "TypeFile", 0);
+    (void)unlinkat(stage_fd, "TypeFile", AT_REMOVEDIR);
+
+    EXPECT("directory-to-file conflict fixture created",
+        mkdirat(install_fd, "TypeDir", 0700) == 0 &&
+        write_file_at(stage_fd, "TypeDir", "replacement"));
+    orbit_archive_entry directory_to_file;
+    memset(&directory_to_file, 0, sizeof(directory_to_file));
+    (void)snprintf(directory_to_file.path, sizeof(directory_to_file.path),
+                   "TypeDir");
+    rejected_count = 77U;
+    result = orbit_package_file_plan_build_install(
+        &empty_installed, &candidate, &directory_to_file, 1U,
+        install_fd, stage_fd, backup_fd, changes, 8U, &rejected_count,
+        ownership_output, 8U, &insufficient_snapshot);
+    EXPECT("planner rejects directory-to-file transition",
+        result == ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR &&
+        rejected_count == 0U && insufficient_snapshot.count == 0U);
+    (void)unlinkat(install_fd, "TypeDir", AT_REMOVEDIR);
+    (void)unlinkat(stage_fd, "TypeDir", 0);
+
+    orbit_archive_entry missing_stage_manifest;
+    memset(&missing_stage_manifest, 0, sizeof(missing_stage_manifest));
+    (void)snprintf(missing_stage_manifest.path,
+                   sizeof(missing_stage_manifest.path), "NoStage/child");
+    rejected_count = 77U;
+    result = orbit_package_file_plan_build_install(
+        &empty_installed, &candidate, &missing_stage_manifest, 1U,
+        install_fd, stage_fd, backup_fd, changes, 8U, &rejected_count,
+        ownership_output, 8U, &insufficient_snapshot);
+    EXPECT("planner rejects missing staged directory subtree",
+        result == ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR &&
+        rejected_count == 0U && insufficient_snapshot.count == 0U);
+
     close(stage_library);
     close(install_library);
     unlinkat(install_fd, "Library/old-file", 0);

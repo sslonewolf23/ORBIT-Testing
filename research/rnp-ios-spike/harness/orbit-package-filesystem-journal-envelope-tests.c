@@ -341,6 +341,39 @@ int main(void) {
     EXPECT("success backup directory removed",
         unlinkat(root_fd, "backup-success", AT_REMOVEDIR) == 0);
 
+    /* A direct overwrite rollback must restore both the original installed
+     * inode and the staged payload so the caller can retry or inspect it. */
+    int backup_overwrite_fd = -1;
+    EXPECT("overwrite rollback backup directory created",
+        create_backup_directory(root_fd, "backup-overwrite",
+                                &backup_overwrite_fd));
+    EXPECT("overwrite rollback fixture files created",
+        write_file_at(install_fd, "target-overwrite", "old-overwrite") &&
+        write_file_at(stage_fd, "stage-overwrite", "new-overwrite"));
+    orbit_package_file_change overwrite_change;
+    EXPECT("overwrite rollback replacement prepared",
+        prepare_change(install_fd, stage_fd, backup_overwrite_fd,
+            "target-overwrite", "stage-overwrite",
+            "backup-overwrite-file", &overwrite_change));
+    EXPECT("overwrite replacement applies",
+        orbit_package_filesystem_apply(
+            install_fd, stage_fd, backup_overwrite_fd,
+            &overwrite_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("overwrite target contains replacement before rollback",
+        file_equals_at(install_fd, "target-overwrite", "new-overwrite"));
+    EXPECT("overwrite rollback restores old target and staged payload",
+        orbit_package_filesystem_rollback(
+            install_fd, stage_fd, backup_overwrite_fd,
+            &overwrite_change) == ORBIT_FILESYSTEM_OK &&
+        file_equals_at(install_fd, "target-overwrite", "old-overwrite") &&
+        file_equals_at(stage_fd, "stage-overwrite", "new-overwrite"));
+    close(backup_overwrite_fd);
+    EXPECT("overwrite rollback backup directory removed",
+        unlinkat(root_fd, "backup-overwrite", AT_REMOVEDIR) == 0);
+    EXPECT("overwrite rollback fixture files cleaned",
+        unlinkat(install_fd, "target-overwrite", 0) == 0 &&
+        unlinkat(stage_fd, "stage-overwrite", 0) == 0);
+
     memset(transaction_id, 0xA2, sizeof(transaction_id));
     EXPECT("rollback backup directory created",
         create_backup_directory(root_fd, "backup-rollback", &backup_fd));

@@ -195,7 +195,7 @@ int main(void) {
             ORBIT_STAGING_UNSAFE_PATH);
 
     /* Restore the non-empty archive fixture after the zero-length case. */
-    deb_length = make_deb(deb, payload, sizeof(payload));
+    deb_length = make_deb(deb, payload, sizeof(payload), 0644U);
 
     uint8_t malformed_deb[sizeof(deb)];
     memcpy(malformed_deb, deb, deb_length);

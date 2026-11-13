@@ -228,16 +228,14 @@ bool orbit_package_staging_entry_callback(
     if (!memchr(entry->path, '\0', sizeof(entry->path)) ||
         !orbit_package_archive_path_is_safe(entry->path) ||
         entry->size > ORBIT_TAR_MAX_FILE_BYTES ||
-        (entry->mode & ~0777U) != 0U ||
-        (entry->directory && (entry->mode & 0700U) != 0700U) ||
-        (entry->directory && (entry->mode & 0100U) == 0U)) {
+        (entry->mode & ~0777U) != 0U) {
         mark_failed(staging);
         return false;
     }
 
     if (entry->directory) {
         int directory_fd = open_directory_path(
-            staging->staging_directory_fd, entry->path, true, entry->mode);
+            staging->staging_directory_fd, entry->path, true, 0755U);
         if (directory_fd < 0 || fsync(directory_fd) < 0) {
             if (directory_fd >= 0) close(directory_fd);
             mark_failed(staging);
@@ -265,8 +263,7 @@ bool orbit_package_staging_entry_callback(
     struct stat file_status;
     bool safe_file = fstat(file_fd, &file_status) == 0 &&
                      S_ISREG(file_status.st_mode) && file_status.st_nlink == 1;
-    if (!safe_file || fchmod(file_fd, (mode_t)(entry->mode & 0777U)) < 0 ||
-        fsync(parent_fd) < 0) {
+    if (!safe_file || fsync(parent_fd) < 0) {
         close(file_fd);
         (void)unlinkat(parent_fd, leaf, 0);
         close(parent_fd);
@@ -276,6 +273,7 @@ bool orbit_package_staging_entry_callback(
     close(parent_fd);
     staging->active_file_fd = file_fd;
     staging->active_file_size = entry->size;
+    staging->active_file_mode = entry->mode;
     staging->active_file_written = 0U;
     memcpy(staging->active_file_path, entry->path, strlen(entry->path) + 1U);
     return true;
@@ -314,7 +312,10 @@ bool orbit_package_staging_data_callback(
         return false;
     }
     if (final_chunk) {
-        if (fsync(staging->active_file_fd) < 0) {
+        /* Strip set-id and group/other write bits from untrusted archive modes. */
+        mode_t safe_mode = (mode_t)(staging->active_file_mode & 0755U);
+        if (fchmod(staging->active_file_fd, safe_mode) < 0 ||
+            fsync(staging->active_file_fd) < 0) {
             mark_failed(staging);
             return false;
         }
@@ -326,6 +327,54 @@ bool orbit_package_staging_data_callback(
         staging->active_file_fd = -1;
     }
     return true;
+}
+
+orbit_staging_code orbit_package_staging_extract_deb(
+    int base_directory_fd, const char *staging_name,
+    const uint8_t *deb, size_t deb_length,
+    orbit_package_staging *staging,
+    orbit_archive_report *report,
+    orbit_archive_code *archive_code) {
+    if (!staging || !deb || deb_length == 0U || !report || !archive_code)
+        return ORBIT_STAGING_INVALID_ARGUMENT;
+
+    memset(staging, 0, sizeof(*staging));
+    staging->base_directory_fd = -1;
+    staging->staging_directory_fd = -1;
+    staging->active_file_fd = -1;
+    *archive_code = ORBIT_ARCHIVE_INVALID_ARGUMENT;
+
+    orbit_archive_code inspected = orbit_package_archive_inspect_deb(
+        deb, deb_length, report);
+    *archive_code = inspected;
+    if (inspected != ORBIT_ARCHIVE_OK)
+        return ORBIT_STAGING_ARCHIVE_ERROR;
+
+    orbit_staging_code begun = orbit_package_staging_begin(
+        base_directory_fd, staging_name, staging);
+    if (begun != ORBIT_STAGING_OK) return begun;
+
+    orbit_archive_report streamed_report;
+    memset(&streamed_report, 0, sizeof(streamed_report));
+    orbit_archive_code streamed = orbit_package_archive_inspect_deb_with_data(
+        deb, deb_length,
+        orbit_package_staging_entry_callback, staging,
+        orbit_package_staging_data_callback, staging,
+        &streamed_report);
+    *archive_code = streamed;
+    if (streamed != ORBIT_ARCHIVE_OK) {
+        orbit_staging_code discarded = orbit_package_staging_discard(staging);
+        return discarded == ORBIT_STAGING_OK ?
+            ORBIT_STAGING_ARCHIVE_ERROR : ORBIT_STAGING_IO_ERROR;
+    }
+
+    *report = streamed_report;
+    orbit_staging_code finished = orbit_package_staging_finish(staging);
+    if (finished != ORBIT_STAGING_OK) {
+        orbit_staging_code discarded = orbit_package_staging_discard(staging);
+        return discarded == ORBIT_STAGING_OK ? finished : ORBIT_STAGING_IO_ERROR;
+    }
+    return ORBIT_STAGING_OK;
 }
 
 orbit_staging_code orbit_package_staging_finish(

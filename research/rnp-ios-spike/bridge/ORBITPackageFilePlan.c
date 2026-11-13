@@ -113,6 +113,7 @@ static bool first_missing_directory(
             return true;
         }
         if (!S_ISDIR(status.st_mode)) return false;
+        if (!slash) break;
         cursor = slash + 1;
     }
     return true;

@@ -13,8 +13,7 @@
 static unsigned checks;
 static unsigned failures;
 #define EXPECT(label, condition) do { ++checks; if (!(condition)) { ++failures; \
-    fprintf(stderr, "FAIL: %s
-", label); } } while (0)
+    fprintf(stderr, "FAIL: %s\\n", label); } } while (0)
 
 static bool write_file_at(int directory_fd, const char *name, const char *value) {
     int fd = openat(directory_fd, name,
@@ -231,7 +230,7 @@ int main(void) {
         result == ORBIT_PACKAGE_FILE_PLAN_OK && missing_count == 1U &&
         changes[0].operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY &&
         strcmp(changes[0].target_name, "Missing") == 0 &&
-        changes[0].target_parent_path[0] == '\\0' &&
+        changes[0].target_parent_path[0] == '\x5c0' &&
         strcmp(changes[0].staged_parent_path, "") == 0);
     EXPECT("directory move plan leaves both roots untouched",
         faccessat(install_fd, "Missing", F_OK, AT_SYMLINK_NOFOLLOW) != 0 &&

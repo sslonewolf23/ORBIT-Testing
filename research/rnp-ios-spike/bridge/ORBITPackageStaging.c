@@ -188,7 +188,9 @@ orbit_staging_code orbit_package_staging_begin(
 
     struct stat base_status;
     if (fstat(base_directory_fd, &base_status) < 0 ||
-        !S_ISDIR(base_status.st_mode))
+        !S_ISDIR(base_status.st_mode) ||
+        base_status.st_uid != geteuid() ||
+        (base_status.st_mode & 0022U) != 0U)
         return ORBIT_STAGING_INVALID_ARGUMENT;
 
     int base_copy = duplicate_cloexec(base_directory_fd);

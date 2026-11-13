@@ -336,6 +336,48 @@ int main(void) {
     EXPECT("rollback refuses to delete a foreign replacement",
         foreign_rollback_result == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
 
+    EXPECT("staged directory tree created", mkdirat(stage_fd, "new-tree", 0700) == 0);
+    int staged_tree_fd = openat(stage_fd, "new-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("staged directory payload created",
+        staged_tree_fd >= 0 && write_file_at(staged_tree_fd, "payload", "tree-data"));
+    if (staged_tree_fd >= 0) close(staged_tree_fd);
+    orbit_package_file_change directory_change;
+    EXPECT("directory creation prepared with staged inode",
+        orbit_package_filesystem_prepare_create_directory(
+            target_fd, "new-tree", stage_fd, "new-tree",
+            backup_fd, "directory-unused", &directory_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("directory parent locators persisted",
+        orbit_package_filesystem_set_parent_paths(
+            &directory_change, "", "") == ORBIT_FILESYSTEM_OK);
+    EXPECT("directory rename applies without copying",
+        orbit_package_filesystem_apply(
+            target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
+    int installed_tree_fd = openat(target_fd, "new-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("directory payload arrived with staged tree",
+        installed_tree_fd >= 0 && file_equals_at(installed_tree_fd, "payload", "tree-data"));
+    if (installed_tree_fd >= 0) close(installed_tree_fd);
+    EXPECT("directory rename rollback restores staged tree",
+        orbit_package_filesystem_rollback(
+            target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("directory rollback restores source and removes target",
+        exists_at(stage_fd, "new-tree") && !exists_at(target_fd, "new-tree"));
+    EXPECT("directory rename reapplies",
+        orbit_package_filesystem_apply(
+            target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("directory finalize verifies committed inode",
+        orbit_package_filesystem_finalize(
+            target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("committed directory remains installed",
+        exists_at(target_fd, "new-tree") && !exists_at(stage_fd, "new-tree"));
+    EXPECT("existing target directory is never replaced",
+        mkdirat(stage_fd, "occupied-tree", 0700) == 0 &&
+        mkdirat(target_fd, "occupied-tree", 0700) == 0 &&
+        orbit_package_filesystem_prepare_create_directory(
+            target_fd, "occupied-tree", stage_fd, "occupied-tree",
+            backup_fd, "occupied-unused", &directory_change) == ORBIT_FILESYSTEM_CONFLICT);
+
     close(backup_fd);
     close(stage_fd);
     close(target_fd);
@@ -385,7 +427,7 @@ int main(void) {
             remove_staged_anchor_fixtures(cleanup_backup));
         close(cleanup_backup);
     }
-    (void)unlinkat(base_fd, "target", AT_REMOVEDIR);
+    int cleanup_tree = openat(base_fd, "stage", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n    if (cleanup_tree >= 0) {\n        int tree = openat(cleanup_tree, "new-tree", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n        if (tree >= 0) { (void)unlinkat(tree, "payload", 0); close(tree); }\n        (void)unlinkat(cleanup_tree, "new-tree", AT_REMOVEDIR);\n        (void)unlinkat(cleanup_tree, "occupied-tree", AT_REMOVEDIR);\n        close(cleanup_tree);\n    }\n    cleanup_tree = openat(base_fd, "target", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n    if (cleanup_tree >= 0) {\n        int tree = openat(cleanup_tree, "new-tree", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n        if (tree >= 0) { (void)unlinkat(tree, "payload", 0); close(tree); }\n        (void)unlinkat(cleanup_tree, "new-tree", AT_REMOVEDIR);\n        (void)unlinkat(cleanup_tree, "occupied-tree", AT_REMOVEDIR);\n        close(cleanup_tree);\n    }\n    (void)unlinkat(base_fd, "target", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "stage", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "backup", AT_REMOVEDIR);
     close(base_fd);

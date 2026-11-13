@@ -2,7 +2,7 @@
 
 ## Scope
 
-The archive inspector is a research-stage, read-only preflight component. It does not extract files, create directories, invoke package scripts, change ownership or permissions, or mutate an installed package database.
+The archive inspector is a research-stage, read-only preflight component. It does not itself extract files, invoke package scripts, or mutate an installed package database. A separate private staging module now consumes the inspector only after a complete no-write inspection pass.
 
 It accepts uncompressed `control.tar` and `data.tar`, plus gzip (`.gz`), xz (`.xz`), bzip2 (`.bz2`), and zstd (`.zst`) variants. Both control and data members are inspected. Unsupported suffixes fail closed.
 
@@ -57,11 +57,17 @@ The separate ownership planner enforces cross-package path collision policy afte
 
 The archive regression harness also covers duplicate normalized paths, regular-file ancestor collisions, explicit directory parents, absolute paths, backslashes, empty and dot components, parent traversal, colon characters, symlinks, devices, compressed streams, and streaming callback failure. The host workflow is the authoritative execution gate; a source change or queued run is not evidence of a passing test.
 
+## Private staging boundary
+
+`ORBITPackageStaging` creates a new 0700 staging child, creates nested directories relative to trusted directory descriptors, refuses symlink traversal, creates regular files with exclusive/no-follow flags, streams bounded sequential writes, fsyncs file and directory state, and can recursively discard only the staging tree after verifying its directory identity. Archive file modes are sanitized to strip set-id and group/other write permissions; directory staging modes are normalized. The staging API requires the caller to complete ownership conflict checks before invoking extraction. It does not execute maintainer scripts or write into the live install root.
+
+The host staging harness covers normal payloads, empty files, malformed archive preflight with no stage creation, symlink parent refusal, and safe discard. The host workflow is the authoritative execution gate; a source change or queued run is not evidence of a passing test.
+
 ## Remaining work
 
-1. Complete deterministic archive edge-case tests and verify the host sanitizer/fuzz run on the current branch.
-2. Build a separate staging/extraction backend with descriptor-relative directory creation, no-follow semantics, exclusive file creation, bounded writes, fsync, and rollback-safe cleanup.
-3. Integrate staging with the existing package file planner and durable transaction journal only after full archive validation succeeds.
-4. Capture and verify exact preimages, test interrupted extraction and cleanup, and preserve all files owned by other package managers.
+1. Verify the host sanitizer/fuzz and iOS cross-compile runs on the current branch.
+2. Expand staging tests for mode sanitization, write failures, cleanup interruption, and descriptor/path race conditions.
+3. Integrate ownership preflight, private staging, the file planner, and durable transaction journal as one locked package operation.
+4. Capture and verify exact preimages, test crash recovery across every stage boundary, and preserve all files owned by other package managers.
 
 Installation must remain disabled. This component is still inspection-only and is not a production extractor.

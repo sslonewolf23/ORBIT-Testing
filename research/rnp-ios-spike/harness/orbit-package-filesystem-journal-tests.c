@@ -569,6 +569,80 @@ int main(void) {
         fstatat(base_fd, "d1000000000000000000000000000000",
                 &(struct stat){0}, AT_SYMLINK_NOFOLLOW) < 0 && errno == ENOENT);
 
+    /* Directory creation is journaled before later operations. Force a later
+     * staged-file identity conflict and verify reverse rollback restores the
+     * complete directory tree to staging. */
+    EXPECT("directory rollback fixture tree created",
+        mkdirat(stage_fd, "recover-tree", 0700) == 0);
+    int recover_tree_fd = openat(stage_fd, "recover-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("directory rollback fixture payload created",
+        recover_tree_fd >= 0 && write_file_at(recover_tree_fd, "payload", "tree"));
+    if (recover_tree_fd >= 0) close(recover_tree_fd);
+    EXPECT("directory rollback stale-file fixture created",
+        write_file_at(stage_fd, "stale-source", "original"));
+    uint8_t directory_rollback_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xD2U };
+    int directory_backup_fd = -1;
+    EXPECT("directory rollback backup root created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, directory_rollback_id, true,
+            &directory_backup_fd) == ORBIT_FILESYSTEM_OK);
+    orbit_package_file_change directory_changes[2];
+    EXPECT("journal directory creation operation prepared",
+        directory_backup_fd >= 0 &&
+        orbit_package_filesystem_prepare_create_directory(
+            target_fd, "recover-tree", stage_fd, "recover-tree",
+            directory_backup_fd, "directory-unused-backup",
+            &directory_changes[0]) == ORBIT_FILESYSTEM_OK &&
+        orbit_package_filesystem_set_parent_paths(
+            &directory_changes[0], "", "") == ORBIT_FILESYSTEM_OK);
+    EXPECT("later replacement operation prepared",
+        directory_backup_fd >= 0 &&
+        orbit_package_filesystem_prepare_replace(
+            target_fd, "later-target", stage_fd, "stale-source",
+            directory_backup_fd, "later-backup",
+            &directory_changes[1]) == ORBIT_FILESYSTEM_OK &&
+        orbit_package_filesystem_set_parent_paths(
+            &directory_changes[1], "", "") == ORBIT_FILESYSTEM_OK);
+    if (directory_backup_fd >= 0) close(directory_backup_fd);
+    EXPECT("staged replacement inode changed after prepare",
+        unlinkat(stage_fd, "stale-source", 0) == 0 &&
+        write_file_at(stage_fd, "stale-source", "substituted"));
+    orbit_package_filesystem_executor_context directory_executor;
+    memset(&directory_executor, 0, sizeof(directory_executor));
+    directory_executor.install_root_fd = target_fd;
+    directory_executor.staging_root_fd = stage_fd;
+    directory_executor.backup_base_directory_fd = base_fd;
+    memcpy(directory_executor.transaction_id, directory_rollback_id,
+           sizeof(directory_rollback_id));
+    EXPECT("later operation conflict triggers journal rollback",
+        orbit_package_filesystem_journal_execute(
+            &backend, directory_rollback_id, directory_changes, 2U,
+            orbit_package_filesystem_journal_execute_change,
+            &directory_executor) == ORBIT_FILESYSTEM_CONFLICT);
+    EXPECT("directory rollback restores tree to staging only",
+        !exists_at(target_fd, "recover-tree") &&
+        exists_at(stage_fd, "recover-tree"));
+    recover_tree_fd = openat(stage_fd, "recover-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("directory rollback preserves staged subtree contents",
+        recover_tree_fd >= 0 &&
+        file_equals_at(recover_tree_fd, "payload", "tree"));
+    if (recover_tree_fd >= 0) close(recover_tree_fd);
+    EXPECT("directory rollback leaves no active journal",
+        memory.record == NULL);
+    (void)unlinkat(stage_fd, "stale-source", 0);
+    recover_tree_fd = openat(stage_fd, "recover-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (recover_tree_fd >= 0) {
+        (void)unlinkat(recover_tree_fd, "payload", 0);
+        close(recover_tree_fd);
+    }
+    (void)unlinkat(stage_fd, "recover-tree", AT_REMOVEDIR);
+    EXPECT("directory rollback transaction backup can be cleaned",
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, directory_rollback_id) == ORBIT_FILESYSTEM_OK);
+
     uint8_t tombstone_window_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xE2U };
     int tombstone_window_fd = -1;
     EXPECT("simulated tombstone-to-cleanup crash leaves empty transaction directory",

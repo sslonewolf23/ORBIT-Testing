@@ -2,8 +2,12 @@
 #include "ORBITPackageFilePlan.h"
 #include "ORBITPackageFilesystemJournal.h"
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 static unsigned char fold_ascii(unsigned char value) {
@@ -62,6 +66,97 @@ static bool split_path(const char *path, char *parent, size_t parent_capacity,
 static bool backup_name_for(size_t index, char output[64]) {
     int count = snprintf(output, 64U, "b%08zu", index);
     return count > 0 && count < 64;
+}
+
+
+/* Find the first missing directory component without following symlinks.
+ * The returned path is the topmost missing prefix, so moving that staged
+ * subtree also installs every descendant in one recoverable journal action. */
+static bool first_missing_directory(
+    int install_root_fd, const char *path,
+    char missing[ORBIT_TAR_MAX_PATH + 1U], bool *found) {
+    if (!path || !missing || !found) return false;
+    *found = false;
+    size_t length = strlen(path);
+    if (length == 0U || length > ORBIT_TAR_MAX_PATH) return false;
+    char prefix[ORBIT_TAR_MAX_PATH + 1U];
+    size_t prefix_length = 0U;
+    const char *cursor = path;
+    while (*cursor) {
+        const char *slash = strchr(cursor, '/');
+        size_t component_length = slash ? (size_t)(slash - cursor) : strlen(cursor);
+        if (component_length == 0U) return false;
+        if (prefix_length != 0U) prefix[prefix_length++] = '/';
+        if (prefix_length + component_length > ORBIT_TAR_MAX_PATH) return false;
+        memcpy(prefix + prefix_length, cursor, component_length);
+        prefix_length += component_length;
+        prefix[prefix_length] = '\0';
+        if (!slash) break;
+
+        char parent[ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY];
+        const char *basename = NULL;
+        if (!split_path(prefix, parent, sizeof(parent), &basename)) return false;
+        int parent_fd = -1;
+        orbit_filesystem_code opened =
+            orbit_package_filesystem_open_parent_directory(
+                install_root_fd, parent, &parent_fd);
+        if (opened != ORBIT_FILESYSTEM_OK) return false;
+        struct stat status;
+        int stat_result = fstatat(parent_fd, basename, &status, AT_SYMLINK_NOFOLLOW);
+        int saved_errno = errno;
+        bool closed = close(parent_fd) == 0;
+        if (!closed) return false;
+        if (stat_result < 0) {
+            if (saved_errno != ENOENT) return false;
+            memcpy(missing, prefix, prefix_length + 1U);
+            *found = true;
+            return true;
+        }
+        if (!S_ISDIR(status.st_mode)) return false;
+        cursor = slash + 1;
+    }
+    return true;
+}
+
+static bool path_is_within_directory(const char *path, const char *directory) {
+    size_t length = strlen(directory);
+    return path_equal(path, directory) ||
+        (strncmp(path, directory, length) == 0 && path[length] == '/');
+}
+
+static orbit_package_file_plan_code append_create_directory(
+    const char *path, int install_root_fd, int staging_root_fd,
+    int backup_directory_fd, size_t backup_index,
+    orbit_package_file_change *change) {
+    char target_parent[ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY];
+    const char *basename = NULL;
+    char backup_name[64];
+    if (!split_path(path, target_parent, sizeof(target_parent), &basename) ||
+        !backup_name_for(backup_index, backup_name))
+        return ORBIT_PACKAGE_FILE_PLAN_LIMIT;
+    int target_parent_fd = -1, staged_parent_fd = -1;
+    orbit_filesystem_code result =
+        orbit_package_filesystem_open_parent_directory(
+            install_root_fd, target_parent, &target_parent_fd);
+    if (result == ORBIT_FILESYSTEM_OK)
+        result = orbit_package_filesystem_open_parent_directory(
+            staging_root_fd, target_parent, &staged_parent_fd);
+    if (result == ORBIT_FILESYSTEM_OK)
+        result = orbit_package_filesystem_prepare_create_directory(
+            target_parent_fd, basename, staged_parent_fd, basename,
+            backup_directory_fd, backup_name, change);
+    if (result == ORBIT_FILESYSTEM_OK)
+        result = orbit_package_filesystem_set_parent_paths(
+            change, target_parent, target_parent);
+    if (result == ORBIT_FILESYSTEM_OK)
+        result = orbit_package_filesystem_validate_change(change);
+    bool staged_closed = staged_parent_fd < 0 || close(staged_parent_fd) == 0;
+    bool target_closed = target_parent_fd < 0 || close(target_parent_fd) == 0;
+    if (!staged_closed || !target_closed || result != ORBIT_FILESYSTEM_OK)
+        return result == ORBIT_FILESYSTEM_LIMIT ?
+            ORBIT_PACKAGE_FILE_PLAN_LIMIT :
+            ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR;
+    return ORBIT_PACKAGE_FILE_PLAN_OK;
 }
 
 static orbit_package_file_plan_code append_remove(
@@ -164,9 +259,9 @@ orbit_package_file_plan_code orbit_package_file_plan_build_install(
             ORBIT_PACKAGE_FILE_PLAN_OWNERSHIP_ERROR;
     }
 
-    /* Remove obsolete files from the prior version before preparing new files.
-     * Directory creation and file-to-directory transitions are intentionally
-     * unsupported by this file-only transaction primitive. */
+
+    /* Remove obsolete files from the prior version first. A stale ownership
+     * row beneath a physically missing directory fails closed here. */
     for (size_t i = 0U; i < installed->count; ++i) {
         const orbit_package_ownership_record *old = &installed->records[i];
         if (!package_identity_matches(old, candidate) || old->directory)
@@ -197,9 +292,79 @@ orbit_package_file_plan_code orbit_package_file_plan_build_install(
         ++(*change_count);
     }
 
+    /* Discover topmost missing directory prefixes. Each operation moves the
+     * complete staged subtree, so descendants are deliberately not scheduled
+     * as separate directory or file changes. */
+    char **created_directories = (char **)calloc(manifest_count, sizeof(char *));
+    if (!created_directories) {
+        *change_count = 0U;
+        memset(replacement_ownership, 0, sizeof(*replacement_ownership));
+        return ORBIT_PACKAGE_FILE_PLAN_LIMIT;
+    }
+    size_t created_count = 0U;
+    for (size_t i = 0U; i < manifest_count; ++i) {
+        char missing[ORBIT_TAR_MAX_PATH + 1U];
+        bool found = false;
+        if (!first_missing_directory(install_root_fd, manifest[i].path,
+                                     missing, &found)) {
+            for (size_t n = 0U; n < created_count; ++n) free(created_directories[n]);
+            free(created_directories);
+            *change_count = 0U;
+            memset(replacement_ownership, 0, sizeof(*replacement_ownership));
+            return ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR;
+        }
+        if (!found) continue;
+        bool already_covered = false;
+        for (size_t n = 0U; n < created_count; ++n) {
+            if (path_is_within_directory(missing, created_directories[n])) {
+                already_covered = true;
+                break;
+            }
+        }
+        if (already_covered) continue;
+        if (*change_count >= change_capacity) {
+            for (size_t n = 0U; n < created_count; ++n) free(created_directories[n]);
+            free(created_directories);
+            *change_count = 0U;
+            memset(replacement_ownership, 0, sizeof(*replacement_ownership));
+            return ORBIT_PACKAGE_FILE_PLAN_LIMIT;
+        }
+        orbit_package_file_plan_code planned = append_create_directory(
+            missing, install_root_fd, staging_root_fd, backup_directory_fd,
+            *change_count + 1U, &changes[*change_count]);
+        if (planned != ORBIT_PACKAGE_FILE_PLAN_OK) {
+            for (size_t n = 0U; n < created_count; ++n) free(created_directories[n]);
+            free(created_directories);
+            *change_count = 0U;
+            memset(replacement_ownership, 0, sizeof(*replacement_ownership));
+            return planned;
+        }
+        created_directories[created_count] = strdup(missing);
+        if (!created_directories[created_count]) {
+            for (size_t n = 0U; n < created_count; ++n) free(created_directories[n]);
+            free(created_directories);
+            *change_count = 0U;
+            memset(replacement_ownership, 0, sizeof(*replacement_ownership));
+            return ORBIT_PACKAGE_FILE_PLAN_LIMIT;
+        }
+        ++created_count;
+        ++(*change_count);
+    }
+
     for (size_t i = 0U; i < manifest_count; ++i) {
         if (manifest[i].directory) continue;
+        bool supplied_by_directory_move = false;
+        for (size_t n = 0U; n < created_count; ++n) {
+            if (path_is_within_directory(manifest[i].path,
+                                         created_directories[n])) {
+                supplied_by_directory_move = true;
+                break;
+            }
+        }
+        if (supplied_by_directory_move) continue;
         if (*change_count >= change_capacity) {
+            for (size_t n = 0U; n < created_count; ++n) free(created_directories[n]);
+            free(created_directories);
             *change_count = 0U;
             memset(replacement_ownership, 0, sizeof(*replacement_ownership));
             return ORBIT_PACKAGE_FILE_PLAN_LIMIT;
@@ -209,12 +374,16 @@ orbit_package_file_plan_code orbit_package_file_plan_build_install(
             backup_directory_fd, *change_count + 1U,
             &changes[*change_count]);
         if (planned != ORBIT_PACKAGE_FILE_PLAN_OK) {
+            for (size_t n = 0U; n < created_count; ++n) free(created_directories[n]);
+            free(created_directories);
             *change_count = 0U;
             memset(replacement_ownership, 0, sizeof(*replacement_ownership));
             return planned;
         }
         ++(*change_count);
     }
+    for (size_t n = 0U; n < created_count; ++n) free(created_directories[n]);
+    free(created_directories);
 
     if (*change_count == 0U) {
         memset(replacement_ownership, 0, sizeof(*replacement_ownership));

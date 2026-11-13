@@ -747,11 +747,18 @@ int main(void) {
         orbit_package_filesystem_set_parent_paths(
             &directory_commit_change, "", "") == ORBIT_FILESYSTEM_OK);
     if (directory_commit_backup_fd >= 0) close(directory_commit_backup_fd);
+    orbit_package_filesystem_executor_context directory_commit_executor;
+    memset(&directory_commit_executor, 0, sizeof(directory_commit_executor));
+    directory_commit_executor.install_root_fd = target_fd;
+    directory_commit_executor.staging_root_fd = stage_fd;
+    directory_commit_executor.backup_base_directory_fd = base_fd;
+    memcpy(directory_commit_executor.transaction_id, directory_commit_id,
+           sizeof(directory_commit_id));
     EXPECT("journal commits staged directory subtree",
         orbit_package_filesystem_journal_execute(
             &backend, directory_commit_id, &directory_commit_change, 1U,
             orbit_package_filesystem_journal_execute_change,
-            &directory_executor) == ORBIT_FILESYSTEM_OK);
+            &directory_commit_executor) == ORBIT_FILESYSTEM_OK);
     EXPECT("committed directory exists only at install destination",
         exists_at(target_fd, "committed-tree") &&
         !exists_at(stage_fd, "committed-tree"));

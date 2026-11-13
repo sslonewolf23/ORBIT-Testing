@@ -197,8 +197,19 @@ static orbit_filesystem_code remove_staged_anchor(
         if (anchored == FILE_ID_MISSING) return ORBIT_FILESYSTEM_OK;
         if (anchored != FILE_ID_MATCH)
             return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
-        return remove_if_identity(backup_parent_fd, anchor,
-                                  change->staged_device, change->staged_inode);
+        nlink_t staged_links = 0, anchor_links = 0;
+        (void)file_identity_at(staged_parent_fd, change->staged_name,
+            change->staged_device, change->staged_inode,
+            NULL, NULL, &staged_links);
+        (void)file_identity_at(backup_parent_fd, anchor,
+            change->staged_device, change->staged_inode,
+            NULL, NULL, &anchor_links);
+        if (staged_links != 2 || anchor_links != 2)
+            return ORBIT_FILESYSTEM_CONFLICT;
+        if (unlinkat(backup_parent_fd, anchor, 0) < 0)
+            return ORBIT_FILESYSTEM_IO_ERROR;
+        return fsync(backup_parent_fd) == 0 ? ORBIT_FILESYSTEM_OK :
+               ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
     if (staged != FILE_ID_MISSING || anchored != FILE_ID_MATCH)
         return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;

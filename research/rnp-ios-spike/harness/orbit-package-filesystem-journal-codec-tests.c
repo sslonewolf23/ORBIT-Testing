@@ -69,7 +69,7 @@ int main(void) {
             encoded, written, 0U, decoded) ==
             ORBIT_JOURNAL_CODEC_INVALID_ARGUMENT);
 
-    encoded[4] = 2U;
+    encoded[4] = 1U;
     EXPECT("unknown codec version rejected",
         orbit_package_filesystem_journal_decode(
             encoded, written, source->revision, decoded) ==

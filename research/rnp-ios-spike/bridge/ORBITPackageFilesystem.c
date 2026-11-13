@@ -776,7 +776,8 @@ orbit_filesystem_code orbit_package_filesystem_apply(
     const orbit_package_file_change *change) {
     orbit_filesystem_code valid = verify_change(change);
     if (valid != ORBIT_FILESYSTEM_OK) return valid;
-    bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE;
+    bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE ||
+        change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY;
     if (!all_parent_directories_same_volume(
             target_parent_fd, staged_parent_fd, backup_parent_fd, needs_staged) ||
         aliased_component_names(target_parent_fd, change->target_name,
@@ -933,7 +934,8 @@ orbit_filesystem_code orbit_package_filesystem_rollback(
     const orbit_package_file_change *change) {
     orbit_filesystem_code valid = verify_change(change);
     if (valid != ORBIT_FILESYSTEM_OK) return valid;
-    bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE;
+    bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE ||
+        change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY;
     if (!all_parent_directories_same_volume(
             target_parent_fd, staged_parent_fd, backup_parent_fd, needs_staged) ||
         aliased_component_names(target_parent_fd, change->target_name,
@@ -1084,7 +1086,8 @@ orbit_filesystem_code orbit_package_filesystem_finalize(
     const orbit_package_file_change *change) {
     orbit_filesystem_code valid = verify_change(change);
     if (valid != ORBIT_FILESYSTEM_OK) return valid;
-    bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE;
+    bool needs_staged = change->operation == ORBIT_FILESYSTEM_REPLACE ||
+        change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY;
     if (!all_parent_directories_same_volume(
             target_parent_fd, staged_parent_fd, backup_parent_fd, needs_staged) ||
         aliased_component_names(target_parent_fd, change->target_name,

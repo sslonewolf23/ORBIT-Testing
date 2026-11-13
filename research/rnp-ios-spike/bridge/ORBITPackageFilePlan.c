@@ -73,7 +73,7 @@ static bool backup_name_for(size_t index, char output[64]) {
  * The returned path is the topmost missing prefix, so moving that staged
  * subtree also installs every descendant in one recoverable journal action. */
 static bool first_missing_directory(
-    int install_root_fd, const char *path,
+    int install_root_fd, const char *path, bool final_is_directory,
     char missing[ORBIT_TAR_MAX_PATH + 1U], bool *found) {
     if (!path || !missing || !found) return false;
     *found = false;
@@ -91,7 +91,7 @@ static bool first_missing_directory(
         memcpy(prefix + prefix_length, cursor, component_length);
         prefix_length += component_length;
         prefix[prefix_length] = '\0';
-        if (!slash) break;
+        if (!slash && !final_is_directory) break;
 
         char parent[ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY];
         const char *basename = NULL;
@@ -306,7 +306,7 @@ orbit_package_file_plan_code orbit_package_file_plan_build_install(
         char missing[ORBIT_TAR_MAX_PATH + 1U];
         bool found = false;
         if (!first_missing_directory(install_root_fd, manifest[i].path,
-                                     missing, &found)) {
+                                     manifest[i].directory, missing, &found)) {
             for (size_t n = 0U; n < created_count; ++n) free(created_directories[n]);
             free(created_directories);
             *change_count = 0U;

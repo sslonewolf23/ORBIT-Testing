@@ -686,6 +686,76 @@ int main(void) {
     }
     (void)unlinkat(target_fd, "committed-tree", AT_REMOVEDIR);
 
+    /* Simulate a process death after the directory rename but before the
+     * transaction advances beyond APPLYING. A fresh recovery call must undo it. */
+    uint8_t crash_recovery_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xD4U };
+    int crash_backup_fd = -1;
+    EXPECT("crash-recovery staged subtree created",
+        mkdirat(stage_fd, "crash-tree", 0700) == 0);
+    recover_tree_fd = openat(stage_fd, "crash-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("crash-recovery payload created",
+        recover_tree_fd >= 0 && write_file_at(recover_tree_fd, "payload", "survive"));
+    if (recover_tree_fd >= 0) close(recover_tree_fd);
+    EXPECT("crash-recovery backup directory created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, crash_recovery_id, true, &crash_backup_fd) ==
+            ORBIT_FILESYSTEM_OK);
+    orbit_package_file_change crash_change;
+    EXPECT("crash-recovery directory operation prepared",
+        crash_backup_fd >= 0 &&
+        orbit_package_filesystem_prepare_create_directory(
+            target_fd, "crash-tree", stage_fd, "crash-tree",
+            crash_backup_fd, "unused-crash-backup", &crash_change) ==
+            ORBIT_FILESYSTEM_OK &&
+        orbit_package_filesystem_set_parent_paths(
+            &crash_change, "", "") == ORBIT_FILESYSTEM_OK);
+    if (crash_backup_fd >= 0) close(crash_backup_fd);
+    orbit_package_filesystem_journal_record crash_record;
+    memset(&crash_record, 0, sizeof(crash_record));
+    crash_record.version = ORBIT_FILESYSTEM_JOURNAL_VERSION;
+    crash_record.phase = ORBIT_FILE_JOURNAL_APPLYING;
+    crash_record.revision = memory.last_revision + 1U;
+    memcpy(crash_record.transaction_id, crash_recovery_id,
+           sizeof(crash_recovery_id));
+    crash_record.change_count = 1U;
+    crash_record.changes[0] = crash_change;
+    EXPECT("APPLYING record durably stored before simulated crash",
+        backend.store_atomic(backend.context, &crash_record));
+    orbit_package_filesystem_executor_context crash_executor;
+    memset(&crash_executor, 0, sizeof(crash_executor));
+    crash_executor.install_root_fd = target_fd;
+    crash_executor.staging_root_fd = stage_fd;
+    crash_executor.backup_base_directory_fd = base_fd;
+    memcpy(crash_executor.transaction_id, crash_recovery_id,
+           sizeof(crash_recovery_id));
+    EXPECT("directory rename occurs before simulated process death",
+        orbit_package_filesystem_journal_execute_change(
+            &crash_executor, crash_recovery_id, ORBIT_FILE_JOURNAL_APPLY,
+            &crash_change) == ORBIT_FILESYSTEM_OK &&
+        exists_at(target_fd, "crash-tree") &&
+        !exists_at(stage_fd, "crash-tree"));
+    EXPECT("fresh recovery rolls back interrupted directory transaction",
+        orbit_package_filesystem_journal_recover(
+            &backend, orbit_package_filesystem_journal_execute_change,
+            &crash_executor) == ORBIT_FILESYSTEM_OK);
+    EXPECT("crash recovery restores directory to staging with contents",
+        !exists_at(target_fd, "crash-tree") &&
+        exists_at(stage_fd, "crash-tree"));
+    recover_tree_fd = openat(stage_fd, "crash-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("crash recovery preserves subtree payload",
+        recover_tree_fd >= 0 &&
+        file_equals_at(recover_tree_fd, "payload", "survive"));
+    if (recover_tree_fd >= 0) {
+        (void)unlinkat(recover_tree_fd, "payload", 0);
+        close(recover_tree_fd);
+    }
+    (void)unlinkat(stage_fd, "crash-tree", AT_REMOVEDIR);
+    EXPECT("crash-recovery transaction backup cleaned",
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, crash_recovery_id) == ORBIT_FILESYSTEM_OK);
+
     uint8_t tombstone_window_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xE2U };
     int tombstone_window_fd = -1;
     EXPECT("simulated tombstone-to-cleanup crash leaves empty transaction directory",

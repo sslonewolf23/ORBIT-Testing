@@ -427,7 +427,23 @@ int main(void) {
             remove_staged_anchor_fixtures(cleanup_backup));
         close(cleanup_backup);
     }
-    int cleanup_tree = openat(base_fd, "stage", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n    if (cleanup_tree >= 0) {\n        int tree = openat(cleanup_tree, "new-tree", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n        if (tree >= 0) { (void)unlinkat(tree, "payload", 0); close(tree); }\n        (void)unlinkat(cleanup_tree, "new-tree", AT_REMOVEDIR);\n        (void)unlinkat(cleanup_tree, "occupied-tree", AT_REMOVEDIR);\n        close(cleanup_tree);\n    }\n    cleanup_tree = openat(base_fd, "target", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n    if (cleanup_tree >= 0) {\n        int tree = openat(cleanup_tree, "new-tree", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n        if (tree >= 0) { (void)unlinkat(tree, "payload", 0); close(tree); }\n        (void)unlinkat(cleanup_tree, "new-tree", AT_REMOVEDIR);\n        (void)unlinkat(cleanup_tree, "occupied-tree", AT_REMOVEDIR);\n        close(cleanup_tree);\n    }\n    (void)unlinkat(base_fd, "target", AT_REMOVEDIR);
+    int cleanup_tree = openat(base_fd, "stage", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (cleanup_tree >= 0) {
+        int tree = openat(cleanup_tree, "new-tree", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (tree >= 0) { (void)unlinkat(tree, "payload", 0); close(tree); }
+        (void)unlinkat(cleanup_tree, "new-tree", AT_REMOVEDIR);
+        (void)unlinkat(cleanup_tree, "occupied-tree", AT_REMOVEDIR);
+        close(cleanup_tree);
+    }
+    cleanup_tree = openat(base_fd, "target", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (cleanup_tree >= 0) {
+        int tree = openat(cleanup_tree, "new-tree", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+        if (tree >= 0) { (void)unlinkat(tree, "payload", 0); close(tree); }
+        (void)unlinkat(cleanup_tree, "new-tree", AT_REMOVEDIR);
+        (void)unlinkat(cleanup_tree, "occupied-tree", AT_REMOVEDIR);
+        close(cleanup_tree);
+    }
+    (void)unlinkat(base_fd, "target", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "stage", AT_REMOVEDIR);
     (void)unlinkat(base_fd, "backup", AT_REMOVEDIR);
     close(base_fd);

@@ -643,6 +643,56 @@ int main(void) {
         orbit_package_filesystem_journal_cleanup_backup_directory(
             &backend, base_fd, directory_rollback_id) == ORBIT_FILESYSTEM_OK);
 
+    EXPECT("successful directory transaction staged tree created",
+        mkdirat(stage_fd, "committed-tree", 0700) == 0);
+    recover_tree_fd = openat(stage_fd, "committed-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("successful directory transaction payload created",
+        recover_tree_fd >= 0 && write_file_at(recover_tree_fd, "payload", "committed"));
+    if (recover_tree_fd >= 0) close(recover_tree_fd);
+    uint8_t directory_commit_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xD3U };
+    int directory_commit_backup_fd = -1;
+    EXPECT("successful directory transaction backup created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, directory_commit_id, true,
+            &directory_commit_backup_fd) == ORBIT_FILESYSTEM_OK);
+    orbit_package_file_change directory_commit_change;
+    EXPECT("successful directory transaction operation prepared",
+        directory_commit_backup_fd >= 0 &&
+        orbit_package_filesystem_prepare_create_directory(
+            target_fd, "committed-tree", stage_fd, "committed-tree",
+            directory_commit_backup_fd, "directory-unused-backup",
+            &directory_commit_change) == ORBIT_FILESYSTEM_OK &&
+        orbit_package_filesystem_set_parent_paths(
+            &directory_commit_change, "", "") == ORBIT_FILESYSTEM_OK);
+    if (directory_commit_backup_fd >= 0) close(directory_commit_backup_fd);
+    memcpy(directory_executor.transaction_id, directory_commit_id,
+           sizeof(directory_commit_id));
+    EXPECT("journal commits staged directory subtree",
+        orbit_package_filesystem_journal_execute(
+            &backend, directory_commit_id, &directory_commit_change, 1U,
+            orbit_package_filesystem_journal_execute_change,
+            &directory_executor) == ORBIT_FILESYSTEM_OK);
+    EXPECT("committed directory exists only at install destination",
+        exists_at(target_fd, "committed-tree") &&
+        !exists_at(stage_fd, "committed-tree"));
+    recover_tree_fd = openat(target_fd, "committed-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("committed directory retains payload",
+        recover_tree_fd >= 0 &&
+        file_equals_at(recover_tree_fd, "payload", "committed"));
+    if (recover_tree_fd >= 0) close(recover_tree_fd);
+    EXPECT("committed directory transaction backup cleaned",
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, directory_commit_id) == ORBIT_FILESYSTEM_OK);
+    recover_tree_fd = openat(target_fd, "committed-tree",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (recover_tree_fd >= 0) {
+        (void)unlinkat(recover_tree_fd, "payload", 0);
+        close(recover_tree_fd);
+    }
+    (void)unlinkat(target_fd, "committed-tree", AT_REMOVEDIR);
+
     uint8_t tombstone_window_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xE2U };
     int tombstone_window_fd = -1;
     EXPECT("simulated tombstone-to-cleanup crash leaves empty transaction directory",

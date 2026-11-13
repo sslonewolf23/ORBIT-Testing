@@ -197,10 +197,41 @@ int main(void) {
         result == ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR &&
         unsupported_count == 0U && insufficient_snapshot.count == 0U);
 
+    EXPECT("staged missing directory tree created",
+        mkdirat(stage_fd, "Missing", 0700) == 0);
+    int missing_stage_fd = openat(stage_fd, "Missing",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("staged missing directory payload created",
+        missing_stage_fd >= 0 && write_file_at(missing_stage_fd, "new-file", "new"));
+    if (missing_stage_fd >= 0) close(missing_stage_fd);
+    orbit_archive_entry missing_manifest[2];
+    memset(missing_manifest, 0, sizeof(missing_manifest));
+    (void)snprintf(missing_manifest[0].path, sizeof(missing_manifest[0].path),
+                   "Missing");
+    missing_manifest[0].directory = true;
+    (void)snprintf(missing_manifest[1].path, sizeof(missing_manifest[1].path),
+                   "Missing/new-file");
+    orbit_package_ownership_snapshot empty_installed = { NULL, 0U };
+    size_t missing_count = 0U;
+    orbit_package_ownership_snapshot missing_ownership;
+    result = orbit_package_file_plan_build_install(
+        &empty_installed, &candidate, missing_manifest, 2U,
+        install_fd, stage_fd, backup_fd, changes, 8U, &missing_count,
+        ownership_output, 8U, &missing_ownership);
+    EXPECT("missing parent plans as one transactional directory move",
+        result == ORBIT_PACKAGE_FILE_PLAN_OK && missing_count == 1U &&
+        changes[0].operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY &&
+        strcmp(changes[0].target_name, "Missing") == 0 &&
+        changes[0].target_parent_path[0] == '\\0' &&
+        strcmp(changes[0].staged_parent_path, "") == 0);
+    EXPECT("directory move plan leaves both roots untouched",
+        faccessat(install_fd, "Missing", F_OK, AT_SYMLINK_NOFOLLOW) != 0 &&
+        faccessat(stage_fd, "Missing/new-file", F_OK, AT_SYMLINK_NOFOLLOW) == 0);
+
     close(stage_library);
     close(install_library);
     unlinkat(install_fd, "Library/old-file", 0);
-    unlinkat(stage_fd, "Library/new-file", 0);
+    unlinkat(stage_fd, "Library/new-file", 0);\n    int cleanup_missing = openat(stage_fd, "Missing", O_RDONLY | O_DIRECTORY | O_CLOEXEC);\n    if (cleanup_missing >= 0) { (void)unlinkat(cleanup_missing, "new-file", 0); close(cleanup_missing); }\n    (void)unlinkat(stage_fd, "Missing", AT_REMOVEDIR);
     unlinkat(install_fd, "Library", AT_REMOVEDIR);
     unlinkat(stage_fd, "Library", AT_REMOVEDIR);
     close(backup_fd);

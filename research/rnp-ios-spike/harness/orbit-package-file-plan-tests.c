@@ -275,6 +275,13 @@ int main(void) {
     close(install_library);
     unlinkat(install_fd, "Library/old-file", 0);
     unlinkat(stage_fd, "Library/new-file", 0);
+    int cleanup_child = openat(stage_library, "NewChild",
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (cleanup_child >= 0) {
+        (void)unlinkat(cleanup_child, "payload", 0);
+        close(cleanup_child);
+        (void)unlinkat(stage_library, "NewChild", AT_REMOVEDIR);
+    }
     int cleanup_missing = openat(stage_fd, "Missing", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
     if (cleanup_missing >= 0) {
         int cleanup_deep = openat(cleanup_missing, "Deep", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -293,9 +300,7 @@ int main(void) {
     close(root_fd);
     rmdir(root_path);
 
-    printf("package_file_plan_checks=%u failures=%u
-decision=%s
-",
+    printf("package_file_plan_checks=%u failures=%u\ndecision=%s\n",
         checks, failures, failures == 0U ? "PASS" : "FAIL");
     return failures == 0U ? EXIT_SUCCESS : EXIT_FAILURE;
 }

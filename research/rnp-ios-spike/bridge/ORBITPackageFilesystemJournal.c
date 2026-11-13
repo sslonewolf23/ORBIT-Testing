@@ -53,7 +53,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
         orbit_package_filesystem_validate_change(change);
     if (valid != ORBIT_FILESYSTEM_OK) return valid;
     if (!executor_roots_are_valid(
-            executor, change->operation == ORBIT_FILESYSTEM_REPLACE))
+            executor, (change->operation == ORBIT_FILESYSTEM_REPLACE ||
+             change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY)))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
 
     int backup_parent_fd = -1;
@@ -72,7 +73,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
         return valid;
     }
 
-    if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
+    if (change->operation == ORBIT_FILESYSTEM_REPLACE ||
+        change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY) {
         valid = orbit_package_filesystem_open_parent_directory(
             executor->staging_root_fd, change->staged_parent_path,
             &staged_parent_fd);

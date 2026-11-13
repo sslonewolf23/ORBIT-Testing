@@ -36,6 +36,16 @@ int main(void) {
     change->preimage_device = 11U;
     change->preimage_inode = 22U;
 
+    source->change_count = 2U;
+    orbit_package_file_change *directory_change = &source->changes[1];
+    directory_change->version = ORBIT_FILESYSTEM_CHANGE_VERSION;
+    directory_change->operation = ORBIT_FILESYSTEM_CREATE_DIRECTORY;
+    memcpy(directory_change->target_name, "Library", sizeof("Library"));
+    memcpy(directory_change->staged_name, "Library", sizeof("Library"));
+    memcpy(directory_change->backup_name, "dir-unused", sizeof("dir-unused"));
+    directory_change->staged_device = 11U;
+    directory_change->staged_inode = 33U;
+
     size_t required = 0U;
     EXPECT("size query reports buffer requirement",
         orbit_package_filesystem_journal_encode(

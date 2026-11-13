@@ -46,7 +46,7 @@ static size_t append_member(uint8_t *out, size_t offset, const char *name,
     char size[16];
     (void)snprintf(size, sizeof(size), "%-10zu", length);
     memcpy(header + 48U, size, 10U);
-    memcpy(header + 58U, "\`\n", 2U);
+    memcpy(header + 58U, "`\n", 2U);
     memcpy(header + 60U, body, length);
     size_t next = offset + 60U + length;
     if (((60U + length) & 1U) != 0U) out[next++] = '\n';

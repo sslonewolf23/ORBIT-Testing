@@ -106,20 +106,25 @@ orbit_ownership_codec_code orbit_package_ownership_decode(
         const size_t c[4]={sizeof(r->path),sizeof(r->package_name),
                            sizeof(r->package_version),sizeof(r->architecture)};
         for(size_t j=0;j<4U;j++) {
-            if((size_t)(end-cursor)<2U)return ORBIT_OWNERSHIP_CODEC_MALFORMED;
+            if((size_t)(end-cursor)<2U)goto malformed;
             uint16_t n=(uint16_t)(((uint16_t)cursor[0]<<8U)|cursor[1]);cursor+=2U;
             if(n==0U||(size_t)(end-cursor)<n||(size_t)n>=c[j]||
-               memchr(cursor,'\0',n)!=NULL)return ORBIT_OWNERSHIP_CODEC_MALFORMED;
+               memchr(cursor,'\0',n)!=NULL)goto malformed;
             memcpy(v[j],cursor,n);v[j][n]='\0';cursor+=n;
         }
-        if(cursor==end||*cursor>1U)return ORBIT_OWNERSHIP_CODEC_MALFORMED;
+        if(cursor==end||*cursor>1U)goto malformed;
         r->directory=*cursor++==1U;
     }
-    if(cursor!=end)return ORBIT_OWNERSHIP_CODEC_MALFORMED;
+    if(cursor!=end)goto malformed;
     snapshot->records=records;snapshot->count=count;
     if(!snapshot_valid(snapshot)) {
         memset(snapshot,0,sizeof(*snapshot));
+        memset(records,0,(size_t)count*sizeof(*records));
         return ORBIT_OWNERSHIP_CODEC_INVALID_SNAPSHOT;
     }
     return ORBIT_OWNERSHIP_CODEC_OK;
+malformed:
+    if(count)memset(records,0,(size_t)count*sizeof(*records));
+    memset(snapshot,0,sizeof(*snapshot));
+    return ORBIT_OWNERSHIP_CODEC_MALFORMED;
 }

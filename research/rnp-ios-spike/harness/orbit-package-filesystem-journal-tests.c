@@ -34,6 +34,7 @@ typedef struct {
     size_t store_calls;
     size_t fail_store_call;
     bool fail_clear_once;
+    bool corrupt_next_load;
 } memory_journal;
 
 typedef struct {
@@ -56,6 +57,10 @@ static orbit_file_journal_load_result memory_load(
     *last_revision = memory->last_revision;
     if (!memory->record) return ORBIT_FILE_JOURNAL_LOAD_EMPTY;
     memcpy(record, memory->record, sizeof(*record));
+    if (memory->corrupt_next_load) {
+        memory->corrupt_next_load = false;
+        record->phase = 0U;
+    }
     return ORBIT_FILE_JOURNAL_LOAD_PRESENT;
 }
 
@@ -410,6 +415,14 @@ int main(void) {
             &backend, transaction_id, changes, 2U,
             execute_change, &executor) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
     EXPECT("rollback interruption leaves durable rolling-back phase",
+        memory.record != NULL &&
+        memory.record->phase == ORBIT_FILE_JOURNAL_ROLLING_BACK);
+    memory.corrupt_next_load = true;
+    EXPECT("malformed backend journal load is rejected",
+        orbit_package_filesystem_journal_recover(
+            &backend, execute_change, &executor) ==
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("malformed backend load preserves durable journal for retry",
         memory.record != NULL &&
         memory.record->phase == ORBIT_FILE_JOURNAL_ROLLING_BACK);
     executor.fail_apply_call = 0U;

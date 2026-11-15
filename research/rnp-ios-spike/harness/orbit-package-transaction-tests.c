@@ -14,6 +14,8 @@ typedef struct {
     unsigned fail_rollback_number;
     bool corrupt_load;
     bool resolve_mismatch;
+    bool inspect_zero_tails;
+    bool zero_tails;
 } fixture;
 static unsigned checks=0,failures=0;
 static void expect(const char *name,bool condition) {
@@ -26,8 +28,22 @@ static orbit_journal_status load_journal(void *ctx,orbit_transaction_journal *ou
     if(f->corrupt_load)out->version=999U;
     return ORBIT_JOURNAL_OK;
 }
+static bool zero_tail(const char *value,size_t capacity) {
+    const char *end=memchr(value,'\\0',capacity);
+    if(!end)return false;
+    for(const char *p=end+1;p<value+capacity;++p)if(*p!='\\0')return false;
+    return true;
+}
 static bool store_journal(void *ctx,const orbit_transaction_journal *j) {
     fixture *f=ctx;++f->stores;
+    if(f->inspect_zero_tails) {
+        f->zero_tails=true;
+        for(uint32_t i=0;i<j->operation_count;++i)
+            if(!zero_tail(j->operations[i].name,sizeof(j->operations[i].name))||
+               !zero_tail(j->operations[i].version_string,sizeof(j->operations[i].version_string))||
+               !zero_tail(j->operations[i].architecture,sizeof(j->operations[i].architecture)))
+                f->zero_tails=false;
+    }
     if(f->fail_store_number&&f->stores==f->fail_store_number)return false;
     if(f->present&&j->revision<=f->journal.revision)return false;
     f->journal=*j;f->present=true;return true;
@@ -87,6 +103,18 @@ int main(void) {
     expect("both-operations-applied",f.applies==2U);
     expect("committed-journal-cleared",!f.present&&f.clears==1U);
     expect("successful-transaction-no-rollback",f.rollbacks==0U);
+
+    memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
+    memset(&a,0xA5,sizeof(a));
+    snprintf(a.name,sizeof(a.name),"alpha");
+    snprintf(a.version,sizeof(a.version),"1.0");
+    snprintf(a.architecture,sizeof(a.architecture),"iphoneos-arm64");
+    f.inspect_zero_tails=true;
+    code=orbit_package_transaction_execute(id,packages,actions,1U,&jb,&pb);
+    expect("dirty-package-buffer-transaction-succeeds",code==ORBIT_TRANSACTION_OK);
+    expect("journal-persists-only-terminated-identity-strings",f.zero_tails);
+
+    make_package(&a,"alpha");make_package(&b,"beta");
 
     memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
     uint8_t zero_id[ORBIT_TRANSACTION_ID_BYTES]={0U};

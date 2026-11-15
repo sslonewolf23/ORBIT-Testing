@@ -344,6 +344,12 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_enveloped(
            ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES);
     record->change_count = (uint32_t)change_count;
     memcpy(record->changes, changes, change_count * sizeof(*changes));
+    if (orbit_package_filesystem_journal_validate_record(record) !=
+        ORBIT_FILESYSTEM_OK) {
+        free(record);
+        loaded_envelope_destroy(&current);
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    }
 
     uint8_t *journal = NULL;
     size_t journal_length = 0U;

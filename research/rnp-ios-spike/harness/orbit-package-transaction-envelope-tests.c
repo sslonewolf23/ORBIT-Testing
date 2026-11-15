@@ -116,26 +116,26 @@ int main(void) {
     rolling.revision = 12U;
     rolling.phase = ORBIT_TRANSACTION_ENVELOPE_ROLLING_BACK;
     rolling.journal_payload = rolling_journal_payload;
-    EXPECT("active envelope rejects a mismatched journal transaction identity", ({
-        uint8_t mismatched_payload[sizeof(journal_payload)];
-        memcpy(mismatched_payload, journal_payload, sizeof(journal_payload));
-        mismatched_payload[9] ^= 0x01U;
-        orbit_package_transaction_envelope invalid = applying;
-        invalid.journal_payload = mismatched_payload;
+    uint8_t mismatched_identity_payload[sizeof(journal_payload)];
+    memcpy(mismatched_identity_payload, journal_payload,
+           sizeof(journal_payload));
+    mismatched_identity_payload[9] ^= 0x01U;
+    orbit_package_transaction_envelope mismatched_identity = applying;
+    mismatched_identity.journal_payload = mismatched_identity_payload;
+    EXPECT("active envelope rejects a mismatched journal transaction identity",
         orbit_package_transaction_envelope_encode(
-            &invalid, encoded, sizeof(encoded), &encoded_length) ==
-            ORBIT_TRANSACTION_ENVELOPE_INVALID_STATE;
-    }));
-    EXPECT("active envelope rejects a mismatched journal phase", ({
-        uint8_t mismatched_payload[sizeof(journal_payload)];
-        memcpy(mismatched_payload, journal_payload, sizeof(journal_payload));
-        mismatched_payload[8] = ORBIT_TRANSACTION_ENVELOPE_COMMITTED;
-        orbit_package_transaction_envelope invalid = applying;
-        invalid.journal_payload = mismatched_payload;
+            &mismatched_identity, encoded, sizeof(encoded), &encoded_length) ==
+            ORBIT_TRANSACTION_ENVELOPE_INVALID_STATE);
+
+    uint8_t mismatched_phase_payload[sizeof(journal_payload)];
+    memcpy(mismatched_phase_payload, journal_payload, sizeof(journal_payload));
+    mismatched_phase_payload[8] = ORBIT_TRANSACTION_ENVELOPE_COMMITTED;
+    orbit_package_transaction_envelope mismatched_phase = applying;
+    mismatched_phase.journal_payload = mismatched_phase_payload;
+    EXPECT("active envelope rejects a mismatched journal phase",
         orbit_package_transaction_envelope_encode(
-            &invalid, encoded, sizeof(encoded), &encoded_length) ==
-            ORBIT_TRANSACTION_ENVELOPE_INVALID_STATE;
-    }));
+            &mismatched_phase, encoded, sizeof(encoded), &encoded_length) ==
+            ORBIT_TRANSACTION_ENVELOPE_INVALID_STATE);
     EXPECT("applying to rolling back preserves both ownership snapshots",
         orbit_package_transaction_envelope_validate_transition(
             &applying, &rolling) == ORBIT_TRANSACTION_ENVELOPE_OK);

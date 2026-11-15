@@ -340,6 +340,66 @@ int main(void) {
         result == ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR &&
         rejected_count == 0U && insufficient_snapshot.count == 0U);
 
+    /* Ownership-aware type transitions remain explicitly unsupported until
+       a journal operation can atomically replace a file with a directory (or
+       vice versa). Verify both directions fail closed without partial plans. */
+    EXPECT("owned file-to-directory fixtures created",
+        write_file_at(install_fd, "OwnedFlip", "old-file") &&
+        mkdirat(stage_fd, "OwnedFlip", 0700) == 0);
+    int owned_flip_stage_fd = openat(stage_fd, "OwnedFlip",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("owned file-to-directory staged child created",
+        owned_flip_stage_fd >= 0 && write_file_at(owned_flip_stage_fd, "child", "new"));
+    if (owned_flip_stage_fd >= 0) close(owned_flip_stage_fd);
+    orbit_package_ownership_record owned_flip_record;
+    fill_record(&owned_flip_record, "OwnedFlip", candidate.name, "1.0",
+                candidate.architecture, false);
+    orbit_package_ownership_snapshot owned_flip_snapshot = { &owned_flip_record, 1U };
+    orbit_archive_entry owned_flip_manifest[2];
+    memset(owned_flip_manifest, 0, sizeof(owned_flip_manifest));
+    (void)snprintf(owned_flip_manifest[0].path, sizeof(owned_flip_manifest[0].path), "OwnedFlip");
+    owned_flip_manifest[0].directory = true;
+    (void)snprintf(owned_flip_manifest[1].path, sizeof(owned_flip_manifest[1].path), "OwnedFlip/child");
+    rejected_count = 77U;
+    result = orbit_package_file_plan_build_install(
+        &owned_flip_snapshot, &candidate, owned_flip_manifest, 2U,
+        install_fd, stage_fd, backup_fd, changes, 8U, &rejected_count,
+        ownership_output, 8U, &insufficient_snapshot);
+    EXPECT("owned file-to-directory transition fails closed",
+        result == ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR &&
+        rejected_count == 0U && insufficient_snapshot.count == 0U &&
+        faccessat(install_fd, "OwnedFlip", F_OK, AT_SYMLINK_NOFOLLOW) == 0 &&
+        faccessat(stage_fd, "OwnedFlip/child", F_OK, AT_SYMLINK_NOFOLLOW) == 0);
+
+    EXPECT("owned directory-to-file fixtures created",
+        mkdirat(install_fd, "OwnedDirFlip", 0700) == 0 &&
+        write_file_at(stage_fd, "OwnedDirFlip", "replacement"));
+    orbit_package_ownership_record owned_directory_record;
+    fill_record(&owned_directory_record, "OwnedDirFlip", candidate.name, "1.0",
+                candidate.architecture, true);
+    orbit_package_ownership_snapshot owned_directory_snapshot = {
+        &owned_directory_record, 1U
+    };
+    orbit_archive_entry owned_directory_manifest;
+    memset(&owned_directory_manifest, 0, sizeof(owned_directory_manifest));
+    (void)snprintf(owned_directory_manifest.path,
+                   sizeof(owned_directory_manifest.path), "OwnedDirFlip");
+    rejected_count = 77U;
+    result = orbit_package_file_plan_build_install(
+        &owned_directory_snapshot, &candidate, &owned_directory_manifest, 1U,
+        install_fd, stage_fd, backup_fd, changes, 8U, &rejected_count,
+        ownership_output, 8U, &insufficient_snapshot);
+    EXPECT("owned directory-to-file transition fails closed",
+        result == ORBIT_PACKAGE_FILE_PLAN_FILESYSTEM_ERROR &&
+        rejected_count == 0U && insufficient_snapshot.count == 0U &&
+        fstatat(install_fd, "OwnedDirFlip", &(struct stat){0}, AT_SYMLINK_NOFOLLOW) == 0 &&
+        faccessat(stage_fd, "OwnedDirFlip", F_OK, AT_SYMLINK_NOFOLLOW) == 0);
+    (void)unlinkat(install_fd, "OwnedFlip", 0);
+    (void)unlinkat(stage_fd, "OwnedFlip/child", 0);
+    (void)unlinkat(stage_fd, "OwnedFlip", AT_REMOVEDIR);
+    (void)unlinkat(install_fd, "OwnedDirFlip", AT_REMOVEDIR);
+    (void)unlinkat(stage_fd, "OwnedDirFlip", 0);
+
     close(stage_library);
     close(install_library);
     unlinkat(install_fd, "Library/old-file", 0);

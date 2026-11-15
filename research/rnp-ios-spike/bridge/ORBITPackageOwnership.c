@@ -223,11 +223,11 @@ orbit_ownership_code orbit_package_ownership_snapshot_install(
  orbit_ownership_code rc=orbit_package_ownership_plan_install(installed,candidate,entries,entry_count,&candidate_plan);
  if(rc!=ORBIT_OWNERSHIP_OK)return rc;size_t kept=0U;
  for(size_t i=0;i<installed->count;i++){const orbit_package_ownership_record *r=&installed->records[i];if(same_identity(r,candidate))continue;
-  if(kept>=output_capacity){orbit_package_ownership_plan_destroy(&candidate_plan);return ORBIT_OWNERSHIP_LIMIT;}output[kept++]=*r;}
- if(candidate_plan.count>output_capacity-kept){orbit_package_ownership_plan_destroy(&candidate_plan);return ORBIT_OWNERSHIP_LIMIT;}
+  if(kept>=output_capacity){memset(output,0,kept*sizeof(*output));orbit_package_ownership_plan_destroy(&candidate_plan);return ORBIT_OWNERSHIP_LIMIT;}output[kept++]=*r;}
+ if(candidate_plan.count>output_capacity-kept){memset(output,0,kept*sizeof(*output));orbit_package_ownership_plan_destroy(&candidate_plan);return ORBIT_OWNERSHIP_LIMIT;}
  if(candidate_plan.count)memcpy(output+kept,candidate_plan.records,candidate_plan.count*sizeof(*output));kept+=candidate_plan.count;
  orbit_package_ownership_plan_destroy(&candidate_plan);orbit_package_ownership_snapshot result={output,kept};rc=validate(&result);
- if(rc!=ORBIT_OWNERSHIP_OK)return rc;*snapshot=result;return ORBIT_OWNERSHIP_OK;
+ if(rc!=ORBIT_OWNERSHIP_OK){memset(output,0,kept*sizeof(*output));return rc;}*snapshot=result;return ORBIT_OWNERSHIP_OK;
 }
 
 orbit_ownership_code orbit_package_ownership_snapshot_remove(
@@ -238,7 +238,7 @@ orbit_ownership_code orbit_package_ownership_snapshot_remove(
  if(rc!=ORBIT_OWNERSHIP_OK)return rc;orbit_package_ownership_plan_destroy(&removal);size_t kept=0U;
  for(size_t i=0;i<installed->count;i++){const orbit_package_ownership_record *r=&installed->records[i];
   if(strcmp(r->package_name,package->name)==0&&strcmp(r->architecture,package->architecture)==0)continue;
-  if(kept>=output_capacity)return ORBIT_OWNERSHIP_LIMIT;output[kept++]=*r;}
- orbit_package_ownership_snapshot result={output,kept};rc=validate(&result);if(rc!=ORBIT_OWNERSHIP_OK)return rc;
+  if(kept>=output_capacity){memset(output,0,kept*sizeof(*output));return ORBIT_OWNERSHIP_LIMIT;}output[kept++]=*r;}
+ orbit_package_ownership_snapshot result={output,kept};rc=validate(&result);if(rc!=ORBIT_OWNERSHIP_OK){memset(output,0,kept*sizeof(*output));return rc;}
  *snapshot=result;return ORBIT_OWNERSHIP_OK;
 }

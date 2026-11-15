@@ -326,6 +326,27 @@ int main(void) {
         file_equals_at(install_fd, "target-success", "old-success") &&
         file_equals_at(stage_fd, "stage-success", "new-success"));
 
+    orbit_package_filesystem_journal_record plan_record;
+    memset(&plan_record, 0, sizeof(plan_record));
+    plan_record.version = ORBIT_FILESYSTEM_JOURNAL_VERSION;
+    plan_record.phase = ORBIT_FILE_JOURNAL_APPLYING;
+    plan_record.revision = 1U;
+    memset(plan_record.transaction_id, 0xA1,
+           sizeof(plan_record.transaction_id));
+    plan_record.change_count = 2U;
+    plan_record.changes[0] = change;
+    plan_record.changes[1] = change;
+    (void)snprintf(plan_record.changes[1].target_name,
+        sizeof(plan_record.changes[1].target_name), "%s", "target-other");
+    EXPECT("journal validator rejects duplicate backup keys",
+        orbit_package_filesystem_journal_validate_record(&plan_record) ==
+            ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+    (void)snprintf(plan_record.changes[1].backup_name,
+        sizeof(plan_record.changes[1].backup_name), "%s", "backup-other");
+    EXPECT("journal validator rejects duplicate staged keys",
+        orbit_package_filesystem_journal_validate_record(&plan_record) ==
+            ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+
     executor.target_fd = install_fd;
     executor.stage_fd = stage_fd;
     executor.backup_fd = backup_fd;

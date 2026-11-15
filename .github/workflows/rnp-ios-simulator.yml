@@ -158,6 +158,7 @@ jobs:
             ORBITPackageDecompress \
             ORBITPackageStaging \
             ORBITPackageFilesystem \
+            ORBITPackageFilesystemJournal \
             ORBITPackageFilesystemJournalCodec \
             ORBITPackageOwnership \
             ORBITPackageOwnershipCodec \
@@ -274,6 +275,7 @@ jobs:
             "$RUNNER_TEMP/ORBITPackageDecompress-ios.o" \
             "$RUNNER_TEMP/ORBITPackageStaging-ios.o" \
             "$RUNNER_TEMP/ORBITPackageFilesystem-ios.o" \
+            "$RUNNER_TEMP/ORBITPackageFilesystemJournal-ios.o" \
             "$RUNNER_TEMP/ORBITPackageFilesystemJournalCodec-ios.o" \
             "$RUNNER_TEMP/ORBITPackageOwnership-ios.o" \
             "$RUNNER_TEMP/ORBITPackageOwnershipCodec-ios.o" \

@@ -72,7 +72,7 @@ static bool change_encoded_size(const orbit_package_file_change *change,
         sizeof(change->backup_name), sizeof(change->target_parent_path),
         sizeof(change->staged_parent_path)
     };
-    size_t result = 4U + 4U + 1U + 8U * 4U;
+    size_t result = 4U + 4U + 1U + 8U * 10U;
     for (size_t i = 0U; i < CODEC_STRING_COUNT; ++i) {
         uint16_t length = 0U;
         if (!stored_string_length(strings[i], capacities[i], &length) ||
@@ -138,7 +138,7 @@ orbit_journal_codec_code orbit_package_filesystem_journal_encode(
     uint8_t *cursor = output;
     memcpy(cursor, codec_magic, sizeof(codec_magic));
     cursor += sizeof(codec_magic);
-    *cursor++ = 2U;
+    *cursor++ = 3U;
     write_u32(cursor, record->phase);
     cursor += 4U;
     memcpy(cursor, record->transaction_id, ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES);
@@ -162,6 +162,12 @@ orbit_journal_codec_code orbit_package_filesystem_journal_encode(
         write_u64(cursor, change->preimage_inode); cursor += 8U;
         write_u64(cursor, change->staged_device); cursor += 8U;
         write_u64(cursor, change->staged_inode); cursor += 8U;
+        write_u64(cursor, change->target_parent_device); cursor += 8U;
+        write_u64(cursor, change->target_parent_inode); cursor += 8U;
+        write_u64(cursor, change->staged_parent_device); cursor += 8U;
+        write_u64(cursor, change->staged_parent_inode); cursor += 8U;
+        write_u64(cursor, change->backup_parent_device); cursor += 8U;
+        write_u64(cursor, change->backup_parent_inode); cursor += 8U;
     }
     return (size_t)(cursor - output) == required ?
         ORBIT_JOURNAL_CODEC_OK : ORBIT_JOURNAL_CODEC_INVALID_RECORD;
@@ -190,7 +196,7 @@ orbit_journal_codec_code orbit_package_filesystem_journal_decode(
     if (payload_length < CODEC_HEADER_SIZE ||
         payload_length > ORBIT_FILESYSTEM_JOURNAL_CODEC_MAX_PAYLOAD ||
         memcmp(payload, codec_magic, sizeof(codec_magic)) != 0 ||
-        payload[4] != 2U)
+        payload[4] != 3U)
         return ORBIT_JOURNAL_CODEC_MALFORMED;
 
     const uint8_t *cursor = payload + 5U;
@@ -222,7 +228,7 @@ orbit_journal_codec_code orbit_package_filesystem_journal_decode(
                            sizeof(change->target_parent_path)) ||
             !decode_string(&cursor, end, change->staged_parent_path,
                            sizeof(change->staged_parent_path)) ||
-            (size_t)(end - cursor) < 33U)
+            (size_t)(end - cursor) < 81U)
             return ORBIT_JOURNAL_CODEC_MALFORMED;
         if (*cursor > 1U) return ORBIT_JOURNAL_CODEC_MALFORMED;
         change->preimage_exists = *cursor++ == 1U;
@@ -230,6 +236,12 @@ orbit_journal_codec_code orbit_package_filesystem_journal_decode(
         change->preimage_inode = read_u64(cursor); cursor += 8U;
         change->staged_device = read_u64(cursor); cursor += 8U;
         change->staged_inode = read_u64(cursor); cursor += 8U;
+        change->target_parent_device = read_u64(cursor); cursor += 8U;
+        change->target_parent_inode = read_u64(cursor); cursor += 8U;
+        change->staged_parent_device = read_u64(cursor); cursor += 8U;
+        change->staged_parent_inode = read_u64(cursor); cursor += 8U;
+        change->backup_parent_device = read_u64(cursor); cursor += 8U;
+        change->backup_parent_inode = read_u64(cursor); cursor += 8U;
         if (orbit_package_filesystem_validate_change(change) != ORBIT_FILESYSTEM_OK)
             return ORBIT_JOURNAL_CODEC_MALFORMED;
     }

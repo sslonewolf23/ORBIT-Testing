@@ -351,14 +351,17 @@ static orbit_filesystem_code verify_change(
         !valid_stored_parent_path(change->target_parent_path,
                                   sizeof(change->target_parent_path)))
         return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    if (change->target_parent_inode == 0U || change->backup_parent_inode == 0U)
+        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     if (change->operation == ORBIT_FILESYSTEM_REPLACE) {
-        if (!valid_stored_component(change->staged_name, sizeof(change->staged_name)) ||
+        if (change->staged_parent_inode == 0U || !valid_stored_component(change->staged_name, sizeof(change->staged_name)) ||
             !valid_stored_parent_path(change->staged_parent_path,
                                       sizeof(change->staged_parent_path)) ||
             change->staged_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else if (change->operation == ORBIT_FILESYSTEM_REMOVE) {
-        if (!stored_string_is_empty(change->staged_name,
+        if (change->staged_parent_device != 0U || change->staged_parent_inode != 0U ||
+            !stored_string_is_empty(change->staged_name,
                                     sizeof(change->staged_name)) ||
             !valid_stored_parent_path(change->staged_parent_path,
                                       sizeof(change->staged_parent_path)) ||
@@ -366,7 +369,7 @@ static orbit_filesystem_code verify_change(
             !change->preimage_exists || change->preimage_inode == 0U)
             return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     } else if (change->operation == ORBIT_FILESYSTEM_CREATE_DIRECTORY) {
-        if (!valid_stored_component(change->staged_name, sizeof(change->staged_name)) ||
+        if (change->staged_parent_inode == 0U || !valid_stored_component(change->staged_name, sizeof(change->staged_name)) ||
             !valid_stored_parent_path(change->staged_parent_path,
                                       sizeof(change->staged_parent_path)) ||
             change->preimage_exists || change->staged_inode == 0U ||
@@ -699,8 +702,18 @@ orbit_filesystem_code orbit_package_filesystem_prepare_replace(
     change->preimage_exists = target == FILE_ID_MATCH;
     change->preimage_device = preimage_device;
     change->preimage_inode = preimage_inode;
+    struct stat staged_parent_status, backup_parent_status;
+    if (fstat(staged_parent_fd, &staged_parent_status) < 0 ||
+        fstat(backup_parent_fd, &backup_parent_status) < 0)
+        return ORBIT_FILESYSTEM_IO_ERROR;
     change->staged_device = staged_device;
     change->staged_inode = staged_inode;
+    change->target_parent_device = (uint64_t)target_parent_status.st_dev;
+    change->target_parent_inode = (uint64_t)target_parent_status.st_ino;
+    change->staged_parent_device = (uint64_t)staged_parent_status.st_dev;
+    change->staged_parent_inode = (uint64_t)staged_parent_status.st_ino;
+    change->backup_parent_device = (uint64_t)backup_parent_status.st_dev;
+    change->backup_parent_inode = (uint64_t)backup_parent_status.st_ino;
     return ORBIT_FILESYSTEM_OK;
 }
 
@@ -735,8 +748,18 @@ orbit_filesystem_code orbit_package_filesystem_prepare_create_directory(
     memcpy(change->target_name, target_name, strlen(target_name) + 1U);
     memcpy(change->staged_name, staged_name, strlen(staged_name) + 1U);
     memcpy(change->backup_name, backup_name, strlen(backup_name) + 1U);
+    struct stat staged_parent_status, backup_parent_status;
+    if (fstat(staged_parent_fd, &staged_parent_status) < 0 ||
+        fstat(backup_parent_fd, &backup_parent_status) < 0)
+        return ORBIT_FILESYSTEM_IO_ERROR;
     change->staged_device = (uint64_t)staged_status.st_dev;
     change->staged_inode = (uint64_t)staged_status.st_ino;
+    change->target_parent_device = (uint64_t)target_parent_status.st_dev;
+    change->target_parent_inode = (uint64_t)target_parent_status.st_ino;
+    change->staged_parent_device = (uint64_t)staged_parent_status.st_dev;
+    change->staged_parent_inode = (uint64_t)staged_parent_status.st_ino;
+    change->backup_parent_device = (uint64_t)backup_parent_status.st_dev;
+    change->backup_parent_inode = (uint64_t)backup_parent_status.st_ino;
     return ORBIT_FILESYSTEM_OK;
 }
 
@@ -775,6 +798,13 @@ orbit_filesystem_code orbit_package_filesystem_prepare_remove(
     change->preimage_exists = true;
     change->preimage_device = preimage_device;
     change->preimage_inode = preimage_inode;
+    struct stat backup_parent_status;
+    if (fstat(backup_parent_fd, &backup_parent_status) < 0)
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    change->target_parent_device = (uint64_t)target_parent_status.st_dev;
+    change->target_parent_inode = (uint64_t)target_parent_status.st_ino;
+    change->backup_parent_device = (uint64_t)backup_parent_status.st_dev;
+    change->backup_parent_inode = (uint64_t)backup_parent_status.st_ino;
     return ORBIT_FILESYSTEM_OK;
 }
 

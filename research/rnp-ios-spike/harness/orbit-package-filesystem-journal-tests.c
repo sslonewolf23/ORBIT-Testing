@@ -425,6 +425,9 @@ int main(void) {
     EXPECT("malformed backend load preserves durable journal for retry",
         memory.record != NULL &&
         memory.record->phase == ORBIT_FILE_JOURNAL_ROLLING_BACK);
+    EXPECT("malformed backend load never invokes rollback executor",
+        file_equals_at(target_fd, "rb-a", "new-a") &&
+        !exists_at(target_fd, "rb-b"));
     executor.fail_apply_call = 0U;
     executor.fail_after_apply = false;
     EXPECT("recovery retries reverse rollback and clears journal",

@@ -6,6 +6,14 @@
 static bool bounded_string(const char *value,size_t capacity) {
     return value&&value[0]!='\0'&&memchr(value,'\0',capacity)!=NULL;
 }
+static bool transaction_id_valid(
+    const uint8_t transaction_id[ORBIT_TRANSACTION_ID_BYTES]) {
+    if (!transaction_id) return false;
+    uint8_t aggregate = 0U;
+    for (size_t i = 0U; i < ORBIT_TRANSACTION_ID_BYTES; ++i)
+        aggregate |= transaction_id[i];
+    return aggregate != 0U;
+}
 static bool package_identity_matches(const orbit_package_record *package,
                                      const char *name,const char *version,
                                      const char *architecture) {
@@ -28,7 +36,7 @@ static bool journal_valid(const orbit_transaction_journal *j) {
        j->phase>ORBIT_TRANSACTION_PHASE_COMMITTED||
        j->operation_count==0U||
        j->operation_count>ORBIT_TRANSACTION_MAX_OPERATIONS||
-       j->revision==0U||j->rollback_cursor>j->operation_count)return false;
+       j->revision==0U||j->rollback_cursor>j->operation_count||\n       !transaction_id_valid(j->transaction_id))return false;
     for(uint32_t i=0;i<j->operation_count;++i) {
         const uint32_t state=j->operations[i].state;
         if((j->operations[i].action!=ORBIT_TRANSACTION_INSTALL&&
@@ -97,7 +105,7 @@ orbit_transaction_code orbit_package_transaction_execute(
     const orbit_transaction_action *actions,size_t operation_count,
     const orbit_transaction_journal_backend *jb,
     const orbit_transaction_package_backend *pb) {
-    if(!transaction_id||!packages||!actions||operation_count==0U||
+    if(!transaction_id_valid(transaction_id)||!packages||!actions||operation_count==0U||
        operation_count>ORBIT_TRANSACTION_MAX_OPERATIONS||!backend_valid(jb,pb))
         return ORBIT_TRANSACTION_INVALID_ARGUMENT;
     orbit_transaction_journal existing;

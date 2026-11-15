@@ -149,8 +149,33 @@ static bool tar_checksum_valid(const uint8_t *header) {
     return sum == stored;
 }
 
+static unsigned char archive_path_fold(unsigned char value) {
+    return value >= 'A' && value <= 'Z' ?
+        (unsigned char)(value + ('a' - 'A')) : value;
+}
+
+static int compare_archive_paths(const char *a, const char *b) {
+    while (*a && *b) {
+        unsigned char left = archive_path_fold((unsigned char)*a++);
+        unsigned char right = archive_path_fold((unsigned char)*b++);
+        if (left != right) return left < right ? -1 : 1;
+    }
+    if (*a == *b) return 0;
+    return *a ? 1 : -1;
+}
+
+static int compare_archive_path_prefix(const char *path, const char *prefix,
+                                       size_t length) {
+    for (size_t i = 0U; i < length; ++i) {
+        unsigned char left = archive_path_fold((unsigned char)path[i]);
+        unsigned char right = archive_path_fold((unsigned char)prefix[i]);
+        if (left != right) return left < right ? -1 : 1;
+    }
+    return 0;
+}
+
 static int compare_path_records(const path_record *a, const path_record *b) {
-    return strcmp(a->path, b->path);
+    return compare_archive_paths(a->path, b->path);
 }
 
 static void swap_path_records(path_record *a, path_record *b) {
@@ -187,7 +212,7 @@ static size_t path_lower_bound(const path_set *set, const char *path) {
     while (count != 0U) {
         size_t step = count / 2U;
         size_t index = first + step;
-        if (strcmp(set->records[index].path, path) < 0) {
+        if (compare_archive_paths(set->records[index].path, path) < 0) {
             first = index + 1U;
             count -= step + 1U;
         } else {
@@ -203,7 +228,7 @@ static orbit_archive_code validate_path_set(path_set *set) {
     for (size_t i = 0U; i < set->count; ++i) {
         const path_record *record = &set->records[i];
         if (i != 0U &&
-            strcmp(set->records[i - 1U].path, record->path) == 0)
+            compare_archive_paths(set->records[i - 1U].path, record->path) == 0)
             return ORBIT_ARCHIVE_DUPLICATE_PATH;
         if (record->directory) continue;
 
@@ -215,8 +240,8 @@ static orbit_archive_code validate_path_set(path_set *set) {
         descendant_prefix[length + 1U] = '\0';
         size_t descendant = path_lower_bound(set, descendant_prefix);
         if (descendant < set->count &&
-            strncmp(set->records[descendant].path, descendant_prefix,
-                    length + 1U) == 0)
+            compare_archive_path_prefix(set->records[descendant].path,
+                                        descendant_prefix, length + 1U) == 0)
             return ORBIT_ARCHIVE_UNSAFE_PATH;
     }
     return ORBIT_ARCHIVE_OK;

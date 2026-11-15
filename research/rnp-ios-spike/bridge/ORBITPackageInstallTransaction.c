@@ -7,6 +7,15 @@
 
 #define ORBIT_INSTALL_PLAN_CHANGE_CAPACITY ORBIT_FILESYSTEM_JOURNAL_MAX_CHANGES
 
+static bool transaction_id_valid(
+    const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES]) {
+    if (!transaction_id) return false;
+    uint8_t aggregate = 0U;
+    for (size_t i = 0U; i < ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES; ++i)
+        aggregate |= transaction_id[i];
+    return aggregate != 0U;
+}
+
 static bool encode_snapshot_alloc(
     const orbit_package_ownership_snapshot *snapshot,
     uint8_t **payload, size_t *payload_length) {
@@ -81,7 +90,7 @@ orbit_package_install_transaction_execute_deb_enveloped(
     }
     if (!installed || !candidate || !deb || deb_length == 0U ||
         !expected_ownership || expected_ownership_length == 0U ||
-        !transaction_id || install_root_fd < 0 || staging_base_fd < 0 ||
+        !transaction_id_valid(transaction_id) || install_root_fd < 0 || staging_base_fd < 0 ||
         backup_directory_fd < 0 || !staging_name || !backend || !executor ||
         !staging_out || !archive_report || !archive_result ||
         !plan_result || !journal_result)

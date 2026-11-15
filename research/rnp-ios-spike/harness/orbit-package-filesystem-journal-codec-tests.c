@@ -35,6 +35,10 @@ int main(void) {
     change->preimage_exists = true;
     change->preimage_device = 11U;
     change->preimage_inode = 22U;
+    change->target_parent_device = 11U;
+    change->target_parent_inode = 101U;
+    change->backup_parent_device = 11U;
+    change->backup_parent_inode = 202U;
 
     source->change_count = 2U;
     orbit_package_file_change *directory_change = &source->changes[1];
@@ -45,6 +49,12 @@ int main(void) {
     memcpy(directory_change->backup_name, "dir-unused", sizeof("dir-unused"));
     directory_change->staged_device = 11U;
     directory_change->staged_inode = 33U;
+    directory_change->target_parent_device = 11U;
+    directory_change->target_parent_inode = 102U;
+    directory_change->staged_parent_device = 11U;
+    directory_change->staged_parent_inode = 103U;
+    directory_change->backup_parent_device = 11U;
+    directory_change->backup_parent_inode = 202U;
 
     size_t required = 0U;
     EXPECT("size query reports buffer requirement",

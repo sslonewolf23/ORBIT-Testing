@@ -80,10 +80,15 @@ int main(void) {
         memcmp(source, decoded, sizeof(*source)) == 0);
 
     encoded[written] = 0U;
+    memset(decoded, 0xA5, sizeof(*decoded));
     EXPECT("trailing bytes rejected",
         orbit_package_filesystem_journal_decode(
             encoded, written + 1U, source->revision, decoded) ==
             ORBIT_JOURNAL_CODEC_MALFORMED);
+    orbit_package_filesystem_journal_record cleared;
+    memset(&cleared, 0, sizeof(cleared));
+    EXPECT("malformed decode clears partial record",
+        memcmp(decoded, &cleared, sizeof(cleared)) == 0);
     EXPECT("zero revision rejected",
         orbit_package_filesystem_journal_decode(
             encoded, written, 0U, decoded) ==

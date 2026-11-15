@@ -89,6 +89,13 @@ int main(void) {
     expect("successful-transaction-no-rollback",f.rollbacks==0U);
 
     memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
+    uint8_t zero_id[ORBIT_TRANSACTION_ID_BYTES]={0U};
+    code=orbit_package_transaction_execute(zero_id,packages,actions,2U,&jb,&pb);
+    expect("zero-transaction-id-rejected",code==ORBIT_TRANSACTION_INVALID_ARGUMENT);
+    expect("zero-transaction-id-has-no-side-effects",
+        f.stores==0U&&f.applies==0U&&!f.present);
+
+    memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
     f.fail_apply_number=2U;
     code=orbit_package_transaction_execute(id,packages,actions,2U,&jb,&pb);
     expect("failed-apply-reported",code==ORBIT_TRANSACTION_APPLY_ERROR);

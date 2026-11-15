@@ -49,7 +49,7 @@ static bool canonical_fixed_string(const char *value, size_t capacity,
     if (!bounded_string(value, capacity, empty_allowed)) return false;
     size_t length = bounded_length(value, capacity);
     for (size_t i = length + 1U; i < capacity; ++i)
-        if (value[i] != '\\0') return false;
+        if (value[i] != '\0') return false;
     return true;
 }
 static bool valid_repo(const char *repo) {
@@ -67,8 +67,13 @@ static bool valid_fingerprint_or_empty(const char *value) {
     return true;
 }
 static bool valid_state(const orbit_repository_trust_state *s) {
-    if(!s || !bounded_string(s->current_fingerprint,STORE_FINGERPRINT_BYTES,false) ||
-       !bounded_string(s->recovery_fingerprint,STORE_FINGERPRINT_BYTES,false) ||
+    if(!s ||
+       !canonical_fixed_string(s->current_fingerprint,STORE_FINGERPRINT_BYTES,false) ||
+       !canonical_fixed_string(s->recovery_fingerprint,STORE_FINGERPRINT_BYTES,false) ||
+       !canonical_fixed_string(s->previous_fingerprint,STORE_FINGERPRINT_BYTES,true) ||
+       !canonical_fixed_string(s->pending_fingerprint,STORE_FINGERPRINT_BYTES,true) ||
+       !valid_fingerprint_or_empty(s->current_fingerprint) ||
+       !valid_fingerprint_or_empty(s->recovery_fingerprint) ||
        !valid_fingerprint_or_empty(s->previous_fingerprint) ||
        !valid_fingerprint_or_empty(s->pending_fingerprint)) return false;
     size_t current=strlen(s->current_fingerprint);
@@ -116,8 +121,13 @@ static bool decode_record(const uint8_t *in,size_t n,const char *repo,
     s.revision=get_u64(in+p);p+=8U;s.generation=get_u32(in+p);p+=4U;
     s.pending_activation=get_u64(in+p);p+=8U;s.previous_valid_until=get_u64(in+p);p+=8U;
     s.last_observed_time=get_u64(in+p);p+=8U;
-    if(!memchr(in+p,0,STORE_REPOSITORY_BYTES) ||
-       strcmp((const char *)(in+p),repo)!=0)return false;
+    const uint8_t *repository_field=in+p;
+    const uint8_t *repository_terminator=memchr(repository_field,0,STORE_REPOSITORY_BYTES);
+    if(!repository_terminator ||
+       strcmp((const char *)repository_field,repo)!=0)return false;
+    for(const uint8_t *padding=repository_terminator+1;
+        padding<repository_field+STORE_REPOSITORY_BYTES;++padding)
+        if(*padding!=0U)return false;
     p+=STORE_REPOSITORY_BYTES;
     memcpy(s.current_fingerprint,in+p,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;
     memcpy(s.recovery_fingerprint,in+p,STORE_FINGERPRINT_BYTES);p+=STORE_FINGERPRINT_BYTES;

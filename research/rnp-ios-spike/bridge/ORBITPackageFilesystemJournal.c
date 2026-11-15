@@ -318,9 +318,10 @@ static bool record_is_valid(
             return false;
     }
 
-    size_t *indices = (size_t *)malloc(record->change_count * sizeof(*indices));
-    if (!indices) return false;
-
+    /* The record has a fixed, bounded maximum change count. Keep the
+     * validation path allocation-free so memory pressure cannot turn a
+     * valid plan into an ambiguous INVALID_ARGUMENT result. */
+    size_t indices[ORBIT_FILESYSTEM_JOURNAL_MAX_CHANGES];
     for (size_t i = 0U; i < record->change_count; ++i) indices[i] = i;
     sort_change_indices(indices, record->change_count, record, CHANGE_KEY_TARGET);
     bool unique = true;
@@ -359,7 +360,6 @@ static bool record_is_valid(
             }
         }
     }
-    free(indices);
     return unique;
 }
 

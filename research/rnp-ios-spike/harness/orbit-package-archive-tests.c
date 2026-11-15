@@ -303,6 +303,31 @@ int main(void) {
         orbit_package_archive_test_inspect_tar_chunks(
             collision_tar, collision_tar_length, 509U, &report) ==
             ORBIT_ARCHIVE_DUPLICATE_PATH);
+
+    collision_tar_length = make_tar_three_entries(
+        collision_tar, "Library/ORBIT/Shared.dylib", '0',
+        "library/orbit/shared.dylib", '0',
+        "Library/ORBIT/other.dylib", '0');
+    EXPECT("archive rejects case-folded duplicate paths",
+        orbit_package_archive_test_inspect_tar_chunks(
+            collision_tar, collision_tar_length, 503U, &report) ==
+            ORBIT_ARCHIVE_DUPLICATE_PATH);
+    collision_tar_length = make_tar_three_entries(
+        collision_tar, "Library/ORBIT/NotDir", '0',
+        "library/orbit/notdir/child", '0',
+        "Library/ORBIT/other.dylib", '0');
+    EXPECT("archive rejects case-folded regular-file ancestors",
+        orbit_package_archive_test_inspect_tar_chunks(
+            collision_tar, collision_tar_length, 509U, &report) ==
+            ORBIT_ARCHIVE_UNSAFE_PATH);
+    collision_tar_length = make_tar_three_entries(
+        collision_tar, "Library/ORBIT/Directory", '5',
+        "library/orbit/directory/child", '0',
+        "Library/ORBIT/other.dylib", '0');
+    EXPECT("archive accepts case-folded explicit directory parents",
+        orbit_package_archive_test_inspect_tar_chunks(
+            collision_tar, collision_tar_length, 521U, &report) ==
+            ORBIT_ARCHIVE_OK);
     collision_tar_length = make_tar_three_entries(
         collision_tar, "Library/ORBIT/not-a-directory", '0',
         "Library/ORBIT/not-a-directory/child", '0',

@@ -36,7 +36,8 @@ static bool journal_valid(const orbit_transaction_journal *j) {
        j->phase>ORBIT_TRANSACTION_PHASE_COMMITTED||
        j->operation_count==0U||
        j->operation_count>ORBIT_TRANSACTION_MAX_OPERATIONS||
-       j->revision==0U||j->rollback_cursor>j->operation_count||\n       !transaction_id_valid(j->transaction_id))return false;
+       j->revision==0U||j->rollback_cursor>j->operation_count||
+       !transaction_id_valid(j->transaction_id))return false;
     for(uint32_t i=0;i<j->operation_count;++i) {
         const uint32_t state=j->operations[i].state;
         if((j->operations[i].action!=ORBIT_TRANSACTION_INSTALL&&

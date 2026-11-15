@@ -205,8 +205,22 @@ int main(int argc, char **argv) {
 
     orbit_trust_rotation_proof malformed;
     const uint8_t bad_proof[] = "ORBIT-Key-Rotation: 1\nRepository: orbit-official\nUnknown: value\n";
+    memset(&malformed, 0xA5, sizeof(malformed));
     expect("unknown-proof-field-rejected", orbit_trust_rotation_proof_parse(
         bad_proof, sizeof(bad_proof) - 1U, &malformed), false);
+    bool malformed_output_zero = true;
+    const uint8_t *malformed_bytes = (const uint8_t *)&malformed;
+    for (size_t i = 0U; i < sizeof(malformed); ++i)
+        if (malformed_bytes[i] != 0U) malformed_output_zero = false;
+    expect("malformed-proof-clears-output", malformed_output_zero, true);
+    memset(&malformed, 0xA5, sizeof(malformed));
+    expect("null-payload-clears-output",
+        orbit_trust_rotation_proof_parse(NULL, 1U, &malformed), false);
+    bool null_payload_output_zero = true;
+    malformed_bytes = (const uint8_t *)&malformed;
+    for (size_t i = 0U; i < sizeof(malformed); ++i)
+        if (malformed_bytes[i] != 0U) null_payload_output_zero = false;
+    expect("null-payload-output-is-zero", null_payload_output_zero, true);
     const uint8_t duplicate_proof[] =
         "ORBIT-Key-Rotation: 1\nRepository: orbit-official\n"
         "Current-Fingerprint: 1111111111111111111111111111111111111111\n"

@@ -77,7 +77,7 @@ static orbit_ownership_code validate(const orbit_package_ownership_snapshot *s) 
                 return ORBIT_OWNERSHIP_CORRUPT_DATABASE;
             if(path_equal(a->path,b->path) && same_package(a,b))
                 return ORBIT_OWNERSHIP_CORRUPT_DATABASE;
-            if(strcmp(a->path,b->path)==0 && (!a->directory || !b->directory))
+            if(path_equal(a->path,b->path) && (!a->directory || !b->directory))
                 return ORBIT_OWNERSHIP_CORRUPT_DATABASE;
             if(ancestor(a->path,b->path) && !a->directory)
                 return ORBIT_OWNERSHIP_CORRUPT_DATABASE;

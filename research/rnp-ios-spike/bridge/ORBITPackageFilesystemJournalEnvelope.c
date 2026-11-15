@@ -467,6 +467,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_recover_enveloped(
             current.journal, current.value.journal_length,
             current.value.revision, record);
     if (decoded != ORBIT_JOURNAL_CODEC_OK ||
+        orbit_package_filesystem_journal_validate_record(record) !=
+            ORBIT_FILESYSTEM_OK ||
         record->phase != current.value.phase ||
         memcmp(record->transaction_id, current.value.transaction_id,
                ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES) != 0) {

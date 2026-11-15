@@ -26,6 +26,10 @@ typedef struct {
     orbit_package_file_change changes[ORBIT_FILESYSTEM_JOURNAL_MAX_CHANGES];
 } orbit_package_filesystem_journal_record;
 
+/* Validates a complete plan, including unique target, backup, and staged keys. */
+orbit_filesystem_code orbit_package_filesystem_journal_validate_record(
+    const orbit_package_filesystem_journal_record *record);
+
 typedef enum {
     ORBIT_FILE_JOURNAL_LOAD_EMPTY = 0,
     ORBIT_FILE_JOURNAL_LOAD_PRESENT = 1,

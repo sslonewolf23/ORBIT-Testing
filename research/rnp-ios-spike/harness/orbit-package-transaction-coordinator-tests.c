@@ -15,6 +15,10 @@ typedef struct {
     unsigned loads;
     unsigned applies;
     bool native_locks_held_during_apply;
+    const orbit_transaction_native_lock_context *native_context;
+    const orbit_transaction_journal_backend *journal_backend;
+    const orbit_transaction_package_backend *package_backend;
+    orbit_transaction_code nested_recovery_result;
     char dpkg_path[1024];
 } fixture;
 
@@ -71,6 +75,10 @@ static bool apply_package(void *ctx, orbit_transaction_action action,
     fixture *f = ctx; (void)action; (void)p;
     ++f->applies;
     f->native_locks_held_during_apply = locks_contend_from_child(f->dpkg_path);
+    /* A nested coordinator entry in the same process must fail fast without
+     * loading or disturbing the outer transaction's journal. */
+    f->nested_recovery_result = orbit_package_transaction_recover_coordinated(
+        f->native_context, f->journal_backend, f->package_backend);
     return f->native_locks_held_during_apply;
 }
 static bool rollback_package(void *ctx, orbit_transaction_action action,
@@ -113,12 +121,17 @@ int main(void) {
     orbit_transaction_native_lock_context nc = {
         root_fd, profile, root_apt_path, status_path, getuid()
     };
+    f.native_context = &nc;
+    f.journal_backend = &jb;
+    f.package_backend = &pb;
 
     orbit_transaction_code result = orbit_package_transaction_execute_coordinated(
         &nc, transaction_id, packages, actions, 1U, &jb, &pb);
     expect("coordinated-execute-succeeds", result == ORBIT_TRANSACTION_OK);
     expect("native-locks-held-through-package-apply",
            f.applies == 1U && f.native_locks_held_during_apply);
+    expect("nested-coordinator-entry-rejected",
+           f.nested_recovery_result == ORBIT_TRANSACTION_BUSY);
     expect("transaction-journal-cleared", !f.present);
 
     unsigned before = f.loads;

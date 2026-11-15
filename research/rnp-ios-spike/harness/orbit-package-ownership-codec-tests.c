@@ -42,9 +42,13 @@ int main(void) {
         orbit_package_ownership_decode(malformed,length,decoded,2U,&result)==
         ORBIT_OWNERSHIP_CODEC_MALFORMED);
     memcpy(malformed,encoded,length);malformed[length-1U]=2U;
+    memset(decoded,0xA5,sizeof(decoded));
     EXPECT("invalid-directory-flag-rejected",
         orbit_package_ownership_decode(malformed,length,decoded,2U,&result)==
         ORBIT_OWNERSHIP_CODEC_MALFORMED);
+    orbit_package_ownership_record cleared[2];memset(cleared,0,sizeof(cleared));
+    EXPECT("malformed-decode-clears-partial-records",
+        memcmp(decoded,cleared,sizeof(decoded))==0 && result.records==NULL && result.count==0U);
     orbit_package_ownership_record corrupt=make_record("../escape","bad",false);
     orbit_package_ownership_snapshot bad={&corrupt,1U};
     EXPECT("unsafe-snapshot-cannot-be-encoded",

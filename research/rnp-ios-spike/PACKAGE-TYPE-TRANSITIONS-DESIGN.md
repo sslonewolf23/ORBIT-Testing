@@ -90,3 +90,29 @@ Finalize verifies S at target and E at B, then removes only the empty backup dir
 ## Rollout
 
 Implement in layers: (1) versioned record and codec validation, (2) descriptor-relative filesystem state machine, (3) executor/recovery integration, (4) ownership-aware planner integration, (5) fault-injection and simulator validation. Keep planner rejection active until all five layers are complete.
+
+## Parent-directory identity binding
+
+The current recovery locator resolver opens each relative path component with
+`O_DIRECTORY | O_NOFOLLOW`, which prevents symlink traversal but does not prove
+that a real directory at that path is the same directory used during prepare.
+A same-owner or privileged actor could rename the original parent aside and
+substitute a different real directory; a path-only journal could then resolve
+successfully against the substitute.
+
+Before enabling type transitions, extend the versioned change record and
+canonical codec to bind each target, staging, and backup parent to its captured
+directory identity (device and inode). Capture those identities from the
+already-open parent descriptors during prepare, authenticate them in the
+journal, and verify them immediately after every recovery-time parent open and
+before each mutation. Root-relative locators must also bind the trusted root
+identity, not merely its textual path. Unused identity fields must be zero and
+malformed or mismatched identities must fail closed.
+
+Add regression coverage that renames a validated parent aside and substitutes
+a different real directory at the same relative path (not just a symlink).
+Recovery must reject the replacement directory and leave both the original
+objects and substitute directory untouched. Include equivalent target,
+staging, and backup parent cases, plus crash/restart execution. This is a
+cross-cutting record/codec/executor change and must be completed before the
+type-transition planner is enabled.

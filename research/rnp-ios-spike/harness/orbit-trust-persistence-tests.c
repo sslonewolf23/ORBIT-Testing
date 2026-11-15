@@ -187,19 +187,45 @@ int main(int argc,char **argv) {
             ==ORBIT_TRUST_STORE_AUTHENTICATION_FAILED,true);
     memcpy(storage.record,newer_record,newer_length);memcpy(storage.mac,newer_mac,sizeof(newer_mac));
 
-    /* Authenticated records still require canonical zero padding. */
+    /* Authenticated records still require canonical zero padding in every
+     * fixed-width identifier and fingerprint field. */
     const size_t repository_field_offset = 48U;
-    const size_t current_fingerprint_offset =
+    const size_t fingerprint_base =
         repository_field_offset + ORBIT_TRUST_REPOSITORY_CAPACITY;
-    const size_t current_fingerprint_padding =
-        current_fingerprint_offset + strlen(pin) + 1U;
-    storage.record[current_fingerprint_padding] = 0xA5U;
+    const size_t fingerprint_offsets[] = {
+        fingerprint_base,
+        fingerprint_base + ORBIT_TRUST_FINGERPRINT_CAPACITY,
+        fingerprint_base + 2U * ORBIT_TRUST_FINGERPRINT_CAPACITY,
+        fingerprint_base + 3U * ORBIT_TRUST_FINGERPRINT_CAPACITY
+    };
+    const size_t fingerprint_lengths[] = {
+        strlen(pin), strlen(recovery_pin), 0U, 0U
+    };
+    const char *fingerprint_labels[] = {
+        "current", "recovery", "previous", "pending"
+    };
+    for (size_t i = 0U; i < 4U; ++i) {
+        memcpy(storage.record,newer_record,newer_length);
+        memcpy(storage.mac,newer_mac,sizeof(newer_mac));
+        storage.record[fingerprint_offsets[i] + fingerprint_lengths[i] + 1U] = 0xA5U;
+        storage.locked = true;
+        bool mac_created = test_mac(&storage, repo, storage.record,
+            storage.length, storage.mac);
+        storage.locked = false;
+        expect("test-mac-created-for-noncanonical-fingerprint",mac_created,true);
+        expect(fingerprint_labels[i],
+            orbit_repository_trust_store_load(&loaded,repo,&backend)==
+                ORBIT_TRUST_STORE_FORMAT_REJECTED,true);
+    }
+    memcpy(storage.record,newer_record,newer_length);
+    memcpy(storage.mac,newer_mac,sizeof(newer_mac));
+    storage.record[repository_field_offset + strlen(repo) + 1U] = 0xA5U;
     storage.locked = true;
-    bool canonical_mac_created = test_mac(&storage, repo, storage.record,
+    bool repository_mac_created = test_mac(&storage, repo, storage.record,
         storage.length, storage.mac);
     storage.locked = false;
-    expect("test-mac-created-for-noncanonical-record",canonical_mac_created,true);
-    expect("authenticated-nonzero-fingerprint-padding-rejected",
+    expect("test-mac-created-for-noncanonical-repository-id",repository_mac_created,true);
+    expect("authenticated-nonzero-repository-id-padding-rejected",
         orbit_repository_trust_store_load(&loaded,repo,&backend)==
             ORBIT_TRUST_STORE_FORMAT_REJECTED,true);
     memcpy(storage.record,newer_record,newer_length);

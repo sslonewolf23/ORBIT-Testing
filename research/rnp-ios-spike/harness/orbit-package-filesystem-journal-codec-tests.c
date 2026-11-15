@@ -79,16 +79,25 @@ int main(void) {
     EXPECT("round-trip record is byte-identical",
         memcmp(source, decoded, sizeof(*source)) == 0);
 
+    /* Corrupt the second change after the first has decoded successfully. */
+    encoded[written - 81U] = 2U;
+    memset(decoded, 0xA5, sizeof(*decoded));
+    EXPECT("invalid second change rejected",
+        orbit_package_filesystem_journal_decode(
+            encoded, written, source->revision, decoded) ==
+            ORBIT_JOURNAL_CODEC_MALFORMED);
+    orbit_package_filesystem_journal_record cleared;
+    memset(&cleared, 0, sizeof(cleared));
+    EXPECT("partial journal decode clears all output",
+        memcmp(decoded, &cleared, sizeof(cleared)) == 0);
+    encoded[written - 81U] = 0U;
+
     encoded[written] = 0U;
     memset(decoded, 0xA5, sizeof(*decoded));
     EXPECT("trailing bytes rejected",
         orbit_package_filesystem_journal_decode(
             encoded, written + 1U, source->revision, decoded) ==
             ORBIT_JOURNAL_CODEC_MALFORMED);
-    orbit_package_filesystem_journal_record cleared;
-    memset(&cleared, 0, sizeof(cleared));
-    EXPECT("malformed decode clears partial record",
-        memcmp(decoded, &cleared, sizeof(cleared)) == 0);
     EXPECT("zero revision rejected",
         orbit_package_filesystem_journal_decode(
             encoded, written, 0U, decoded) ==

@@ -42,6 +42,16 @@ static bool bounded_string(const char *value, size_t capacity, bool empty_allowe
     }
     return true;
 }
+/* Fixed-width authenticated fields must have one canonical representation:
+ * every byte after the first NUL is zero, not merely ignored padding. */
+static bool canonical_fixed_string(const char *value, size_t capacity,
+                                   bool empty_allowed) {
+    if (!bounded_string(value, capacity, empty_allowed)) return false;
+    size_t length = bounded_length(value, capacity);
+    for (size_t i = length + 1U; i < capacity; ++i)
+        if (value[i] != '\\0') return false;
+    return true;
+}
 static bool valid_repo(const char *repo) {
     if(!bounded_string(repo,STORE_REPOSITORY_BYTES,false)) return false;
     for(const unsigned char *p=(const unsigned char *)repo;*p;++p)

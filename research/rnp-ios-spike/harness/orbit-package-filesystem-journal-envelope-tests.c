@@ -304,7 +304,7 @@ int main(void) {
     EXPECT("success fixture files created",
         write_file_at(install_fd, "target-success", "old-success") &&
         write_file_at(stage_fd, "stage-success", "new-success"));
-    orbit_package_file_change change;
+    orbit_package_file_change change = {0};
     envelope_executor executor;
     memset(&executor, 0, sizeof(executor));
     EXPECT("success replacement prepared",

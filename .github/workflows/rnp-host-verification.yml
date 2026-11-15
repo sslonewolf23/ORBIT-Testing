@@ -932,6 +932,7 @@ jobs:
             research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
             research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
             research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournal.c \
             research/rnp-ios-spike/bridge/ORBITPackageStaging.c \
             research/rnp-ios-spike/bridge/ORBITPackageOwnership.c \
             research/rnp-ios-spike/bridge/ORBITPackageOwnershipCodec.c \

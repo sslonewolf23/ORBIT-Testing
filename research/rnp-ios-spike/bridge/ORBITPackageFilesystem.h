@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #define ORBIT_FILESYSTEM_COMPONENT_CAPACITY 64U
-#define ORBIT_FILESYSTEM_CHANGE_VERSION 3U
+#define ORBIT_FILESYSTEM_CHANGE_VERSION 4U
 #define ORBIT_FILESYSTEM_PARENT_PATH_CAPACITY 1025U
 #define ORBIT_FILESYSTEM_LOCK_NAME ".orbit-package-transaction.lock"
 
@@ -42,6 +42,12 @@ typedef struct {
     uint64_t preimage_inode;
     uint64_t staged_device;
     uint64_t staged_inode;
+    uint64_t target_parent_device;
+    uint64_t target_parent_inode;
+    uint64_t staged_parent_device;
+    uint64_t staged_parent_inode;
+    uint64_t backup_parent_device;
+    uint64_t backup_parent_inode;
 } orbit_package_file_change;
 
 typedef struct {

@@ -308,6 +308,22 @@ int main(void) {
     EXPECT("success replacement prepared",
         prepare_change(install_fd, stage_fd, backup_fd,
             "target-success", "stage-success", "backup-success-file", &change));
+    orbit_package_file_change duplicate_changes[2] = { change, change };
+    memset(&executor, 0, sizeof(executor));
+    executor.target_fd = install_fd;
+    executor.stage_fd = stage_fd;
+    executor.backup_fd = backup_fd;
+    EXPECT("duplicate target plan is rejected before mutation",
+        orbit_package_filesystem_journal_execute_enveloped(
+            &backend, transaction_id, duplicate_changes, 2U,
+            ownership_old, sizeof(ownership_old),
+            ownership_new, sizeof(ownership_new),
+            execute_change, &executor) == ORBIT_FILESYSTEM_INVALID_ARGUMENT);
+    EXPECT("duplicate target rejection does not invoke executor",
+        executor.apply_calls == 0U &&
+        file_equals_at(install_fd, "target-success", "old-success") &&
+        file_equals_at(stage_fd, "stage-success", "new-success"));
+
     envelope_executor executor;
     memset(&executor, 0, sizeof(executor));
     executor.target_fd = install_fd;

@@ -141,6 +141,26 @@ int main(void) {
     code=orbit_package_transaction_recover(&jb,&pb);
     expect("corrupt-journal-fails-closed",code==ORBIT_TRANSACTION_JOURNAL_ERROR);
 
+    memset(&f,0,sizeof(f));jb=journal_backend(&f);pb=package_backend(&f);
+    f.present=true;
+    f.journal.version=ORBIT_TRANSACTION_JOURNAL_VERSION;
+    f.journal.phase=ORBIT_TRANSACTION_PHASE_APPLYING;
+    f.journal.revision=1U;
+    f.journal.operation_count=1U;
+    f.journal.operations[0].action=ORBIT_TRANSACTION_INSTALL;
+    f.journal.operations[0].state=ORBIT_TRANSACTION_STEP_IN_FLIGHT;
+    snprintf(f.journal.operations[0].name,
+        sizeof(f.journal.operations[0].name),"alpha");
+    snprintf(f.journal.operations[0].version_string,
+        sizeof(f.journal.operations[0].version_string),"1.0");
+    snprintf(f.journal.operations[0].architecture,
+        sizeof(f.journal.operations[0].architecture),"iphoneos-arm64");
+    code=orbit_package_transaction_recover(&jb,&pb);
+    expect("zero-id-recovery-journal-fails-closed",
+        code==ORBIT_TRANSACTION_JOURNAL_ERROR);
+    expect("zero-id-recovery-never-calls-package-backend",
+        f.applies==0U&&f.rollbacks==0U&&f.present);
+
     printf("decision=%s checks=%u failures=%u\n",
            failures?"FAIL":"PASS",checks,failures);
     return failures?1:0;

@@ -112,5 +112,24 @@ int main(void){
  orbit_package_ownership_record shared_rows[]={own("Library/Shared","pkg-a",true),own("Library/Shared","pkg-b",true),own("Library/Shared/a.dylib","pkg-a",false)};
  orbit_package_ownership_snapshot shared_snapshot={shared_rows,3U};orbit_package_record remove_a=pkg("pkg-a","1","iphoneos-arm64");
  EXPECT("removal drops shared-directory ownership row but preserves other owner",orbit_package_ownership_snapshot_remove(&shared_snapshot,&remove_a,replacement_records,ORBIT_OWNERSHIP_MAX_RECORDS,&replacement)==ORBIT_OWNERSHIP_OK&&replacement.count==1U&&strcmp(replacement.records[0].package_name,"pkg-b")==0);
+ orbit_package_ownership_record partial_output[4];
+ memset(partial_output,0xA5,sizeof(partial_output));
+ orbit_package_ownership_snapshot partial_snapshot={NULL,0U};
+ EXPECT("install snapshot capacity failure clears partial output",
+   orbit_package_ownership_snapshot_install(&upgrade_snapshot,&upgrade,upgrade_entries,2U,
+     partial_output,1U,&partial_snapshot)==ORBIT_OWNERSHIP_LIMIT &&
+   partial_snapshot.records==NULL && partial_snapshot.count==0U &&
+   memcmp(&partial_output[0],&(orbit_package_ownership_record){0},sizeof(partial_output[0]))==0);
+ orbit_package_ownership_record remove_capacity_rows[]={
+  own("usr/lib/keep-a","keep-a",false),own("usr/lib/keep-b","keep-b",false),
+  own("usr/lib/remove","remove-me",false)};
+ orbit_package_ownership_snapshot remove_capacity_snapshot={remove_capacity_rows,3U};
+ orbit_package_record remove_capacity_package=pkg("remove-me","1","iphoneos-arm64");
+ memset(partial_output,0xA5,sizeof(partial_output));
+ EXPECT("remove snapshot capacity failure clears partial output",
+   orbit_package_ownership_snapshot_remove(&remove_capacity_snapshot,&remove_capacity_package,
+     partial_output,1U,&partial_snapshot)==ORBIT_OWNERSHIP_LIMIT &&
+   partial_snapshot.records==NULL && partial_snapshot.count==0U &&
+   memcmp(&partial_output[0],&(orbit_package_ownership_record){0},sizeof(partial_output[0]))==0);
  printf("checks=%u failures=%u\ndecision=%s\n",checks,failures,failures?"FAIL":"PASS");return failures?1:0;
 }

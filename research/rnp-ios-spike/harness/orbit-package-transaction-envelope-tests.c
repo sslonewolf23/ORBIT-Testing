@@ -27,7 +27,7 @@ static const uint8_t ownership_new[] = {
     0U
 };
 static const uint8_t journal_payload[] = {
-    'O','R','J','P',1U, 0U,0U,0U,1U,
+    'O','R','J','P',3U, 0U,0U,0U,1U,
     0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,
     0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,0xA5U,
     0U,0U,0U,1U,
@@ -109,9 +109,33 @@ int main(void) {
             committed_out, sizeof(committed_out), pending_out, 1U,
             &decoded) == ORBIT_TRANSACTION_ENVELOPE_BUFFER_TOO_SMALL);
 
+    uint8_t rolling_journal_payload[sizeof(journal_payload)];
+    memcpy(rolling_journal_payload, journal_payload, sizeof(journal_payload));
+    rolling_journal_payload[8] = ORBIT_TRANSACTION_ENVELOPE_ROLLING_BACK;
     orbit_package_transaction_envelope rolling = applying;
     rolling.revision = 12U;
     rolling.phase = ORBIT_TRANSACTION_ENVELOPE_ROLLING_BACK;
+    rolling.journal_payload = rolling_journal_payload;
+    EXPECT("active envelope rejects a mismatched journal transaction identity", ({
+        uint8_t mismatched_payload[sizeof(journal_payload)];
+        memcpy(mismatched_payload, journal_payload, sizeof(journal_payload));
+        mismatched_payload[9] ^= 0x01U;
+        orbit_package_transaction_envelope invalid = applying;
+        invalid.journal_payload = mismatched_payload;
+        orbit_package_transaction_envelope_encode(
+            &invalid, encoded, sizeof(encoded), &encoded_length) ==
+            ORBIT_TRANSACTION_ENVELOPE_INVALID_STATE;
+    }));
+    EXPECT("active envelope rejects a mismatched journal phase", ({
+        uint8_t mismatched_payload[sizeof(journal_payload)];
+        memcpy(mismatched_payload, journal_payload, sizeof(journal_payload));
+        mismatched_payload[8] = ORBIT_TRANSACTION_ENVELOPE_COMMITTED;
+        orbit_package_transaction_envelope invalid = applying;
+        invalid.journal_payload = mismatched_payload;
+        orbit_package_transaction_envelope_encode(
+            &invalid, encoded, sizeof(encoded), &encoded_length) ==
+            ORBIT_TRANSACTION_ENVELOPE_INVALID_STATE;
+    }));
     EXPECT("applying to rolling back preserves both ownership snapshots",
         orbit_package_transaction_envelope_validate_transition(
             &applying, &rolling) == ORBIT_TRANSACTION_ENVELOPE_OK);
@@ -122,9 +146,13 @@ int main(void) {
         orbit_package_transaction_envelope_validate_transition(
             &rolling, &rolled_back) == ORBIT_TRANSACTION_ENVELOPE_OK);
 
+    uint8_t committed_journal_payload[sizeof(journal_payload)];
+    memcpy(committed_journal_payload, journal_payload, sizeof(journal_payload));
+    committed_journal_payload[8] = ORBIT_TRANSACTION_ENVELOPE_COMMITTED;
     orbit_package_transaction_envelope committed = applying;
     committed.revision = 12U;
     committed.phase = ORBIT_TRANSACTION_ENVELOPE_COMMITTED;
+    committed.journal_payload = committed_journal_payload;
     EXPECT("applying to committed retains old committed and pending state",
         orbit_package_transaction_envelope_validate_transition(
             &applying, &committed) == ORBIT_TRANSACTION_ENVELOPE_OK);

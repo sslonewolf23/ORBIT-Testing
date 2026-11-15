@@ -138,7 +138,7 @@ orbit_journal_codec_code orbit_package_filesystem_journal_encode(
     uint8_t *cursor = output;
     memcpy(cursor, codec_magic, sizeof(codec_magic));
     cursor += sizeof(codec_magic);
-    *cursor++ = 3U;
+    *cursor++ = ORBIT_FILESYSTEM_JOURNAL_VERSION;
     write_u32(cursor, record->phase);
     cursor += 4U;
     memcpy(cursor, record->transaction_id, ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES);
@@ -196,7 +196,7 @@ orbit_journal_codec_code orbit_package_filesystem_journal_decode(
     if (payload_length < CODEC_HEADER_SIZE ||
         payload_length > ORBIT_FILESYSTEM_JOURNAL_CODEC_MAX_PAYLOAD ||
         memcmp(payload, codec_magic, sizeof(codec_magic)) != 0 ||
-        payload[4] != 3U)
+        payload[4] != ORBIT_FILESYSTEM_JOURNAL_VERSION)
         return ORBIT_JOURNAL_CODEC_MALFORMED;
 
     const uint8_t *cursor = payload + 5U;
@@ -211,11 +211,11 @@ orbit_journal_codec_code orbit_package_filesystem_journal_decode(
         record->phase > ORBIT_FILE_JOURNAL_COMMITTED ||
         record->change_count == 0U ||
         record->change_count > ORBIT_FILESYSTEM_JOURNAL_MAX_CHANGES)
-        return ORBIT_JOURNAL_CODEC_MALFORMED;
+        goto malformed;
 
     for (size_t i = 0U; i < record->change_count; ++i) {
         orbit_package_file_change *change = &record->changes[i];
-        if ((size_t)(end - cursor) < 8U) return ORBIT_JOURNAL_CODEC_MALFORMED;
+        if ((size_t)(end - cursor) < 8U) goto malformed;
         change->version = read_u32(cursor); cursor += 4U;
         change->operation = read_u32(cursor); cursor += 4U;
         if (!decode_string(&cursor, end, change->target_name,
@@ -229,8 +229,8 @@ orbit_journal_codec_code orbit_package_filesystem_journal_decode(
             !decode_string(&cursor, end, change->staged_parent_path,
                            sizeof(change->staged_parent_path)) ||
             (size_t)(end - cursor) < 81U)
-            return ORBIT_JOURNAL_CODEC_MALFORMED;
-        if (*cursor > 1U) return ORBIT_JOURNAL_CODEC_MALFORMED;
+            goto malformed;
+        if (*cursor > 1U) goto malformed;
         change->preimage_exists = *cursor++ == 1U;
         change->preimage_device = read_u64(cursor); cursor += 8U;
         change->preimage_inode = read_u64(cursor); cursor += 8U;
@@ -243,9 +243,12 @@ orbit_journal_codec_code orbit_package_filesystem_journal_decode(
         change->backup_parent_device = read_u64(cursor); cursor += 8U;
         change->backup_parent_inode = read_u64(cursor); cursor += 8U;
         if (orbit_package_filesystem_validate_change(change) != ORBIT_FILESYSTEM_OK)
-            return ORBIT_JOURNAL_CODEC_MALFORMED;
+            goto malformed;
     }
     if (cursor != end || !record_is_codec_valid(record))
-        return ORBIT_JOURNAL_CODEC_MALFORMED;
+        goto malformed;
     return ORBIT_JOURNAL_CODEC_OK;
+malformed:
+    memset(record, 0, sizeof(*record));
+    return ORBIT_JOURNAL_CODEC_MALFORMED;
 }

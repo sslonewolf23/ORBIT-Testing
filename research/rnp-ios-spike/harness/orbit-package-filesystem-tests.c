@@ -353,6 +353,9 @@ int main(void) {
     EXPECT("directory rename applies without copying",
         orbit_package_filesystem_apply(
             target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("directory apply is idempotent after the staged inode reaches target",
+        orbit_package_filesystem_apply(
+            target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
     int installed_tree_fd = openat(target_fd, "new-tree",
         O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     EXPECT("directory payload arrived with staged tree",
@@ -361,12 +364,21 @@ int main(void) {
     EXPECT("directory rename rollback restores staged tree",
         orbit_package_filesystem_rollback(
             target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("directory rollback is idempotent after restoring the staged inode",
+        orbit_package_filesystem_rollback(
+            target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
     EXPECT("directory rollback restores source and removes target",
         exists_at(stage_fd, "new-tree") && !exists_at(target_fd, "new-tree"));
     EXPECT("directory rename reapplies",
         orbit_package_filesystem_apply(
             target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("directory reapply is idempotent",
+        orbit_package_filesystem_apply(
+            target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
     EXPECT("directory finalize verifies committed inode",
+        orbit_package_filesystem_finalize(
+            target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
+    EXPECT("directory finalize is idempotent",
         orbit_package_filesystem_finalize(
             target_fd, stage_fd, backup_fd, &directory_change) == ORBIT_FILESYSTEM_OK);
     EXPECT("committed directory remains installed",

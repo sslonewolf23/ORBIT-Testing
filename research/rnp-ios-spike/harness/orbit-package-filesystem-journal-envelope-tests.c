@@ -305,6 +305,8 @@ int main(void) {
         write_file_at(install_fd, "target-success", "old-success") &&
         write_file_at(stage_fd, "stage-success", "new-success"));
     orbit_package_file_change change;
+    envelope_executor executor;
+    memset(&executor, 0, sizeof(executor));
     EXPECT("success replacement prepared",
         prepare_change(install_fd, stage_fd, backup_fd,
             "target-success", "stage-success", "backup-success-file", &change));
@@ -324,8 +326,6 @@ int main(void) {
         file_equals_at(install_fd, "target-success", "old-success") &&
         file_equals_at(stage_fd, "stage-success", "new-success"));
 
-    envelope_executor executor;
-    memset(&executor, 0, sizeof(executor));
     executor.target_fd = install_fd;
     executor.stage_fd = stage_fd;
     executor.backup_fd = backup_fd;

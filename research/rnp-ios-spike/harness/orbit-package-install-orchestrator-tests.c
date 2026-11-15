@@ -146,6 +146,19 @@ int main(void) {
                 ORBIT_PACKAGE_INSTALL_TRANSACTION_INVALID_ARGUMENT);
     EXPECT("zero transaction ID creates no staging directory",
         !exists_at(stage_base_fd, "stage-zero-id"));
+    EXPECT("zero transaction ID rejected by staged-manifest install",
+        orbit_package_install_transaction_execute_enveloped(
+            &installed, &candidate, (const orbit_archive_entry *)deb, 1U,
+            ownership_bytes, ownership_length, zero_transaction_id,
+            install_fd, stage_base_fd, backup_fd, &backend, unused_executor,
+            NULL, &plan_code, &journal_code) ==
+                ORBIT_PACKAGE_INSTALL_TRANSACTION_INVALID_ARGUMENT);
+    EXPECT("zero transaction ID rejected by package removal",
+        orbit_package_remove_transaction_execute_enveloped(
+            &installed, &candidate, ownership_bytes, ownership_length,
+            zero_transaction_id, install_fd, backup_fd, &backend,
+            unused_executor, NULL, &plan_code, &journal_code) ==
+                ORBIT_PACKAGE_INSTALL_TRANSACTION_INVALID_ARGUMENT);
     EXPECT("zero transaction ID leaves staging descriptors closed",
         staging.base_directory_fd == -1 && staging.staging_directory_fd == -1);
 

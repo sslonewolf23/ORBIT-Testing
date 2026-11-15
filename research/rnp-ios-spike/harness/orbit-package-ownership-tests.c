@@ -51,6 +51,12 @@ int main(void){
  orbit_package_ownership_record clash=own("Library/ORBIT/core.dylib","other",false);
  orbit_package_ownership_snapshot cs={&clash,1};
  EXPECT("foreign file overwrite blocked",orbit_package_ownership_plan_install(&cs,&a,files,2,&p)==ORBIT_OWNERSHIP_FILE_CONFLICT);
+ orbit_package_ownership_record case_file_conflict[]={
+  own("Library/ORBIT/Core.dylib","pkg-a",false),
+  own("library/orbit/core.dylib","pkg-b",false)};
+ orbit_package_ownership_snapshot case_file_snapshot={case_file_conflict,2};
+ EXPECT("case-folded cross-package file collision marks database corrupt",
+   orbit_package_ownership_plan_install(&case_file_snapshot,&a,files,2,&p)==ORBIT_OWNERSHIP_CORRUPT_DATABASE);
  orbit_package_ownership_record case_type_conflict[]={
   own("Library/Shared","pkg-a",true),own("library/shared","pkg-b",false)};
  orbit_package_ownership_snapshot case_type_snapshot={case_type_conflict,2};

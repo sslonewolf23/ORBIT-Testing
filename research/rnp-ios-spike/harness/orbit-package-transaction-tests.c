@@ -29,9 +29,9 @@ static orbit_journal_status load_journal(void *ctx,orbit_transaction_journal *ou
     return ORBIT_JOURNAL_OK;
 }
 static bool zero_tail(const char *value,size_t capacity) {
-    const char *end=memchr(value,'\\0',capacity);
+    const char *end=memchr(value,'\0',capacity);
     if(!end)return false;
-    for(const char *p=end+1;p<value+capacity;++p)if(*p!='\\0')return false;
+    for(const char *p=end+1;p<value+capacity;++p)if(*p!='\0')return false;
     return true;
 }
 static bool store_journal(void *ctx,const orbit_transaction_journal *j) {

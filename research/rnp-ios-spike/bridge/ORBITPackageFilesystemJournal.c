@@ -85,6 +85,26 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
         }
     }
 
+    struct stat target_parent_status, backup_parent_status, staged_parent_status;
+    bool identities_match =
+        fstat(target_parent_fd, &target_parent_status) == 0 &&
+        fstat(backup_parent_fd, &backup_parent_status) == 0 &&
+        (uint64_t)target_parent_status.st_dev == change->target_parent_device &&
+        (uint64_t)target_parent_status.st_ino == change->target_parent_inode &&
+        (uint64_t)backup_parent_status.st_dev == change->backup_parent_device &&
+        (uint64_t)backup_parent_status.st_ino == change->backup_parent_inode;
+    if (identities_match && staged_parent_fd >= 0) {
+        identities_match = fstat(staged_parent_fd, &staged_parent_status) == 0 &&
+            (uint64_t)staged_parent_status.st_dev == change->staged_parent_device &&
+            (uint64_t)staged_parent_status.st_ino == change->staged_parent_inode;
+    }
+    if (!identities_match) {
+        if (staged_parent_fd >= 0) close(staged_parent_fd);
+        close(target_parent_fd);
+        close(backup_parent_fd);
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+    }
+
     orbit_filesystem_code result;
     if (action == ORBIT_FILE_JOURNAL_APPLY)
         result = orbit_package_filesystem_apply(

@@ -245,14 +245,29 @@ int main(void) {
     if (locator_stage_fd >= 0) {
         /* The descriptor was closed above; remove the staged payload by path. */
     }
-    int locator_stage_cleanup_fd = openat(base_fd, "locator-stage",
+    EXPECT("validated staged parent moved aside",
+        renameat(base_fd, "locator-stage", base_fd,
+                 "locator-stage-real") == 0);
+    EXPECT("symlink substituted for validated staged parent",
+        symlinkat("locator-stage-real", base_fd, "locator-stage") == 0);
+    EXPECT("recovery parent resolver rejects staged-parent symlink swap",
+        orbit_package_filesystem_open_parent_directory(
+            base_fd, locator_change.staged_parent_path,
+            &swapped_parent_fd) == ORBIT_FILESYSTEM_IO_ERROR);
+    EXPECT("staged-parent swap leaves staged payload untouched",
+        swapped_parent_fd < 0 &&
+        unlinkat(base_fd, "locator-stage", 0) == 0);
+    int locator_stage_real_fd = openat(base_fd, "locator-stage-real",
         O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    if (locator_stage_cleanup_fd >= 0) {
-        (void)unlinkat(locator_stage_cleanup_fd, "payload", 0);
-        close(locator_stage_cleanup_fd);
+    EXPECT("staged payload remains in original parent",
+        locator_stage_real_fd >= 0 &&
+        file_equals_at(locator_stage_real_fd, "payload", "replacement"));
+    if (locator_stage_real_fd >= 0) {
+        (void)unlinkat(locator_stage_real_fd, "payload", 0);
+        close(locator_stage_real_fd);
     }
-    EXPECT("locator stage fixture cleaned",
-        unlinkat(base_fd, "locator-stage", AT_REMOVEDIR) == 0);
+    EXPECT("original staged parent fixture cleaned",
+        unlinkat(base_fd, "locator-stage-real", AT_REMOVEDIR) == 0);
 
     orbit_package_file_change change;
     EXPECT("old target created", write_file_at(target_fd, "existing.dylib", "old-bytes"));

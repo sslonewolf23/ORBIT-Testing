@@ -136,6 +136,10 @@ int main(void) {
     orbit_filesystem_code journal_code;
 
     uint8_t zero_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0U };
+    orbit_archive_entry manifest_entry;
+    memset(&manifest_entry, 0, sizeof(manifest_entry));
+    (void)snprintf(manifest_entry.path, sizeof(manifest_entry.path),
+                   "Library/ORBIT/staged.bin");
     EXPECT("zero transaction ID rejected before staging",
         orbit_package_install_transaction_execute_deb_enveloped(
             &installed, &candidate, deb, deb_length,
@@ -148,7 +152,7 @@ int main(void) {
         !exists_at(stage_base_fd, "stage-zero-id"));
     EXPECT("zero transaction ID rejected by staged-manifest install",
         orbit_package_install_transaction_execute_enveloped(
-            &installed, &candidate, (const orbit_archive_entry *)deb, 1U,
+            &installed, &candidate, &manifest_entry, 1U,
             ownership_bytes, ownership_length, zero_transaction_id,
             install_fd, stage_base_fd, backup_fd, &backend, unused_executor,
             NULL, &plan_code, &journal_code) ==

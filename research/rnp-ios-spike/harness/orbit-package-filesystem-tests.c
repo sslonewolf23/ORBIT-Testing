@@ -187,6 +187,73 @@ int main(void) {
             ORBIT_FILESYSTEM_IO_ERROR);
     (void)unlinkat(base_fd, "target-link", 0);
 
+    /* A parent locator is resolved again during recovery. Replacing a
+       previously validated parent with a symlink must fail closed. */
+    EXPECT("locator target parent created",
+        mkdirat(base_fd, "locator-target", 0700) == 0);
+    EXPECT("locator stage parent created",
+        mkdirat(base_fd, "locator-stage", 0700) == 0);
+    int locator_target_fd = openat(base_fd, "locator-target",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int locator_stage_fd = openat(base_fd, "locator-stage",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("locator parent descriptors opened",
+        locator_target_fd >= 0 && locator_stage_fd >= 0);
+    EXPECT("locator target fixture written",
+        locator_target_fd >= 0 &&
+        write_file_at(locator_target_fd, "victim", "original"));
+    EXPECT("locator staged fixture written",
+        locator_stage_fd >= 0 &&
+        write_file_at(locator_stage_fd, "payload", "replacement"));
+    orbit_package_file_change locator_change;
+    EXPECT("locator replacement prepared before parent swap",
+        locator_target_fd >= 0 && locator_stage_fd >= 0 &&
+        orbit_package_filesystem_prepare_replace(
+            locator_target_fd, "victim", locator_stage_fd, "payload",
+            backup_fd, "locator-backup", &locator_change) ==
+            ORBIT_FILESYSTEM_OK);
+    EXPECT("locator paths persisted before parent swap",
+        orbit_package_filesystem_set_parent_paths(
+            &locator_change, "locator-target", "locator-stage") ==
+            ORBIT_FILESYSTEM_OK);
+    if (locator_target_fd >= 0) close(locator_target_fd);
+    if (locator_stage_fd >= 0) close(locator_stage_fd);
+    EXPECT("validated parent moved aside",
+        renameat(base_fd, "locator-target", base_fd,
+                 "locator-target-real") == 0);
+    EXPECT("symlink substituted for validated parent",
+        symlinkat("locator-target-real", base_fd, "locator-target") == 0);
+    int swapped_parent_fd = -1;
+    EXPECT("recovery parent resolver rejects post-prepare symlink swap",
+        orbit_package_filesystem_open_parent_directory(
+            base_fd, locator_change.target_parent_path,
+            &swapped_parent_fd) == ORBIT_FILESYSTEM_IO_ERROR);
+    EXPECT("post-prepare symlink swap leaves original file untouched",
+        swapped_parent_fd < 0 &&
+        unlinkat(base_fd, "locator-target", 0) == 0);
+    int locator_real_fd = openat(base_fd, "locator-target-real",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT("original parent remains accessible without following link",
+        locator_real_fd >= 0 &&
+        file_equals_at(locator_real_fd, "victim", "original"));
+    if (locator_real_fd >= 0) {
+        (void)unlinkat(locator_real_fd, "victim", 0);
+        close(locator_real_fd);
+    }
+    EXPECT("original parent fixture cleaned",
+        unlinkat(base_fd, "locator-target-real", AT_REMOVEDIR) == 0);
+    if (locator_stage_fd >= 0) {
+        /* The descriptor was closed above; remove the staged payload by path. */
+    }
+    int locator_stage_cleanup_fd = openat(base_fd, "locator-stage",
+        O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (locator_stage_cleanup_fd >= 0) {
+        (void)unlinkat(locator_stage_cleanup_fd, "payload", 0);
+        close(locator_stage_cleanup_fd);
+    }
+    EXPECT("locator stage fixture cleaned",
+        unlinkat(base_fd, "locator-stage", AT_REMOVEDIR) == 0);
+
     orbit_package_file_change change;
     EXPECT("old target created", write_file_at(target_fd, "existing.dylib", "old-bytes"));
     EXPECT("staged replacement created", write_file_at(stage_fd, "existing.new", "new-bytes"));

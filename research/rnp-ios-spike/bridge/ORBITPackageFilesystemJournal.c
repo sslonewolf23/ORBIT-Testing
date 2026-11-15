@@ -379,12 +379,17 @@ static orbit_file_journal_load_result load_record(
     *last_revision = 0U;
     orbit_file_journal_load_result result =
         backend->load(backend->context, record, last_revision);
+    bool valid = false;
     if (result == ORBIT_FILE_JOURNAL_LOAD_PRESENT) {
-        if (!record_is_valid(record) || record->revision != *last_revision)
-            return ORBIT_FILE_JOURNAL_LOAD_ERROR;
+        valid = record_is_valid(record) && record->revision == *last_revision;
     } else if (result == ORBIT_FILE_JOURNAL_LOAD_EMPTY) {
-        if (record->change_count != 0U) return ORBIT_FILE_JOURNAL_LOAD_ERROR;
-    } else {
+        valid = record->change_count == 0U;
+    }
+    if (!valid) {
+        /* Never let a failed or malformed backend load leave recovery data
+         * available to a caller that accidentally reuses this stack record. */
+        memset(record, 0, sizeof(*record));
+        *last_revision = 0U;
         return ORBIT_FILE_JOURNAL_LOAD_ERROR;
     }
     return result;

@@ -51,6 +51,11 @@ int main(void){
  orbit_package_ownership_record clash=own("Library/ORBIT/core.dylib","other",false);
  orbit_package_ownership_snapshot cs={&clash,1};
  EXPECT("foreign file overwrite blocked",orbit_package_ownership_plan_install(&cs,&a,files,2,&p)==ORBIT_OWNERSHIP_FILE_CONFLICT);
+ orbit_package_ownership_record case_type_conflict[]={
+  own("Library/Shared","pkg-a",true),own("library/shared","pkg-b",false)};
+ orbit_package_ownership_snapshot case_type_snapshot={case_type_conflict,2};
+ EXPECT("case-folded file-directory ownership conflict marks database corrupt",
+   orbit_package_ownership_plan_install(&case_type_snapshot,&a,files,2,&p)==ORBIT_OWNERSHIP_CORRUPT_DATABASE);
  orbit_package_ownership_record case_clash=own("library/orbit/CORE.dylib","other",false);
  orbit_package_ownership_snapshot case_snapshot={&case_clash,1};
  orbit_archive_entry case_candidate[]={{"Library/ORBIT/core.dylib",4096,0U,false}};

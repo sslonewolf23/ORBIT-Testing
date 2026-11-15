@@ -135,6 +135,20 @@ int main(void) {
     orbit_package_file_plan_code plan_code;
     orbit_filesystem_code journal_code;
 
+    uint8_t zero_transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0U };
+    EXPECT("zero transaction ID rejected before staging",
+        orbit_package_install_transaction_execute_deb_enveloped(
+            &installed, &candidate, deb, deb_length,
+            ownership_bytes, ownership_length, zero_transaction_id,
+            install_fd, stage_base_fd, backup_fd, "stage-zero-id",
+            &backend, unused_executor, NULL, &staging, &report,
+            &archive_code, &plan_code, &journal_code) ==
+                ORBIT_PACKAGE_INSTALL_TRANSACTION_INVALID_ARGUMENT);
+    EXPECT("zero transaction ID creates no staging directory",
+        !exists_at(stage_base_fd, "stage-zero-id"));
+    EXPECT("zero transaction ID leaves staging descriptors closed",
+        staging.base_directory_fd == -1 && staging.staging_directory_fd == -1);
+
     EXPECT("foreign-owned path rejected before staging",
         orbit_package_install_transaction_execute_deb_enveloped(
             &installed, &candidate, deb, deb_length,

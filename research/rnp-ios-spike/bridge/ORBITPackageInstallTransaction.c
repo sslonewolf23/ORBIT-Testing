@@ -194,7 +194,7 @@ orbit_package_install_transaction_execute_enveloped(
     if (journal_result) *journal_result = ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     if (!installed || !candidate || !manifest || manifest_count == 0U ||
         !expected_ownership || expected_ownership_length == 0U ||
-        !transaction_id || install_root_fd < 0 || staging_root_fd < 0 ||
+        !transaction_id_valid(transaction_id) || install_root_fd < 0 || staging_root_fd < 0 ||
         backup_directory_fd < 0 || !backend || !executor ||
         !plan_result || !journal_result)
         return ORBIT_PACKAGE_INSTALL_TRANSACTION_INVALID_ARGUMENT;
@@ -280,7 +280,7 @@ orbit_package_remove_transaction_execute_enveloped(
     if (plan_result) *plan_result = ORBIT_PACKAGE_FILE_PLAN_INVALID_ARGUMENT;
     if (journal_result) *journal_result = ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     if (!installed || !package || !expected_ownership ||
-        expected_ownership_length == 0U || !transaction_id ||
+        expected_ownership_length == 0U || !transaction_id_valid(transaction_id) ||
         install_root_fd < 0 || backup_directory_fd < 0 ||
         !backend || !executor || !plan_result || !journal_result)
         return ORBIT_PACKAGE_INSTALL_TRANSACTION_INVALID_ARGUMENT;

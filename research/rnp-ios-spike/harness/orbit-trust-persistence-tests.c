@@ -187,6 +187,24 @@ int main(int argc,char **argv) {
             ==ORBIT_TRUST_STORE_AUTHENTICATION_FAILED,true);
     memcpy(storage.record,newer_record,newer_length);memcpy(storage.mac,newer_mac,sizeof(newer_mac));
 
+    /* Authenticated records still require canonical zero padding. */
+    const size_t repository_field_offset = 48U;
+    const size_t current_fingerprint_offset =
+        repository_field_offset + ORBIT_TRUST_REPOSITORY_CAPACITY;
+    const size_t current_fingerprint_padding =
+        current_fingerprint_offset + strlen(pin) + 1U;
+    storage.record[current_fingerprint_padding] = 0xA5U;
+    storage.locked = true;
+    bool canonical_mac_created = test_mac(&storage, repo, storage.record,
+        storage.length, storage.mac);
+    storage.locked = false;
+    expect("test-mac-created-for-noncanonical-record",canonical_mac_created,true);
+    expect("authenticated-nonzero-fingerprint-padding-rejected",
+        orbit_repository_trust_store_load(&loaded,repo,&backend)==
+            ORBIT_TRUST_STORE_FORMAT_REJECTED,true);
+    memcpy(storage.record,newer_record,newer_length);
+    memcpy(storage.mac,newer_mac,sizeof(newer_mac));
+
     orbit_repository_trust_state rollback=state;
     expect("older-revision-cannot-overwrite-counter",orbit_repository_trust_store_save_for_testing(
         &rollback,repo,&backend)==ORBIT_TRUST_STORE_ROLLBACK_DETECTED,true);

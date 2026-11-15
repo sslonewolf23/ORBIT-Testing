@@ -193,7 +193,12 @@ int main(void) {
             &empty, &(orbit_package_transaction_envelope){
                 .revision = 12U, .state = ORBIT_TRANSACTION_ENVELOPE_ACTIVE,
                 .phase = ORBIT_TRANSACTION_ENVELOPE_APPLYING,
-                .transaction_id = { [0] = 1U },
+                .transaction_id = {
+                    [0] = 0xA5U, [1] = 0xA5U, [2] = 0xA5U, [3] = 0xA5U,
+                    [4] = 0xA5U, [5] = 0xA5U, [6] = 0xA5U, [7] = 0xA5U,
+                    [8] = 0xA5U, [9] = 0xA5U, [10] = 0xA5U, [11] = 0xA5U,
+                    [12] = 0xA5U, [13] = 0xA5U, [14] = 0xA5U, [15] = 0xA5U
+                },
                 .journal_payload = journal_payload,
                 .journal_length = sizeof(journal_payload),
                 .committed_ownership = ownership_old,

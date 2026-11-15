@@ -363,6 +363,12 @@ static bool record_is_valid(
     return unique;
 }
 
+orbit_filesystem_code orbit_package_filesystem_journal_validate_record(
+    const orbit_package_filesystem_journal_record *record) {
+    return record_is_valid(record) ? ORBIT_FILESYSTEM_OK :
+        ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+}
+
 static bool backend_is_valid(
     const orbit_package_filesystem_journal_backend *backend) {
     return backend && backend->load && backend->store_atomic &&

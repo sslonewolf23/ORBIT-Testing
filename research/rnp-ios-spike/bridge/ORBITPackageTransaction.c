@@ -132,9 +132,13 @@ orbit_transaction_code orbit_package_transaction_execute(
         }
         j->operations[i].action=(uint32_t)actions[i];
         j->operations[i].state=ORBIT_TRANSACTION_STEP_PENDING;
-        memcpy(j->operations[i].name,p->name,sizeof(j->operations[i].name));
-        memcpy(j->operations[i].version_string,p->version,sizeof(j->operations[i].version_string));
-        memcpy(j->operations[i].architecture,p->architecture,sizeof(j->operations[i].architecture));
+        /* Copy only the validated string bytes. Package records may have
+         * nonzero padding after their terminators; copying whole fixed-size
+         * buffers would persist unrelated memory in the durable journal. */
+        memcpy(j->operations[i].name,p->name,strlen(p->name)+1U);
+        memcpy(j->operations[i].version_string,p->version,strlen(p->version)+1U);
+        memcpy(j->operations[i].architecture,p->architecture,
+               strlen(p->architecture)+1U);
     }
     if(!journal_valid(j)||!jb->store_atomic(jb->context,j)) {
         free(j);return ORBIT_TRANSACTION_JOURNAL_ERROR;

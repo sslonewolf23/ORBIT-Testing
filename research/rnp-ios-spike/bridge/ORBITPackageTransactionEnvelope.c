@@ -1,4 +1,5 @@
 #include "ORBITPackageTransactionEnvelope.h"
+#include "ORBITPackageFilesystemJournal.h"
 
 #include <string.h>
 
@@ -41,6 +42,22 @@ static bool bytes_equal(const uint8_t *a, size_t a_length,
         (a_length == 0U || (a && b && memcmp(a, b, a_length) == 0));
 }
 
+static bool journal_header_matches_envelope(
+    const orbit_package_transaction_envelope *e) {
+    if (!e || !e->journal_payload ||
+        e->journal_length < ORBIT_TRANSACTION_ENVELOPE_JOURNAL_HEADER_SIZE)
+        return false;
+    const uint8_t *journal = e->journal_payload;
+    if (memcmp(journal, "ORJP", 4U) != 0 ||
+        journal[4] != ORBIT_FILESYSTEM_JOURNAL_VERSION)
+        return false;
+    uint32_t journal_phase = read_u32(journal + 5U);
+    if (journal_phase != (uint32_t)e->phase)
+        return false;
+    return memcmp(journal + 9U, e->transaction_id,
+                  ORBIT_TRANSACTION_ENVELOPE_TRANSACTION_ID_BYTES) == 0;
+}
+
 static bool envelope_valid(const orbit_package_transaction_envelope *e) {
     if (!e || e->revision == 0U ||
         !e->committed_ownership ||
@@ -65,7 +82,8 @@ static bool envelope_valid(const orbit_package_transaction_envelope *e) {
         e->phase >= ORBIT_TRANSACTION_ENVELOPE_APPLYING &&
         e->phase <= ORBIT_TRANSACTION_ENVELOPE_COMMITTED &&
         nonzero_id(e->transaction_id) &&
-        e->journal_length >= 29U &&
+        e->journal_length >= ORBIT_TRANSACTION_ENVELOPE_JOURNAL_HEADER_SIZE &&
+        journal_header_matches_envelope(e) &&
         e->pending_ownership_length >= 12U;
 }
 

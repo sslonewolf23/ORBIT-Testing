@@ -43,7 +43,9 @@ static bool valid_repository_id(const char *value) {
 
 bool orbit_trust_rotation_proof_parse(const uint8_t *data, size_t length,
                                       orbit_trust_rotation_proof *proof) {
-    if (!data || !proof || length == 0 || length > ORBIT_TRUST_ROTATION_MAX_BYTES ||
+    if (!proof) return false;
+    memset(proof, 0, sizeof(*proof));
+    if (!data || length == 0 || length > ORBIT_TRUST_ROTATION_MAX_BYTES ||
         memchr(data, 0, length)) return false;
 
     orbit_trust_rotation_proof parsed;

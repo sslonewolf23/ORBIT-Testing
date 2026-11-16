@@ -252,7 +252,10 @@ bool orbit_package_staging_entry_callback(
             mark_failed(staging);
             return false;
         }
-        close(directory_fd);
+        if (close(directory_fd) < 0) {
+            mark_failed(staging);
+            return false;
+        }
         return true;
     }
 
@@ -281,7 +284,16 @@ bool orbit_package_staging_entry_callback(
         mark_failed(staging);
         return false;
     }
-    close(parent_fd);
+    if (close(parent_fd) < 0) {
+        /* Keep the file descriptor owned by staging so discard can close it. */
+        staging->active_file_fd = file_fd;
+        staging->active_file_size = entry->size;
+        staging->active_file_mode = entry->mode;
+        staging->active_file_written = 0U;
+        memcpy(staging->active_file_path, entry->path, strlen(entry->path) + 1U);
+        mark_failed(staging);
+        return false;
+    }
     staging->active_file_fd = file_fd;
     staging->active_file_size = entry->size;
     staging->active_file_mode = entry->mode;

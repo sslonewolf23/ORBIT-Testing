@@ -158,7 +158,8 @@ static bool backup_directory_is_empty(int directory_fd) {
         }
     }
     if (errno != 0) empty = false;
-    closedir(directory);
+    /* A failed stream close means the directory scan did not complete cleanly. */
+    if (closedir(directory) != 0) empty = false;
     return empty;
 }
 

@@ -31,6 +31,17 @@ int __wrap_close(int fd) {
     return result;
 }
 
+static int fail_next_rmdir;
+int __real_unlinkat(int directory_fd, const char *path, int flags);
+int __wrap_unlinkat(int directory_fd, const char *path, int flags) {
+    if (fail_next_rmdir && (flags & AT_REMOVEDIR) != 0) {
+        fail_next_rmdir = 0;
+        errno = EIO;
+        return -1;
+    }
+    return __real_unlinkat(directory_fd, path, flags);
+}
+
 int __real_fstat(int fd, struct stat *status);
 int __wrap_fstat(int fd, struct stat *status) {
     if (fail_next_fstat) {
@@ -314,6 +325,22 @@ int main(void) {
         orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&
         staging.active_file_fd == -1 &&
         !path_exists_at(base_fd, "stage-parent-close-error"));
+
+    EXPECT("failed final directory removal preserves retry state",
+        orbit_package_staging_begin(base_fd, "stage-rmdir-retry", &staging) ==
+            ORBIT_STAGING_OK);
+    fail_next_rmdir = 1;
+    orbit_staging_code first_rmdir_result =
+        orbit_package_staging_discard(&staging);
+    EXPECT("injected final rmdir failure retains staging identity",
+        first_rmdir_result == ORBIT_STAGING_IO_ERROR &&
+        fail_next_rmdir == 0 && staging.base_directory_fd >= 0 &&
+        staging.staging_name[0] != '\\0' &&
+        path_exists_at(base_fd, "stage-rmdir-retry"));
+    EXPECT("discard retry removes the preserved empty staging tree",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&
+        staging.base_directory_fd == -1 &&
+        !path_exists_at(base_fd, "stage-rmdir-retry"));
 
     EXPECT("cleanup continues after active descriptor close failure",
         orbit_package_staging_begin(base_fd, "stage-close-error", &staging) ==

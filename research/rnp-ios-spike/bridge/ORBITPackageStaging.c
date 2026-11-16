@@ -577,8 +577,13 @@ orbit_staging_code orbit_package_staging_discard(
     staging->staging_directory_fd = -1;
     if (close(root_fd) < 0) cleanup_ok = false;
     if (unlinkat(staging->base_directory_fd, staging->staging_name,
-                 AT_REMOVEDIR) < 0 && errno != ENOENT)
-        cleanup_ok = false;
+                 AT_REMOVEDIR) < 0 && errno != ENOENT) {
+        /* Preserve the base descriptor and name so a later discard can retry. */
+        staging->staging_directory_fd = openat(
+            staging->base_directory_fd, staging->staging_name,
+            O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        return ORBIT_STAGING_IO_ERROR;
+    }
     if (fsync(staging->base_directory_fd) < 0)
         cleanup_ok = false;
     staging->staging_name[0] = '\0';

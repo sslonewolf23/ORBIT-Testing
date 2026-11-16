@@ -140,14 +140,17 @@ int main(void) {
     memset(&manifest_entry, 0, sizeof(manifest_entry));
     (void)snprintf(manifest_entry.path, sizeof(manifest_entry.path),
                    "Library/ORBIT/staged.bin");
-    EXPECT("zero transaction ID rejected before staging",
+    memset(&report, 0xA5, sizeof(report));
+    EXPECT("zero transaction ID rejected and archive outputs reset before staging",
         orbit_package_install_transaction_execute_deb_enveloped(
             &installed, &candidate, deb, deb_length,
             ownership_bytes, ownership_length, zero_transaction_id,
             install_fd, stage_base_fd, backup_fd, "stage-zero-id",
             &backend, unused_executor, NULL, &staging, &report,
             &archive_code, &plan_code, &journal_code) ==
-                ORBIT_PACKAGE_INSTALL_TRANSACTION_INVALID_ARGUMENT);
+                ORBIT_PACKAGE_INSTALL_TRANSACTION_INVALID_ARGUMENT &&
+        memcmp(&report, &(orbit_archive_report){0}, sizeof(report)) == 0 &&
+        archive_code == ORBIT_ARCHIVE_INVALID_ARGUMENT);
     EXPECT("zero transaction ID creates no staging directory",
         !exists_at(stage_base_fd, "stage-zero-id"));
     EXPECT("zero transaction ID rejected by staged-manifest install",

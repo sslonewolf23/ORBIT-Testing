@@ -640,12 +640,21 @@ orbit_filesystem_code orbit_package_filesystem_open_parent_directory(
             return ORBIT_FILESYSTEM_IO_ERROR;
         }
         struct stat status;
-        if (fstat(next_fd, &status) < 0 || !S_ISDIR(status.st_mode)) {
+        if (fstat(next_fd, &status) < 0) {
+            close(next_fd);
+            close(current_fd);
+            return ORBIT_FILESYSTEM_IO_ERROR;
+        }
+        if (!S_ISDIR(status.st_mode)) {
             close(next_fd);
             close(current_fd);
             return ORBIT_FILESYSTEM_CONFLICT;
         }
-        close(current_fd);
+        /* Do not advance after a failed descriptor handoff. */
+        if (close(current_fd) < 0) {
+            close(next_fd);
+            return ORBIT_FILESYSTEM_IO_ERROR;
+        }
         current_fd = next_fd;
         if (final_segment) break;
         segment = slash + 1U;

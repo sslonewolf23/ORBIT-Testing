@@ -204,13 +204,28 @@ int main(void) {
     EXPECT("ownership conflict leaves staging descriptors closed",
         staging.base_directory_fd == -1 && staging.staging_directory_fd == -1);
 
+    /* Use an empty ownership snapshot so preflight reaches staging. */
+    orbit_package_ownership_snapshot no_installed = { NULL, 0U };
+    size_t empty_ownership_length = 0U;
+    EXPECT("empty ownership snapshot sizing succeeds",
+        orbit_package_ownership_encode(&no_installed, NULL, 0U,
+            &empty_ownership_length) == ORBIT_OWNERSHIP_CODEC_BUFFER_TOO_SMALL &&
+        empty_ownership_length > 0U);
+    uint8_t *empty_ownership_bytes =
+        (uint8_t *)malloc(empty_ownership_length);
+    EXPECT("empty ownership snapshot encodes",
+        empty_ownership_bytes != NULL &&
+        orbit_package_ownership_encode(&no_installed, empty_ownership_bytes,
+            empty_ownership_length, &empty_ownership_length) ==
+                ORBIT_OWNERSHIP_CODEC_OK);
+
     /* Exercise cleanup-state ownership through the public .deb orchestrator. */
     fail_next_fsync = 1; /* Parent sync immediately after staging mkdirat. */
     fail_next_stage_rmdir = 1; /* First best-effort removal fails too. */
     EXPECT("failed stage setup is reported by install orchestrator",
         orbit_package_install_transaction_execute_deb_enveloped(
-            &installed, &candidate, deb, deb_length,
-            ownership_bytes, ownership_length, transaction_id,
+            &no_installed, &candidate, deb, deb_length,
+            empty_ownership_bytes, empty_ownership_length, transaction_id,
             install_fd, stage_base_fd, backup_fd, "stage-retry-contract",
             &backend, unused_executor, NULL, &staging, &report,
             &archive_code, &plan_code, &journal_code) ==
@@ -228,6 +243,7 @@ int main(void) {
         staging.staging_name[0] == '\0' &&
         !exists_at(stage_base_fd, "stage-retry-contract"));
 
+    free(empty_ownership_bytes);
     free(ownership_bytes);
     if (backup_fd >= 0) close(backup_fd);
     if (stage_base_fd >= 0) close(stage_base_fd);

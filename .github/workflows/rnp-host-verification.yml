@@ -1,3 +1,682 @@
+name: RNP Host Signature Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, work/atomic-file-replacement, work/dependency-provides-support, work/package-file-plan]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify-inrelease-fixtures:
+    name: Host C-FFI signature fixture tests
+    runs-on: ubuntu-24.04
+    env:
+      RNP_COMMIT: aad1892e4d8423398a0b973bd0a7e4544c359afc
+      SEXPP_COMMIT: c641a2f36520bab783657a58650d9fda548b9dec
+      VCPKG_COMMIT: e54ef0fcc9a82033a61e51002552a910a5d57282
+      VCPKG_DISABLE_METRICS: "1"
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Prepare Go for App Attest witness service
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: false
+
+      - name: Verify App Attest witness protocol and state machine
+        working-directory: research/rnp-ios-spike/witness-service
+        shell: bash
+        run: |
+          set -euo pipefail
+          go mod tidy
+          go test -race ./...
+          go vet ./...
+
+      - name: Inspect preinstalled host toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y expect liblzma-dev libzstd-dev libbz2-dev zlib1g-dev zstd
+          required_tools=(clang clang++ cmake ninja pkg-config gpg git expect ar tar gzip xz bzip2 zstd)
+          for tool in "${required_tools[@]}"; do
+            if ! command -v "$tool" >/dev/null 2>&1; then
+              echo "::error::Required tool '$tool' is not preinstalled on this runner."
+              exit 1
+            fi
+            printf '%-12s %s\\n' "$tool" "$(command -v "$tool")"
+          done
+          clang --version
+          cmake --version
+          ninja --version
+          pkg-config --version
+          gpg --version | head -n 2
+          df -h "$RUNNER_TEMP"
+
+      - name: Fetch pinned RNP source and submodule
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/rnpgp/rnp.git "$RUNNER_TEMP/rnp"
+          git -C "$RUNNER_TEMP/rnp" checkout "$RNP_COMMIT"
+          git -C "$RUNNER_TEMP/rnp" submodule update --init --recursive
+          test "$(git -C "$RUNNER_TEMP/rnp" rev-parse HEAD)" = "$RNP_COMMIT"
+          test "$(git -C "$RUNNER_TEMP/rnp/src/libsexpp" rev-parse HEAD)" = "$SEXPP_COMMIT"
+
+      - name: Apply minimal upstream header compatibility patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C "$RUNNER_TEMP/rnp" rev-parse HEAD)" = "$RNP_COMMIT"
+          source_file="$RUNNER_TEMP/rnp/src/lib/crypto/mem.cpp"
+          if ! grep -q '^#include <cstring>$' "$source_file"; then
+            sed -i '/^#include <cstdio>$/a #include <cstring>' "$source_file"
+          fi
+          grep -q '^#include <cstring>$' "$source_file"
+          echo "Applied isolated <cstring> include fix to the temporary RNP checkout."
+          echo "Pinned upstream repository and commit remain unchanged."
+
+      - name: Prepare vcpkg binary cache directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          test -d "$VCPKG_DEFAULT_BINARY_CACHE"
+
+      - name: Cache pinned vcpkg dependency archives
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-ubuntu-24.04-e54ef0fcc9a82033a61e51002552a910a5d57282-x64-linux-botan3-v1
+
+      - name: Build pinned host dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone https://github.com/microsoft/vcpkg.git "$RUNNER_TEMP/vcpkg"
+          git -C "$RUNNER_TEMP/vcpkg" checkout "$VCPKG_COMMIT"
+          test "$(git -C "$RUNNER_TEMP/vcpkg" rev-parse HEAD)" = "$VCPKG_COMMIT"
+          "$RUNNER_TEMP/vcpkg/bootstrap-vcpkg.sh" -disableMetrics
+          "$RUNNER_TEMP/vcpkg/vcpkg" install "botan[zlib]" json-c zlib bzip2 --triplet x64-linux
+          echo "VCPKG_ROOT=$RUNNER_TEMP/vcpkg" >> "$GITHUB_ENV"
+          echo "VCPKG_INSTALLED_DIR=$RUNNER_TEMP/vcpkg/installed" >> "$GITHUB_ENV"
+
+      - name: Configure and build pinned host librnp
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake -S "$RUNNER_TEMP/rnp" -B "$RUNNER_TEMP/build-rnp-host" -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR="$VCPKG_INSTALLED_DIR" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/rnp-install" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_TESTING=OFF \
+            -DDOWNLOAD_GTEST=OFF \
+            -DENABLE_DOC=Off \
+            -DENABLE_FUZZERS=OFF \
+            -DCRYPTO_BACKEND=botan3
+          cmake --build "$RUNNER_TEMP/build-rnp-host" --target librnp --parallel 3
+          cmake --install "$RUNNER_TEMP/build-rnp-host" --component development
+
+      - name: Compile C-FFI probe against installed librnp
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          pkg-config --modversion librnp
+          pkg-config --modversion botan-3
+          pkg-config --modversion json-c
+          echo "librnp static link flags:"
+          pkg-config --static --libs librnp
+          echo "Botan static link flags:"
+          pkg-config --static --libs botan-3
+          echo "JSON-C static link flags:"
+          pkg-config --static --libs json-c
+          test -f "$RUNNER_TEMP/rnp-install/lib/libsexpp.a"
+          clang -std=c11 -Wall -Wextra -Werror -I"$RUNNER_TEMP/rnp-install/include" \
+            -c research/rnp-ios-spike/harness/rnp-inrelease-verify.c \
+            -o "$RUNNER_TEMP/rnp-inrelease-verify.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
+            -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-time-policy.c \
+            -o "$RUNNER_TEMP/rnp-time-policy.o"
+          clang "$RUNNER_TEMP/rnp-time-policy.o" "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
+            -o "$RUNNER_TEMP/rnp-time-policy-tests"
+          clang++ "$RUNNER_TEMP/rnp-inrelease-verify.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-inrelease-verify"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-bridge-smoke.c \
+            -o "$RUNNER_TEMP/rnp-bridge-smoke.o"
+
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-bridge-robustness.c \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness.o"
+          clang++ "$RUNNER_TEMP/rnp-bridge-smoke.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-smoke"
+
+          clang++ "$RUNNER_TEMP/rnp-bridge-robustness.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness"
+
+      - name: Run deterministic signature and key expiration boundary tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/rnp-time-policy-tests" | tee "$RUNNER_TEMP/time-policy.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/time-policy.out"
+
+      - name: Generate disposable Debian InRelease fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash research/rnp-ios-spike/scripts/generate-inrelease-fixtures.sh "$RUNNER_TEMP/fixtures"
+          test -s "$RUNNER_TEMP/fixtures/trusted-primary.fingerprint"
+          test -s "$RUNNER_TEMP/fixtures/other-primary.fingerprint"
+          (cd "$RUNNER_TEMP/fixtures" && sha256sum -c SHA256SUMS)
+
+      - name: Verify trusted, untrusted, and fail-closed cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN="$RUNNER_TEMP/rnp-inrelease-verify"
+          F="$RUNNER_TEMP/fixtures"
+          TRUSTED="$(cat "$F/trusted-primary.fingerprint")"
+          OTHER="$(cat "$F/other-primary.fingerprint")"
+
+          "$BIN" "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/trusted.out"
+          grep -q '^decision=TRUSTED$' "$RUNNER_TEMP/trusted.out"
+
+          "$BIN" "$F/trusted-keyring.gpg" "$F/valid-subkey.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/trusted-subkey.out"
+          grep -q '^decision=TRUSTED$' "$RUNNER_TEMP/trusted-subkey.out"
+
+          set +e
+          "$BIN" "$F/other-keyring.gpg" "$F/valid-other.InRelease" "$TRUSTED" > "$RUNNER_TEMP/untrusted.out" 2>&1
+          code=$?
+          set -e
+          test "$code" -eq 3
+          grep -q '^decision=VALID_BUT_UNTRUSTED$' "$RUNNER_TEMP/untrusted.out"
+
+          expect_block() {
+            name="$1"; keyring="$2"; message="$3"; fingerprint="${4:-$TRUSTED}"
+            set +e
+            "$BIN" "$F/$keyring" "$F/$message" "$fingerprint" > "$RUNNER_TEMP/$name.out" 2>&1
+            result=$?
+            set -e
+            if [ "$result" -eq 0 ] || [ "$result" -eq 3 ]; then
+              echo "FAIL: $name was not blocked (exit $result)"
+              cat "$RUNNER_TEMP/$name.out"
+              exit 1
+            fi
+            echo "PASS: $name blocked (exit $result)"
+          }
+
+          expect_block missing-key empty-keyring.gpg valid-trusted.InRelease
+          expect_block malformed-keyring malformed-keyring.gpg valid-trusted.InRelease
+          expect_block empty-keyring empty-keyring.gpg valid-trusted.InRelease
+          expect_block truncated-keyring truncated-keyring.gpg valid-trusted.InRelease
+          set +e
+          "$BIN" "$F/trusted-keyring.gpg" "$F/valid-subkey.InRelease" "$OTHER" > "$RUNNER_TEMP/subkey-wrong-primary.out" 2>&1
+          subkey_result=$?
+          set -e
+          test "$subkey_result" -eq 3
+          grep -q VALID_BUT_UNTRUSTED "$RUNNER_TEMP/subkey-wrong-primary.out"
+          echo "PASS: subkey rejected for wrong primary fingerprint"
+          expect_block tampered-payload trusted-keyring.gpg tampered-payload.InRelease
+          expect_block tampered-signature trusted-keyring.gpg tampered-signature.InRelease
+          expect_block truncated-armor trusted-keyring.gpg truncated.InRelease
+          expect_block malformed-framing trusted-keyring.gpg malformed-framing.InRelease
+          expect_block unsigned trusted-keyring.gpg unsigned.Release
+          expect_block weak-hash trusted-keyring.gpg weak-hash.InRelease
+          expect_block future-signature trusted-keyring.gpg future-signature.InRelease
+          expect_block expired-signature old-signer-keyring.gpg expired-signature.InRelease "$(cat "$F/old-signer-primary.fingerprint")"
+          expect_block multiple-signatures combined-keyring.gpg multiple-signatures.InRelease
+          expect_block expired-key expired-keyring.gpg expired-key.InRelease "$(cat "$F/expired-primary.fingerprint")"
+          expect_block revoked-key revoked-keyring.gpg revoked-key.InRelease "$(cat "$F/revoked-primary.fingerprint")"
+
+          BRIDGE_BIN="$RUNNER_TEMP/rnp-bridge-smoke"
+          "$BRIDGE_BIN" "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/bridge-trusted.out"
+          grep -q '^decision=ACCEPT$' "$RUNNER_TEMP/bridge-trusted.out"
+          "$BRIDGE_BIN" "$F/trusted-keyring.gpg" "$F/valid-subkey.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/bridge-trusted-subkey.out"
+          grep -q '^decision=ACCEPT$' "$RUNNER_TEMP/bridge-trusted-subkey.out"
+
+          NORMALIZED_TRUSTED="$(printf '%s' "$TRUSTED" | sed 's/../&:/g; s/:$//' | tr 'A-F' 'a-f')"
+          "$BRIDGE_BIN" "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$NORMALIZED_TRUSTED" | tee "$RUNNER_TEMP/bridge-normalized-fingerprint.out"
+          grep -q '^decision=ACCEPT$' "$RUNNER_TEMP/bridge-normalized-fingerprint.out"
+
+          expect_bridge_block() {
+            name="$1"; keyring="$2"; message="$3"; expected_fingerprint="${4:-$TRUSTED}"
+            set +e
+            "$BRIDGE_BIN" "$F/$keyring" "$F/$message" "$expected_fingerprint" > "$RUNNER_TEMP/bridge-$name.out" 2>&1
+            result=$?
+            set -e
+            if [ "$result" -eq 0 ]; then
+              echo "FAIL: native bridge accepted $name"
+              cat "$RUNNER_TEMP/bridge-$name.out"
+              exit 1
+            fi
+            grep -q '^decision=BLOCK$' "$RUNNER_TEMP/bridge-$name.out"
+            echo "PASS: native bridge blocked $name"
+          }
+
+          expect_bridge_block missing-signer other-keyring.gpg valid-trusted.InRelease
+          expect_bridge_block subkey-wrong-primary trusted-keyring.gpg valid-subkey.InRelease "$OTHER"
+          expect_bridge_block malformed-keyring malformed-keyring.gpg valid-trusted.InRelease
+          expect_bridge_block bad-packet-header bad-packet-header.gpg valid-trusted.InRelease
+          expect_bridge_block truncated-packet-header truncated-packet-header.gpg valid-trusted.InRelease
+          expect_bridge_block invalid-packet-length invalid-packet-length.gpg valid-trusted.InRelease
+          expect_bridge_block unsupported-key-algorithm unsupported-key-algorithm.gpg valid-trusted.InRelease
+          expect_bridge_block empty-keyring empty-keyring.gpg valid-trusted.InRelease
+          expect_bridge_block wrong-primary other-keyring.gpg valid-other.InRelease
+          expect_bridge_block tampered-payload trusted-keyring.gpg tampered-payload.InRelease
+          expect_bridge_block tampered-signature trusted-keyring.gpg tampered-signature.InRelease
+          expect_bridge_block malformed-framing trusted-keyring.gpg malformed-framing.InRelease
+          expect_bridge_block truncated trusted-keyring.gpg truncated.InRelease
+          expect_bridge_block unsigned trusted-keyring.gpg unsigned.Release
+          expect_bridge_block malformed-fingerprint trusted-keyring.gpg valid-trusted.InRelease "NOT-A-FINGERPRINT"
+          expect_bridge_block wrong-primary-fingerprint trusted-keyring.gpg valid-trusted.InRelease "$OTHER"
+          expect_bridge_block fingerprint-39 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED:0:39}"
+          expect_bridge_block fingerprint-41 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}A"
+          expect_bridge_block fingerprint-63 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}${TRUSTED:0:23}"
+          expect_bridge_block fingerprint-65 trusted-keyring.gpg valid-trusted.InRelease "${TRUSTED}${TRUSTED:0:25}"
+          expect_bridge_block weak-hash trusted-keyring.gpg weak-hash.InRelease
+          expect_bridge_block future-signature trusted-keyring.gpg future-signature.InRelease
+          expect_bridge_block expired-signature old-signer-keyring.gpg expired-signature.InRelease "$(cat "$F/old-signer-primary.fingerprint")"
+          expect_bridge_block multiple-signatures combined-keyring.gpg multiple-signatures.InRelease
+          expect_bridge_block expired-key expired-keyring.gpg expired-key.InRelease "$(cat "$F/expired-primary.fingerprint")"
+          expect_bridge_block revoked-key revoked-keyring.gpg revoked-key.InRelease "$(cat "$F/revoked-primary.fingerprint")"
+          truncate -s 16777217 "$F/oversized.InRelease"
+          truncate -s 4194305 "$F/oversized-keyring.gpg"
+          expect_bridge_block oversized-inrelease trusted-keyring.gpg oversized.InRelease
+          expect_bridge_block oversized-keyring oversized-keyring.gpg valid-trusted.InRelease
+
+          "$RUNNER_TEMP/rnp-bridge-robustness" \
+            "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" \
+            "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/bridge-robustness.out"
+          grep -q '^decision=PASS$' "$RUNNER_TEMP/bridge-robustness.out"
+
+      - name: Build AddressSanitizer and UndefinedBehaviorSanitizer harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
+            -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy-sanitized.o"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-bridge-robustness.c \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness-sanitized.o"
+          clang++ $SAN "$RUNNER_TEMP/rnp-bridge-robustness-sanitized.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-sanitized.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-robustness-sanitized"
+          clang -fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -g \
+            -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
+            -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-fuzz.o"
+          clang -fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -g \
+            -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy-fuzz.o"
+          clang -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer -g \
+            -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/rnp-bridge-fuzz.c \
+            -o "$RUNNER_TEMP/rnp-bridge-fuzz.o"
+          clang++ -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer -g \
+            "$RUNNER_TEMP/rnp-bridge-fuzz.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-fuzz.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-fuzz.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-fuzz"
+
+      - name: Run sanitizer robustness checks
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          set -euo pipefail
+          F="$RUNNER_TEMP/fixtures"
+          TRUSTED="$(cat "$F/trusted-primary.fingerprint")"
+          "$RUNNER_TEMP/rnp-bridge-robustness-sanitized" \
+            "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" "$TRUSTED" \
+            "$F/truncated-keyring.gpg" | tee "$RUNNER_TEMP/sanitizer-robustness.out"
+          grep -q '^decision=PASS$' "$RUNNER_TEMP/sanitizer-robustness.out"
+
+      - name: Fuzz OpenPGP key and InRelease parsers
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+          ORBIT_FUZZ_TRUSTED_KEY: ${{ runner.temp }}/fixtures/trusted-keyring.gpg
+          ORBIT_FUZZ_VALID_DOCUMENT: ${{ runner.temp }}/fixtures/valid-trusted.InRelease
+          ORBIT_FUZZ_FINGERPRINT: ${{ runner.temp }}/fixtures/trusted-primary.fingerprint
+        run: |
+          set -euo pipefail
+          CORPUS="$RUNNER_TEMP/rnp-fuzz-corpus"
+          ARTIFACTS="$RUNNER_TEMP/rnp-fuzz-artifacts"
+          mkdir -p "$CORPUS" "$ARTIFACTS"
+          cp "$RUNNER_TEMP/fixtures/trusted-keyring.gpg" "$CORPUS/seed-trusted-keyring"
+          cp "$RUNNER_TEMP/fixtures/valid-trusted.InRelease" "$CORPUS/seed-valid-inrelease"
+          cp "$RUNNER_TEMP/fixtures/malformed-keyring.gpg" "$CORPUS/seed-malformed-keyring"
+          cp "$RUNNER_TEMP/fixtures/truncated-keyring.gpg" "$CORPUS/seed-truncated-keyring"
+          cp "$RUNNER_TEMP/fixtures/bad-packet-header.gpg" "$CORPUS/seed-bad-packet-header"
+          cp "$RUNNER_TEMP/fixtures/truncated-packet-header.gpg" "$CORPUS/seed-truncated-packet-header"
+          cp "$RUNNER_TEMP/fixtures/invalid-packet-length.gpg" "$CORPUS/seed-invalid-packet-length"
+          cp "$RUNNER_TEMP/fixtures/unsupported-key-algorithm.gpg" "$CORPUS/seed-unsupported-key-algorithm"
+          cp "$RUNNER_TEMP/fixtures/valid-subkey.InRelease" "$CORPUS/seed-subkey-inrelease"
+          "$RUNNER_TEMP/rnp-bridge-fuzz" "$CORPUS" \
+            -runs=1500 -max_len=262144 -timeout=5 -rss_limit_mb=2048 \
+            -artifact_prefix="$ARTIFACTS/" 2>&1 | tee "$RUNNER_TEMP/rnp-fuzz.out"
+          grep -q 'Done 1500 runs' "$RUNNER_TEMP/rnp-fuzz.out"
+
+      - name: Build linker-wrapped fault-injection harness
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          SAN="-fsanitize=address,undefined -fno-omit-frame-pointer -g"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -Iresearch/rnp-ios-spike/harness \
+            -c research/rnp-ios-spike/harness/rnp-bridge-fault-injection.c \
+            -o "$RUNNER_TEMP/rnp-bridge-fault-injection.o"
+          clang $SAN -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/harness \
+            -c research/rnp-ios-spike/harness/rnp-fault-wrappers.c \
+            -o "$RUNNER_TEMP/rnp-fault-wrappers.o"
+          clang++ $SAN "$RUNNER_TEMP/rnp-bridge-fault-injection.o" \
+            "$RUNNER_TEMP/rnp-fault-wrappers.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-sanitized.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-sanitized.o" \
+            -Wl,--wrap=rnp_ffi_create \
+            -Wl,--wrap=rnp_input_from_memory \
+            -Wl,--wrap=rnp_load_keys \
+            -Wl,--wrap=rnp_get_public_key_count \
+            -Wl,--wrap=rnp_output_to_null \
+            -Wl,--wrap=rnp_op_verify_create \
+            -Wl,--wrap=rnp_op_verify_set_flags \
+            -Wl,--wrap=rnp_op_verify_execute \
+            -Wl,--wrap=rnp_op_verify_get_signature_count \
+            -Wl,--wrap=rnp_op_verify_get_signature_at \
+            -Wl,--wrap=rnp_op_verify_signature_get_status \
+            -Wl,--wrap=rnp_op_verify_signature_get_handle \
+            -Wl,--wrap=rnp_signature_is_valid \
+            -Wl,--wrap=rnp_op_verify_signature_get_hash \
+            -Wl,--wrap=rnp_op_verify_signature_get_times \
+            -Wl,--wrap=rnp_op_verify_signature_get_key \
+            -Wl,--wrap=rnp_key_get_fprint \
+            -Wl,--wrap=rnp_key_get_alg \
+            -Wl,--wrap=rnp_key_get_curve \
+            -Wl,--wrap=rnp_key_is_sub \
+            -Wl,--wrap=rnp_key_get_primary_fprint \
+            -Wl,--wrap=rnp_locate_key \
+            -Wl,--wrap=rnp_key_is_valid \
+            -Wl,--wrap=rnp_key_is_revoked \
+            -Wl,--wrap=rnp_key_get_creation \
+            -Wl,--wrap=rnp_key_valid_till64 \
+            -Wl,--wrap=rnp_key_allows_usage \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz \
+            -o "$RUNNER_TEMP/rnp-bridge-fault-injection"
+
+      - name: Run controlled RNP fault-injection cleanup tests
+        shell: bash
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          set -euo pipefail
+          F="$RUNNER_TEMP/fixtures"
+          TRUSTED="$(cat "$F/trusted-primary.fingerprint")"
+          "$RUNNER_TEMP/rnp-bridge-fault-injection" \
+            "$F/trusted-keyring.gpg" "$F/valid-trusted.InRelease" \
+            "$F/valid-subkey.InRelease" "$TRUSTED" | tee "$RUNNER_TEMP/fault-injection.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/fault-injection.out"
+      - name: Compile and run repository Release metadata policy tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          pkg-config --modversion botan-3
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -I"$VCPKG_INSTALLED_DIR/x64-linux/include" \
+            research/rnp-ios-spike/bridge/ORBITReleaseMetadata.c \
+            research/rnp-ios-spike/harness/orbit-release-metadata-tests.c \
+            $(pkg-config --static --libs botan-3) \
+            -lstdc++ \
+            -o "$RUNNER_TEMP/orbit-release-metadata-tests"
+          "$RUNNER_TEMP/orbit-release-metadata-tests" | tee "$RUNNER_TEMP/release-metadata-policy.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/release-metadata-policy.out"
+
+      - name: Compile and run repository key rotation trust tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -I"$VCPKG_INSTALLED_DIR/x64-linux/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPInReleaseVerifier.c \
+            -o "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-rotation.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRNPTimePolicy.c \
+            -o "$RUNNER_TEMP/ORBITRNPTimePolicy-rotation.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$VCPKG_INSTALLED_DIR/x64-linux/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITReleaseMetadata.c \
+            -o "$RUNNER_TEMP/ORBITReleaseMetadata-rotation.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRepositoryTrust.c \
+            -o "$RUNNER_TEMP/ORBITRepositoryTrust-rotation.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/rnp-install/include" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/orbit-trust-rotation-tests.c \
+            -o "$RUNNER_TEMP/orbit-trust-rotation-tests.o"
+          clang++ "$RUNNER_TEMP/orbit-trust-rotation-tests.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-rotation.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-rotation.o" \
+            "$RUNNER_TEMP/ORBITReleaseMetadata-rotation.o" \
+            "$RUNNER_TEMP/ORBITRepositoryTrust-rotation.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz -lstdc++ \
+            -o "$RUNNER_TEMP/orbit-trust-rotation-tests"
+          F="$RUNNER_TEMP/fixtures"
+          "$RUNNER_TEMP/orbit-trust-rotation-tests" \
+            "$F/trusted-keyring.gpg" "$F/valid-rotation.InRelease" \
+            "$F/trusted-primary.fingerprint" "$F/other-keyring.gpg" \
+            "$F/other-primary.fingerprint" "$F/trusted-keyring.gpg" \
+            "$F/combined-keyring.gpg" "$F/unauthorized-rotation.InRelease" \
+            "$F/expired-keyring.gpg" "$F/expired-primary.fingerprint" \
+            "$F/revoked-keyring.gpg" "$F/revoked-primary.fingerprint" \
+            "$F/recovery-keyring.gpg" "$F/recovery-primary.fingerprint" \
+            "$F/valid-emergency-rotation.InRelease" "$F/emergency-activation.timestamp" \
+            "$F/non-immediate-recovery.InRelease" \
+            | tee "$RUNNER_TEMP/trust-rotation.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/trust-rotation.out"
+
+      - name: Compile and run authenticated trust persistence tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$RUNNER_TEMP/rnp-install/lib/pkgconfig:$VCPKG_INSTALLED_DIR/x64-linux/lib/pkgconfig"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -DORBIT_TRUST_PERSISTENCE_TESTING=1 \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITTrustPersistence.c \
+            -o "$RUNNER_TEMP/ORBITTrustPersistence-tests.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITRepositoryVerifier.c \
+            -o "$RUNNER_TEMP/ORBITRepositoryVerifier-tests.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -I"$VCPKG_INSTALLED_DIR/x64-linux/include" \
+            -c research/rnp-ios-spike/bridge/ORBITPackagesIndex.c \
+            -o "$RUNNER_TEMP/ORBITPackagesIndex-tests.o"
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/harness/orbit-trust-persistence-tests.c \
+            -o "$RUNNER_TEMP/orbit-trust-persistence-tests.o"
+          clang++ -fsanitize=address,undefined -fno-omit-frame-pointer \
+            "$RUNNER_TEMP/ORBITTrustPersistence-tests.o" \
+            "$RUNNER_TEMP/ORBITRepositoryVerifier-tests.o" \
+            "$RUNNER_TEMP/ORBITPackagesIndex-tests.o" \
+            "$RUNNER_TEMP/orbit-trust-persistence-tests.o" \
+            "$RUNNER_TEMP/ORBITRepositoryTrust-rotation.o" \
+            "$RUNNER_TEMP/ORBITReleaseMetadata-rotation.o" \
+            "$RUNNER_TEMP/ORBITRNPInReleaseVerifier-rotation.o" \
+            "$RUNNER_TEMP/ORBITRNPTimePolicy-rotation.o" \
+            $(pkg-config --static --libs librnp) \
+            $(pkg-config --static --libs botan-3) \
+            -L"$RUNNER_TEMP/rnp-install/lib" -lsexpp \
+            $(pkg-config --static --libs json-c) \
+            -L"$VCPKG_INSTALLED_DIR/x64-linux/lib" -lbz2 -lz -lstdc++ \
+            -o "$RUNNER_TEMP/orbit-trust-persistence-tests"
+          F="$RUNNER_TEMP/fixtures"
+          "$RUNNER_TEMP/orbit-trust-persistence-tests" \
+            "$F/trusted-primary.fingerprint" "$F/trusted-keyring.gpg" \
+            "$F/valid-rotation.InRelease" "$F/recovery-keyring.gpg" \
+            "$F/recovery-primary.fingerprint" "$F/valid-emergency-rotation.InRelease" \
+            "$F/other-keyring.gpg" "$F/other-primary.fingerprint" \
+            "$F/emergency-activation.timestamp" \
+            "$F/valid-trusted.InRelease" "$F/Packages" "$F/orbit-fixture.deb" \
+            | tee "$RUNNER_TEMP/trust-persistence.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/trust-persistence.out"
+
+      - name: Compile and run dependency resolver policy tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITDependencyResolver.c \
+            research/rnp-ios-spike/harness/orbit-dependency-resolver-tests.c \
+            -o "$RUNNER_TEMP/orbit-dependency-resolver-tests"
+          "$RUNNER_TEMP/orbit-dependency-resolver-tests" | tee "$RUNNER_TEMP/dependency-resolver.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/dependency-resolver.out"
+
+      - name: Compile and run package transaction recovery tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageTransaction.c \
+            research/rnp-ios-spike/harness/orbit-package-transaction-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-transaction-tests"
+          "$RUNNER_TEMP/orbit-package-transaction-tests" | tee "$RUNNER_TEMP/package-transaction.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction.out"
+
+      - name: Compile and run bounded package decompression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/harness/orbit-package-decompress-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-decompress-tests"
+          "$RUNNER_TEMP/orbit-package-decompress-tests" | tee "$RUNNER_TEMP/package-decompress.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-decompress.out"
+
+      - name: Compile and run installed package ownership policy tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnership.c \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/harness/orbit-package-ownership-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-ownership-tests"
+          "$RUNNER_TEMP/orbit-package-ownership-tests" | tee "$RUNNER_TEMP/package-ownership.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-ownership.out"
+
+      - name: Compile and run canonical ownership database codec tests
+        shell: bash
+        run: |
           set -euo pipefail
           clang -std=c11 -Wall -Wextra -Werror \
             -Iresearch/rnp-ios-spike/bridge \
@@ -55,3 +734,296 @@
             research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
             research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
             research/rnp-ios-spike/harness/orbit-package-filesystem-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-filesystem-tests"
+          "$RUNNER_TEMP/orbit-package-filesystem-tests" | tee "$RUNNER_TEMP/package-filesystem.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem.out"
+
+      - name: Compile and run per-file transaction journal tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournal.c \
+            research/rnp-ios-spike/harness/orbit-package-filesystem-journal-tests.c \
+            -Wl,--wrap=fsync \
+            -Wl,--wrap=close \
+            -Wl,--wrap=closedir \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-filesystem-journal-tests"
+          "$RUNNER_TEMP/orbit-package-filesystem-journal-tests" | tee "$RUNNER_TEMP/package-filesystem-journal.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem-journal.out"
+
+      - name: Compile and run native package-manager lock coordination tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageNativeLock.c \
+            research/rnp-ios-spike/harness/orbit-package-native-lock-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-native-lock-tests"
+          "$RUNNER_TEMP/orbit-package-native-lock-tests" | tee "$RUNNER_TEMP/package-native-lock.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-native-lock.out"
+
+      - name: Compile and run bootstrap compatibility profile tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapProfile.c \
+            research/rnp-ios-spike/harness/orbit-package-bootstrap-profile-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-bootstrap-profile-tests"
+          "$RUNNER_TEMP/orbit-package-bootstrap-profile-tests" | tee "$RUNNER_TEMP/package-bootstrap-profile.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-bootstrap-profile.out"
+
+      - name: Compile and run ordered bootstrap lockset tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageNativeLock.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapProfile.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapLockset.c \
+            research/rnp-ios-spike/harness/orbit-package-bootstrap-lockset-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-bootstrap-lockset-tests"
+          "$RUNNER_TEMP/orbit-package-bootstrap-lockset-tests" | tee "$RUNNER_TEMP/package-bootstrap-lockset.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-bootstrap-lockset.out"
+
+      - name: Compile and run coordinated transaction lock-lifecycle tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageTransaction.c \
+            research/rnp-ios-spike/bridge/ORBITPackageTransactionCoordinator.c \
+            research/rnp-ios-spike/bridge/ORBITAPTConfigResolver.c \
+            research/rnp-ios-spike/bridge/ORBITPackageNativeLock.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapProfile.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapLockset.c \
+            research/rnp-ios-spike/harness/orbit-package-transaction-coordinator-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-transaction-coordinator-tests"
+          "$RUNNER_TEMP/orbit-package-transaction-coordinator-tests" \
+            | tee "$RUNNER_TEMP/package-transaction-coordinator.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction-coordinator.out"
+
+      - name: Compile libapt-pkg adapter against Procursus-pinned APT headers
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch 2.9.4 https://github.com/Debian/apt.git "$RUNNER_TEMP/apt-2.9.4"
+          mkdir -p "$RUNNER_TEMP/apt-header-overlay/apt-pkg"
+          ln -s "$RUNNER_TEMP/apt-2.9.4/apt-pkg/contrib/macros.h" \
+            "$RUNNER_TEMP/apt-header-overlay/apt-pkg/macros.h"
+          clang++ -std=c++17 -Wall -Wextra -Werror \
+            -I"$RUNNER_TEMP/apt-header-overlay" \
+            -I"$RUNNER_TEMP/apt-2.9.4" \
+            -Iresearch/rnp-ios-spike/bridge \
+            -c research/rnp-ios-spike/bridge/ORBITAPTLibaptAdapter.cpp \
+            -o "$RUNNER_TEMP/orbit-apt-libapt-adapter.o"
+
+      - name: Compile and run effective APT status path resolver tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITAPTConfigResolver.c \
+            research/rnp-ios-spike/harness/orbit-apt-config-resolver-tests.c \
+            -o "$RUNNER_TEMP/orbit-apt-config-resolver-tests"
+          "$RUNNER_TEMP/orbit-apt-config-resolver-tests" \
+            | tee "$RUNNER_TEMP/apt-config-resolver.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/apt-config-resolver.out"
+
+      - name: Verify native locks against real APT and dpkg binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v apt-get
+          command -v dpkg-deb
+          apt-get --version | head -n 1
+          dpkg-deb --version | head -n 1
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageNativeLock.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapProfile.c \
+            research/rnp-ios-spike/bridge/ORBITPackageBootstrapLockset.c \
+            research/rnp-ios-spike/harness/orbit-procursus-apt-interoperability-tests.c \
+            -o "$RUNNER_TEMP/orbit-procursus-apt-interoperability-tests"
+          sudo "$RUNNER_TEMP/orbit-procursus-apt-interoperability-tests" \
+            | tee "$RUNNER_TEMP/procursus-apt-interop.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/procursus-apt-interop.out"
+
+      - name: Compile and run canonical filesystem journal codec tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournal.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalCodec.c \
+            research/rnp-ios-spike/harness/orbit-package-filesystem-journal-codec-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-filesystem-journal-codec-tests"
+          "$RUNNER_TEMP/orbit-package-filesystem-journal-codec-tests" \
+            | tee "$RUNNER_TEMP/package-filesystem-journal-codec.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem-journal-codec.out"
+
+      - name: Compile and run combined transaction envelope codec and state tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
+            research/rnp-ios-spike/harness/orbit-package-transaction-envelope-tests.c \
+            -o "$RUNNER_TEMP/orbit-package-transaction-envelope-tests"
+          "$RUNNER_TEMP/orbit-package-transaction-envelope-tests" \
+            | tee "$RUNNER_TEMP/package-transaction-envelope.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-transaction-envelope.out"
+
+      - name: Compile and run atomic ownership plus filesystem journal tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournal.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnership.c \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnershipCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilePlan.c \
+            research/rnp-ios-spike/bridge/ORBITPackageStaging.c \
+            research/rnp-ios-spike/bridge/ORBITPackageInstallTransaction.c \
+            research/rnp-ios-spike/harness/orbit-package-filesystem-journal-envelope-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-filesystem-journal-envelope-tests"
+          "$RUNNER_TEMP/orbit-package-filesystem-journal-envelope-tests" \
+            | tee "$RUNNER_TEMP/package-filesystem-journal-envelope.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-filesystem-journal-envelope.out"
+
+      - name: Compile and run staged package filesystem planning tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournal.c \
+            research/rnp-ios-spike/bridge/ORBITPackageStaging.c \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnership.c \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnershipCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilePlan.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageInstallTransaction.c \
+            research/rnp-ios-spike/harness/orbit-package-file-plan-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-file-plan-tests"
+          "$RUNNER_TEMP/orbit-package-file-plan-tests" \
+            | tee "$RUNNER_TEMP/package-file-plan.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-file-plan.out"
+
+      - name: Compile and run ownership-first package install orchestration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang -std=c11 -Wall -Wextra -Werror \
+            -fsanitize=address,undefined -fno-omit-frame-pointer -g \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/bridge/ORBITPackageStaging.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystem.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournal.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnership.c \
+            research/rnp-ios-spike/bridge/ORBITPackageOwnershipCodec.c \
+            research/rnp-ios-spike/bridge/ORBITPackageTransactionEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilesystemJournalEnvelope.c \
+            research/rnp-ios-spike/bridge/ORBITPackageFilePlan.c \
+            research/rnp-ios-spike/bridge/ORBITPackageInstallTransaction.c \
+            research/rnp-ios-spike/harness/orbit-package-install-orchestrator-tests.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-install-orchestrator-tests"
+          "$RUNNER_TEMP/orbit-package-install-orchestrator-tests" \
+            | tee "$RUNNER_TEMP/package-install-orchestrator.out"
+          grep -q '^decision=PASS' "$RUNNER_TEMP/package-install-orchestrator.out"
+
+      - name: Fuzz package archive and decompression parsers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/orbit-parser-corpus" "$RUNNER_TEMP/orbit-parser-fuzz-artifacts"
+          printf '!<arch>\n' > "$RUNNER_TEMP/orbit-parser-corpus/ar-magic"
+          printf 'ustar' > "$RUNNER_TEMP/orbit-parser-corpus/ustar-marker"
+          printf 'ORBIT decompression fuzz seed' | gzip -c > "$RUNNER_TEMP/orbit-parser-corpus/gzip-seed"
+          printf 'ORBIT decompression fuzz seed' | xz -c > "$RUNNER_TEMP/orbit-parser-corpus/xz-seed"
+          printf 'ORBIT decompression fuzz seed' | bzip2 -c > "$RUNNER_TEMP/orbit-parser-corpus/bzip2-seed"
+          printf 'ORBIT decompression fuzz seed' | zstd -q -c > "$RUNNER_TEMP/orbit-parser-corpus/zstd-seed"
+          mkdir -p "$RUNNER_TEMP/orbit-parser-fixture/control" "$RUNNER_TEMP/orbit-parser-fixture/data/Library/ORBIT"
+          printf 'Package: orbit-fuzz\nVersion: 1\nArchitecture: iphoneos-arm64\n' \
+            > "$RUNNER_TEMP/orbit-parser-fixture/control/control"
+          printf 'fixture' > "$RUNNER_TEMP/orbit-parser-fixture/data/Library/ORBIT/fuzz.dylib"
+          tar -C "$RUNNER_TEMP/orbit-parser-fixture/control" -czf "$RUNNER_TEMP/orbit-parser-fixture/control.tar.gz" .
+          tar -C "$RUNNER_TEMP/orbit-parser-fixture/data" -czf "$RUNNER_TEMP/orbit-parser-fixture/data.tar.gz" .
+          printf '2.0\n' > "$RUNNER_TEMP/orbit-parser-fixture/debian-binary"
+          (cd "$RUNNER_TEMP/orbit-parser-fixture" && \
+            ar r "$RUNNER_TEMP/orbit-parser-corpus/minimal.deb" \
+              debian-binary control.tar.gz data.tar.gz)
+          clang -std=c11 -O1 -g -fsanitize=fuzzer,address,undefined \
+            -fno-omit-frame-pointer -DORBIT_PACKAGE_ARCHIVE_TESTING=1 \
+            -Iresearch/rnp-ios-spike/bridge \
+            research/rnp-ios-spike/bridge/ORBITPackageArchive.c \
+            research/rnp-ios-spike/bridge/ORBITPackageDecompress.c \
+            research/rnp-ios-spike/harness/orbit-package-parser-fuzz.c \
+            -lz -lbz2 -llzma -lzstd \
+            -o "$RUNNER_TEMP/orbit-package-parser-fuzz"
+          "$RUNNER_TEMP/orbit-package-parser-fuzz" \
+            "$RUNNER_TEMP/orbit-parser-corpus" \
+            -dict=research/rnp-ios-spike/harness/orbit-package-parser.dict \
+            -max_total_time=45 -max_len=1048576 -timeout=2 -rss_limit_mb=1024 \
+            -artifact_prefix="$RUNNER_TEMP/orbit-parser-fuzz-artifacts/" \
+            | tee "$RUNNER_TEMP/package-parser-fuzz.out"
+
+      - name: Upload host verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rnp-host-inrelease-verification
+          path: |
+            ${{ runner.temp }}/build-rnp-host/
+            ${{ runner.temp }}/rnp-install/
+            ${{ runner.temp }}/fixtures/
+            ${{ runner.temp }}/*.out
+            ${{ runner.temp }}/orbit-parser-fuzz-artifacts/
+            ${{ runner.temp }}/orbit-parser-corpus/
+          if-no-files-found: warn

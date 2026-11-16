@@ -244,6 +244,17 @@ int main(void) {
         staging.staging_directory_fd == -1 &&
         !path_exists_at(base_fd, "stage-close-error"));
 
+    EXPECT("missing staging tree cleanup preserves prior descriptor errors",
+        orbit_package_staging_begin(base_fd, "stage-missing-close-error", &staging) ==
+            ORBIT_STAGING_OK);
+    EXPECT("staging tree can disappear before retry cleanup",
+        unlinkat(base_fd, "stage-missing-close-error", AT_REMOVEDIR) == 0);
+    staging.active_file_fd = 999999;
+    EXPECT("missing-tree cleanup reports active close failure and closes base",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_IO_ERROR &&
+        staging.active_file_fd == -1 && staging.base_directory_fd == -1 &&
+        staging.staging_directory_fd == -1 && staging.staging_name[0] == '\0');
+
     EXPECT("unsafe staging name rejected",
         orbit_package_staging_begin(base_fd, "../outside", &staging) ==
             ORBIT_STAGING_UNSAFE_PATH);

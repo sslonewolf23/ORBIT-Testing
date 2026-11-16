@@ -648,18 +648,21 @@ orbit_filesystem_code orbit_package_filesystem_journal_cleanup_backup_directory(
     }
     name[sizeof(name) - 1U] = '\0';
 
+    struct stat backup_named_status;
+    if (fstatat(backup_base_directory_fd, name, &backup_named_status,
+                AT_SYMLINK_NOFOLLOW) < 0) {
+        if (errno == ENOENT) {
+            /* A previous attempt may have removed the directory but failed
+             * to sync the parent. Retry that durability boundary explicitly. */
+            return fsync(backup_base_directory_fd) == 0 ?
+                ORBIT_FILESYSTEM_OK : ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+        }
+        return ORBIT_FILESYSTEM_IO_ERROR;
+    }
+
     int directory_fd = -1;
     orbit_filesystem_code opened = orbit_package_filesystem_open_backup_directory(
         backup_base_directory_fd, transaction_id, false, &directory_fd);
-    if (opened == ORBIT_FILESYSTEM_RECOVERY_REQUIRED) {
-        /* A prior attempt may have removed the directory but failed to sync
-         * the parent. ENOENT is the retry state: sync the parent again before
-         * treating cleanup as durable. open_backup_directory reports
-         * RECOVERY_REQUIRED specifically when the transaction directory is
-         * absent. */
-        return fsync(backup_base_directory_fd) == 0 ?
-            ORBIT_FILESYSTEM_OK : ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
-    }
     if (opened != ORBIT_FILESYSTEM_OK) return opened;
     bool empty = backup_directory_is_empty(directory_fd);
     struct stat opened_status, named_status;

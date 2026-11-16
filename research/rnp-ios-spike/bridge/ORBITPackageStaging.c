@@ -340,14 +340,16 @@ orbit_staging_code orbit_package_staging_extract_deb(
     orbit_package_staging *staging,
     orbit_archive_report *report,
     orbit_archive_code *archive_code) {
+    if (staging) {
+        memset(staging, 0, sizeof(*staging));
+        staging->base_directory_fd = -1;
+        staging->staging_directory_fd = -1;
+        staging->active_file_fd = -1;
+    }
+    if (report) memset(report, 0, sizeof(*report));
+    if (archive_code) *archive_code = ORBIT_ARCHIVE_INVALID_ARGUMENT;
     if (!staging || !deb || deb_length == 0U || !report || !archive_code)
         return ORBIT_STAGING_INVALID_ARGUMENT;
-
-    memset(staging, 0, sizeof(*staging));
-    staging->base_directory_fd = -1;
-    staging->staging_directory_fd = -1;
-    staging->active_file_fd = -1;
-    *archive_code = ORBIT_ARCHIVE_INVALID_ARGUMENT;
 
     orbit_archive_code inspected = orbit_package_archive_inspect_deb(
         deb, deb_length, report);

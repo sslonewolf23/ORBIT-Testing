@@ -808,5 +808,10 @@ orbit_filesystem_code orbit_package_filesystem_journal_cleanup_orphan_backup_dir
         }
     }
     free(candidate_ids);
+    /* Also sync on an otherwise-empty sweep. This completes a retry when a
+     * prior invocation removed its last candidate but the parent fsync failed. */
+    if (result == ORBIT_FILESYSTEM_OK &&
+        fsync(backup_base_directory_fd) < 0)
+        result = ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     return result;
 }

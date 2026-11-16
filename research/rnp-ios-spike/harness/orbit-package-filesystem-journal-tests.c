@@ -1076,6 +1076,11 @@ int main(void) {
             &backend, base_fd) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
     EXPECT("fsync failure injection was consumed",
         !fail_next_fsync);
+    EXPECT("orphan sweep retry syncs parent after prior removal",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("orphan sweep retry leaves removed directory absent",
+        !exists_at(base_fd, "a6000000000000000000000000000000"));
     EXPECT("case-fold duplicate fixture prepared",
         seed_pair(target_fd, stage_fd, "dup-a", "dup-a-stage", "dup-b") &&
         prepare_pair(target_fd, stage_fd, backup_fd,

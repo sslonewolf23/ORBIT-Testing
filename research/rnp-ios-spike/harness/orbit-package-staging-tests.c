@@ -14,6 +14,17 @@
 
 static unsigned checks;
 static unsigned failures;
+static int fail_next_fstat;
+
+int __real_fstat(int fd, struct stat *status);
+int __wrap_fstat(int fd, struct stat *status) {
+    if (fail_next_fstat) {
+        fail_next_fstat = 0;
+        errno = EIO;
+        return -1;
+    }
+    return __real_fstat(fd, status);
+}
 #define EXPECT(label, condition) do { ++checks; if (!(condition)) { ++failures; \
     fprintf(stderr, "FAIL: %s\n", label); } } while (0)
 
@@ -232,6 +243,41 @@ int main(void) {
         !path_exists_at(base_fd, "stage-untrusted"));
     EXPECT("trusted staging base permissions restored",
         chmod(base_path, 0700) == 0);
+
+    EXPECT("fstat failure fixture staging directory created",
+        orbit_package_staging_begin(base_fd, "stage-fstat-error", &staging) ==
+            ORBIT_STAGING_OK);
+    orbit_archive_entry fstat_entry;
+    memset(&fstat_entry, 0, sizeof(fstat_entry));
+    (void)snprintf(fstat_entry.path, sizeof(fstat_entry.path), "fstat-child");
+    fstat_entry.directory = true;
+    fstat_entry.mode = 0755U;
+    fail_next_fstat = 1;
+    errno = 0;
+    bool fstat_callback_ok =
+        orbit_package_staging_entry_callback(&staging, &fstat_entry);
+    int fstat_error = errno;
+    EXPECT("directory traversal preserves the original fstat errno",
+        !fstat_callback_ok && fstat_error == EIO);
+    EXPECT("fstat failure staging tree remains safely discardable",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK);
+
+    EXPECT("staging-name replacement fixture created",
+        orbit_package_staging_begin(base_fd, "stage-name-swap", &staging) ==
+            ORBIT_STAGING_OK);
+    EXPECT("staging directory can be moved and replaced for identity check",
+        renameat(base_fd, "stage-name-swap", base_fd, "stage-name-moved") == 0 &&
+        mkdirat(base_fd, "stage-name-swap", 0700) == 0);
+    EXPECT("discard refuses to delete a replacement at the staging name",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_INVALID_STATE &&
+        path_exists_at(base_fd, "stage-name-swap"));
+    if (staging.staging_directory_fd >= 0) close(staging.staging_directory_fd);
+    if (staging.base_directory_fd >= 0) close(staging.base_directory_fd);
+    staging.staging_directory_fd = -1;
+    staging.base_directory_fd = -1;
+    EXPECT("staging-name swap fixtures removed without touching replacement",
+        unlinkat(base_fd, "stage-name-swap", AT_REMOVEDIR) == 0 &&
+        unlinkat(base_fd, "stage-name-moved", AT_REMOVEDIR) == 0);
 
     EXPECT("cleanup continues after active descriptor close failure",
         orbit_package_staging_begin(base_fd, "stage-close-error", &staging) ==

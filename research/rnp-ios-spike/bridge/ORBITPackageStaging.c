@@ -27,6 +27,34 @@ static int duplicate_cloexec(int fd) {
     return fcntl(fd, F_DUPFD_CLOEXEC, 0);
 }
 
+/* Confirm that a directory descriptor still names the expected child. */
+static int verify_directory_entry(int parent_fd, const char *name,
+                                  int child_fd) {
+    struct stat child_status;
+    if (fstat(child_fd, &child_status) < 0) return -1;
+    if (!S_ISDIR(child_status.st_mode)) {
+        errno = ENOTDIR;
+        return -1;
+    }
+
+    struct stat named_status;
+    if (fstatat(parent_fd, name, &named_status, AT_SYMLINK_NOFOLLOW) < 0)
+        return -1;
+    if (!S_ISDIR(named_status.st_mode) ||
+        child_status.st_dev != named_status.st_dev ||
+        child_status.st_ino != named_status.st_ino) {
+        errno = ESTALE;
+        return -1;
+    }
+    return 0;
+}
+
+/* Cleanup must not replace the errno from the operation that failed. */
+static void close_preserving_errno(int fd, int saved_errno) {
+    if (fd >= 0) (void)close(fd);
+    errno = saved_errno;
+}
+
 static void mark_failed(orbit_package_staging *staging) {
     if (staging) staging->failed = true;
 }
@@ -61,42 +89,61 @@ static int open_directory_path(int root_fd, const char *path,
         if (next_fd < 0 && errno == ENOENT && create) {
             if (mkdirat(current_fd, segment, (mode_t)requested_mode) < 0 &&
                 errno != EEXIST) {
-                close(current_fd);
+                int saved_errno = errno;
+                close_preserving_errno(current_fd, saved_errno);
                 return -1;
             }
             next_fd = openat(current_fd, segment,
                 O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
             if (next_fd >= 0 && fchmod(next_fd, (mode_t)requested_mode) < 0) {
-                close(next_fd);
-                close(current_fd);
+                int saved_errno = errno;
+                close_preserving_errno(next_fd, saved_errno);
+                (void)close(current_fd);
+                errno = saved_errno;
                 return -1;
             }
             if (next_fd >= 0 && fsync(current_fd) < 0) {
-                close(next_fd);
-                close(current_fd);
+                int saved_errno = errno;
+                close_preserving_errno(next_fd, saved_errno);
+                (void)close(current_fd);
+                errno = saved_errno;
                 return -1;
             }
         } else if (next_fd >= 0 && final_segment &&
                    final_mode != UINT32_MAX) {
             if (fchmod(next_fd, (mode_t)final_mode) < 0) {
-                close(next_fd);
-                close(current_fd);
+                int saved_errno = errno;
+                close_preserving_errno(next_fd, saved_errno);
+                (void)close(current_fd);
+                errno = saved_errno;
                 return -1;
             }
         }
         if (next_fd < 0) {
-            close(current_fd);
+            int saved_errno = errno;
+            close_preserving_errno(current_fd, saved_errno);
             return -1;
         }
 
         struct stat status;
-        if (fstat(next_fd, &status) < 0 || !S_ISDIR(status.st_mode)) {
-            close(next_fd);
-            close(current_fd);
+        if (fstat(next_fd, &status) < 0) {
+            int saved_errno = errno;
+            close_preserving_errno(next_fd, saved_errno);
+            (void)close(current_fd);
+            errno = saved_errno;
+            return -1;
+        }
+        if (!S_ISDIR(status.st_mode)) {
+            close_preserving_errno(next_fd, ENOTDIR);
+            (void)close(current_fd);
             errno = ENOTDIR;
             return -1;
         }
-        close(current_fd);
+        if (close(current_fd) < 0) {
+            int saved_errno = errno;
+            close_preserving_errno(next_fd, saved_errno);
+            return -1;
+        }
         current_fd = next_fd;
         if (final_segment) break;
         segment = slash + 1;
@@ -163,9 +210,22 @@ static bool remove_directory_contents(int directory_fd) {
                 success = false;
                 break;
             }
-            bool child_success = remove_directory_contents(child_fd);
+            struct stat opened_status;
+            bool same_child = fstat(child_fd, &opened_status) == 0 &&
+                S_ISDIR(opened_status.st_mode) &&
+                opened_status.st_dev == status.st_dev &&
+                opened_status.st_ino == status.st_ino;
+            bool child_success = same_child &&
+                remove_directory_contents(child_fd);
             if (close(child_fd) < 0) child_success = false;
-            if (!child_success ||
+            struct stat current_status;
+            bool name_unchanged =
+                fstatat(directory_fd, item->d_name, &current_status,
+                        AT_SYMLINK_NOFOLLOW) == 0 &&
+                S_ISDIR(current_status.st_mode) &&
+                current_status.st_dev == status.st_dev &&
+                current_status.st_ino == status.st_ino;
+            if (!child_success || !name_unchanged ||
                 unlinkat(directory_fd, item->d_name, AT_REMOVEDIR) < 0) {
                 success = false;
                 break;
@@ -215,11 +275,35 @@ orbit_staging_code orbit_package_staging_begin(
     }
     int root_fd = openat(base_copy, staging_name,
         O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-    if (root_fd < 0 || fchmod(root_fd, 0700) < 0 ||
-        (root_fd >= 0 && fsync(root_fd) < 0)) {
-        if (root_fd >= 0) close(root_fd);
-        (void)unlinkat(base_copy, staging_name, AT_REMOVEDIR);
-        close(base_copy);
+    if (root_fd < 0) {
+        int saved_errno = errno;
+        (void)close(base_copy);
+        errno = saved_errno;
+        return ORBIT_STAGING_IO_ERROR;
+    }
+    if (fchmod(root_fd, 0700) < 0 || fsync(root_fd) < 0) {
+        int saved_errno = errno;
+        (void)close(root_fd);
+        (void)close(base_copy);
+        errno = saved_errno;
+        return ORBIT_STAGING_IO_ERROR;
+    }
+    struct stat root_status;
+    if (fstat(root_fd, &root_status) < 0) {
+        int saved_errno = errno;
+        (void)close(root_fd);
+        (void)close(base_copy);
+        errno = saved_errno;
+        return ORBIT_STAGING_IO_ERROR;
+    }
+    if (!S_ISDIR(root_status.st_mode) ||
+        root_status.st_uid != geteuid() ||
+        (root_status.st_mode & 0777U) != 0700U ||
+        verify_directory_entry(base_copy, staging_name, root_fd) < 0) {
+        int saved_errno = errno != 0 ? errno : EACCES;
+        (void)close(root_fd);
+        (void)close(base_copy);
+        errno = saved_errno;
         return ORBIT_STAGING_IO_ERROR;
     }
     staging->base_directory_fd = base_copy;
@@ -447,19 +531,36 @@ orbit_staging_code orbit_package_staging_discard(
             return cleanup_ok ? ORBIT_STAGING_OK : ORBIT_STAGING_IO_ERROR;
         }
     }
-    struct stat root_status, named_status, base_status;
-    if (fstat(staging->base_directory_fd, &base_status) < 0 ||
-        !S_ISDIR(base_status.st_mode) ||
-        fstat(staging->staging_directory_fd, &root_status) < 0 ||
-        !S_ISDIR(root_status.st_mode) ||
-        fstatat(staging->base_directory_fd, staging->staging_name,
-                &named_status, AT_SYMLINK_NOFOLLOW) < 0 ||
-        !S_ISDIR(named_status.st_mode) ||
-        root_status.st_dev != named_status.st_dev ||
-        root_status.st_ino != named_status.st_ino)
+    struct stat base_status;
+    if (fstat(staging->base_directory_fd, &base_status) < 0)
+        return ORBIT_STAGING_INVALID_STATE;
+    if (!S_ISDIR(base_status.st_mode)) {
+        errno = ENOTDIR;
+        return ORBIT_STAGING_INVALID_STATE;
+    }
+    if (verify_directory_entry(staging->base_directory_fd,
+                               staging->staging_name,
+                               staging->staging_directory_fd) < 0)
         return ORBIT_STAGING_INVALID_STATE;
     if (!remove_directory_contents(staging->staging_directory_fd))
         return ORBIT_STAGING_IO_ERROR;
+
+    /* Do not unlink a replacement directory if the staging name was swapped. */
+    struct stat current_root;
+    if (fstatat(staging->base_directory_fd, staging->staging_name,
+                &current_root, AT_SYMLINK_NOFOLLOW) == 0) {
+        struct stat opened_root;
+        if (fstat(staging->staging_directory_fd, &opened_root) < 0)
+            return ORBIT_STAGING_INVALID_STATE;
+        if (!S_ISDIR(current_root.st_mode) ||
+            current_root.st_dev != opened_root.st_dev ||
+            current_root.st_ino != opened_root.st_ino) {
+            errno = ESTALE;
+            return ORBIT_STAGING_INVALID_STATE;
+        }
+    } else if (errno != ENOENT) {
+        return ORBIT_STAGING_INVALID_STATE;
+    }
 
     int root_fd = staging->staging_directory_fd;
     staging->staging_directory_fd = -1;

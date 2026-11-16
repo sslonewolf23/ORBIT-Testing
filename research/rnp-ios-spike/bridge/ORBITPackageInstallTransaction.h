@@ -51,9 +51,13 @@ orbit_package_install_transaction_execute_enveloped(
  *
  * staging_base_fd must be a trusted, owner-controlled directory on the same
  * filesystem as install_root_fd. Caller holds the ORBIT transaction lock across
- * this call and recovery. On return after staging begins, staging_out owns open
- * descriptors and the private tree; caller must retain it through recovery, then
- * explicitly discard it. No maintainer scripts are executed. */
+ * this call and recovery. On return after staging begins, staging_out may own
+ * open descriptors and the private tree; caller must retain it through recovery,
+ * then explicitly discard it. If this function returns STAGING_FAILED and
+ * staging_out retains cleanup state (base_directory_fd >= 0), caller must retry
+ * orbit_package_staging_discard() until cleanup succeeds before reusing or
+ * destroying the staging object. This includes failed best-effort cleanup inside
+ * the extraction helper. No maintainer scripts are executed. */
 orbit_package_install_transaction_code
 orbit_package_install_transaction_execute_deb_enveloped(
     const orbit_package_ownership_snapshot *installed,

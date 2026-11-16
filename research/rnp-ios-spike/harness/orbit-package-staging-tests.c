@@ -247,6 +247,9 @@ int main(void) {
     EXPECT("missing staging tree cleanup preserves prior descriptor errors",
         orbit_package_staging_begin(base_fd, "stage-missing-close-error", &staging) ==
             ORBIT_STAGING_OK);
+    EXPECT("staging directory descriptor closes before external tree removal",
+        close(staging.staging_directory_fd) == 0);
+    staging.staging_directory_fd = -1;
     EXPECT("staging tree can disappear before retry cleanup",
         unlinkat(base_fd, "stage-missing-close-error", AT_REMOVEDIR) == 0);
     staging.active_file_fd = 999999;

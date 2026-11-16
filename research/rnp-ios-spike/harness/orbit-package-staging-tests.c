@@ -15,6 +15,21 @@
 static unsigned checks;
 static unsigned failures;
 static int fail_next_fstat;
+static int fail_next_close;
+static int fail_close_fd = -1;
+
+int __real_close(int fd);
+int __wrap_close(int fd) {
+    bool inject = fail_next_close != 0 || fd == fail_close_fd;
+    if (fail_next_close) fail_next_close = 0;
+    if (fd == fail_close_fd) fail_close_fd = -1;
+    int result = __real_close(fd);
+    if (inject && result == 0) {
+        errno = EIO;
+        return -1;
+    }
+    return result;
+}
 
 int __real_fstat(int fd, struct stat *status);
 int __wrap_fstat(int fd, struct stat *status) {
@@ -279,15 +294,41 @@ int main(void) {
         unlinkat(base_fd, "stage-name-swap", AT_REMOVEDIR) == 0 &&
         unlinkat(base_fd, "stage-name-moved", AT_REMOVEDIR) == 0);
 
+    EXPECT("parent descriptor close failure retains active file for recovery",
+        orbit_package_staging_begin(base_fd, "stage-parent-close-error", &staging) ==
+            ORBIT_STAGING_OK);
+    orbit_archive_entry close_entry;
+    memset(&close_entry, 0, sizeof(close_entry));
+    (void)snprintf(close_entry.path, sizeof(close_entry.path), "rootfile.bin");
+    close_entry.size = sizeof(payload);
+    close_entry.mode = 0644U;
+    fail_next_close = 1;
+    errno = 0;
+    bool close_callback_ok =
+        orbit_package_staging_entry_callback(&staging, &close_entry);
+    int close_callback_errno = errno;
+    EXPECT("parent close failure is injected on a real descriptor",
+        !close_callback_ok && close_callback_errno == EIO &&
+        fail_next_close == 0 && staging.failed && staging.active_file_fd >= 0);
+    EXPECT("file remains owned until recovery discards partial staging",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&
+        staging.active_file_fd == -1 &&
+        !path_exists_at(base_fd, "stage-parent-close-error"));
+
     EXPECT("cleanup continues after active descriptor close failure",
         orbit_package_staging_begin(base_fd, "stage-close-error", &staging) ==
             ORBIT_STAGING_OK);
-    staging.active_file_fd = -1;
-    staging.active_file_fd = 999999;
+    int held_fd = openat(staging.staging_directory_fd, "held-open",
+        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    EXPECT("real active descriptor opened for close-failure injection", held_fd >= 0);
+    staging.active_file_fd = held_fd;
+    fail_close_fd = held_fd;
+    orbit_staging_code close_discard_result =
+        orbit_package_staging_discard(&staging);
     EXPECT("active descriptor close error is reported after tree cleanup",
-        orbit_package_staging_discard(&staging) == ORBIT_STAGING_IO_ERROR &&
-        staging.active_file_fd == -1 && staging.base_directory_fd == -1 &&
-        staging.staging_directory_fd == -1 &&
+        close_discard_result == ORBIT_STAGING_IO_ERROR &&
+        fail_close_fd == -1 && staging.active_file_fd == -1 &&
+        staging.base_directory_fd == -1 && staging.staging_directory_fd == -1 &&
         !path_exists_at(base_fd, "stage-close-error"));
 
     EXPECT("missing staging tree cleanup preserves prior descriptor errors",
@@ -298,9 +339,8 @@ int main(void) {
     staging.staging_directory_fd = -1;
     EXPECT("staging tree can disappear before retry cleanup",
         unlinkat(base_fd, "stage-missing-close-error", AT_REMOVEDIR) == 0);
-    staging.active_file_fd = 999999;
-    EXPECT("missing-tree cleanup reports active close failure and closes base",
-        orbit_package_staging_discard(&staging) == ORBIT_STAGING_IO_ERROR &&
+    EXPECT("missing-tree cleanup closes base and resets staging state",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&
         staging.active_file_fd == -1 && staging.base_directory_fd == -1 &&
         staging.staging_directory_fd == -1 && staging.staging_name[0] == '\0');
 

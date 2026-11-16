@@ -293,13 +293,25 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 	if err != nil { jsonError(w, 503, "unavailable"); return }
 	defer tx.Rollback()
 	checkpoint, err := s.reconcileAnchoredInstallation(r.Context(),tx,verifier)
-	if err != nil || checkpoint.KeyID != oldKeyID {
+	if err != nil {
 		jsonError(w,403,"recovery rejected"); return
 	}
 	attDigest := sha256.Sum256(attestation)
-	if err = commitKeyRecovery(tx, oldKeyID, req.NewKeyID, verifier,
-		challengeDigest[:], publicDER, attDigest[:], s.now().Unix()); err != nil {
-		jsonError(w, 409, "recovery rejected"); return
+	if checkpoint.KeyID == oldKeyID {
+		if err = commitKeyRecovery(tx, oldKeyID, req.NewKeyID, verifier,
+			challengeDigest[:], publicDER, attDigest[:], s.now().Unix()); err != nil {
+			jsonError(w, 409, "recovery rejected"); return
+		}
+	} else if checkpoint.KeyID == req.NewKeyID && equalBytes(checkpoint.PublicKey,publicDER) {
+		// The anchor may have accepted this exact rotation before SQLite rolled
+		// back. Reconciliation has already restored the new key; finish the
+		// challenge consumption and audit record without appending another head.
+		if err = finalizeAnchoredRecoveryRetry(tx,oldKeyID,req.NewKeyID,verifier,
+			challengeDigest[:],publicDER,attDigest[:],checkpoint,s.now().Unix()); err != nil {
+			jsonError(w,409,"recovery rejected"); return
+		}
+	} else {
+		jsonError(w,403,"recovery rejected"); return
 	}
 	if _, err = s.appendAnchoredState(r.Context(),tx,verifier,checkpoint,
 		req.NewKeyID,publicDER,0,checkpoint.Head); err != nil {
@@ -309,6 +321,30 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+
+// finalizeAnchoredRecoveryRetry completes the SQLite half of a rotation whose
+// new key is already authoritative in the independent anchor. The caller must
+// have reconciled the row and verified the replacement attestation against the
+// same public key and recovery challenge.
+func finalizeAnchoredRecoveryRetry(tx *sql.Tx, oldKeyID,newKeyID string,verifier,
+	challengeDigest,publicDER,attestationDigest []byte,checkpoint anchorCheckpoint,now int64) error {
+	if checkpoint.KeyID != newKeyID || !equalBytes(checkpoint.PublicKey,publicDER) {
+		return errors.New("anchored replacement key mismatch")
+	}
+	res,err:=tx.Exec("UPDATE recovery_challenges SET consumed=1 WHERE digest=? AND old_key_id=? AND new_key_id=? AND consumed=0 AND expires_at>=?",
+		challengeDigest,oldKeyID,newKeyID,now)
+	if err!=nil { return err }
+	changed,err:=res.RowsAffected()
+	if err!=nil || changed!=1 { return errors.New("recovery challenge unavailable") }
+	if _,err=tx.Exec("INSERT INTO key_recovery_history(old_key_id,new_key_id,recovered_at,prior_revision,prior_head_digest,prior_tombstone) VALUES(?,?,?,?,?,?)",
+		oldKeyID,newKeyID,now,u64Bytes(checkpoint.Head.Revision),checkpoint.Head.Digest[:],boolInt(checkpoint.Head.Tombstone)); err!=nil { return err }
+	res,err=tx.Exec("UPDATE installations SET attestation_digest=?,assertion_counter=0 WHERE key_id=? AND recovery_verifier=? AND public_key=?",
+		attestationDigest,newKeyID,verifier,publicDER)
+	if err!=nil { return err }
+	changed,err=res.RowsAffected()
+	if err!=nil || changed!=1 { return errors.New("anchored replacement installation missing") }
+	return nil
+}
 
 // commitKeyRecovery performs the one-time challenge consumption, audit append,
 // and App Attest key replacement in the same SQL transaction. Journal head

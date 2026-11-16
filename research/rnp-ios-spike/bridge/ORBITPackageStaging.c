@@ -405,9 +405,11 @@ orbit_staging_code orbit_package_staging_discard(
     if (!staging || staging->base_directory_fd < 0 ||
         !valid_staging_name(staging->staging_name))
         return ORBIT_STAGING_INVALID_STATE;
+    bool cleanup_ok = true;
     if (staging->active_file_fd >= 0) {
-        if (close(staging->active_file_fd) < 0) return ORBIT_STAGING_IO_ERROR;
+        int active_fd = staging->active_file_fd;
         staging->active_file_fd = -1;
+        if (close(active_fd) < 0) cleanup_ok = false;
     }
 
     if (staging->staging_directory_fd < 0) {
@@ -441,7 +443,7 @@ orbit_staging_code orbit_package_staging_discard(
 
     int root_fd = staging->staging_directory_fd;
     staging->staging_directory_fd = -1;
-    bool cleanup_ok = close(root_fd) == 0;
+    if (close(root_fd) < 0) cleanup_ok = false;
     if (unlinkat(staging->base_directory_fd, staging->staging_name,
                  AT_REMOVEDIR) < 0 && errno != ENOENT)
         cleanup_ok = false;

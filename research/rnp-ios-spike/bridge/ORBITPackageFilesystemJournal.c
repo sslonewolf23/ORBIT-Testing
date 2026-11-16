@@ -29,6 +29,13 @@ static bool close_executor_descriptors(int staged_fd, int target_fd,
     return closed;
 }
 
+/* The transaction-scoped backup directory is only trustworthy when
+ * its parent cannot be renamed or populated by another local user. */
+static bool backup_base_is_private(const struct stat *status) {
+    return status && S_ISDIR(status->st_mode) &&
+        status->st_uid == geteuid() && (status->st_mode & 0077) == 0;
+}
+
 static bool executor_roots_are_valid(
     const orbit_package_filesystem_executor_context *executor,
     bool needs_staging) {
@@ -37,7 +44,7 @@ static bool executor_roots_are_valid(
         fstat(executor->backup_base_directory_fd, &backup_status) < 0)
         return false;
     if (!S_ISDIR(install_status.st_mode) ||
-        !S_ISDIR(backup_status.st_mode) ||
+        !backup_base_is_private(&backup_status) ||
         install_status.st_dev != backup_status.st_dev ||
         (install_status.st_dev == backup_status.st_dev &&
          install_status.st_ino == backup_status.st_ino))
@@ -195,8 +202,8 @@ orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
     struct stat base_status;
     if (fstat(backup_base_directory_fd, &base_status) < 0)
         return ORBIT_FILESYSTEM_IO_ERROR;
-    if (!S_ISDIR(base_status.st_mode))
-        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    if (!backup_base_is_private(&base_status))
+        return ORBIT_FILESYSTEM_CONFLICT;
 
     char name[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES * 2U + 1U];
     static const char hex[] = "0123456789abcdef";
@@ -627,8 +634,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_cleanup_backup_directory(
     struct stat base_status;
     if (fstat(backup_base_directory_fd, &base_status) < 0)
         return ORBIT_FILESYSTEM_IO_ERROR;
-    if (!S_ISDIR(base_status.st_mode))
-        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    if (!backup_base_is_private(&base_status))
+        return ORBIT_FILESYSTEM_CONFLICT;
 
     orbit_package_filesystem_journal_record *record =
         (orbit_package_filesystem_journal_record *)calloc(1U, sizeof(*record));
@@ -695,8 +702,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_cleanup_orphan_backup_dir
     struct stat base_status;
     if (fstat(backup_base_directory_fd, &base_status) < 0)
         return ORBIT_FILESYSTEM_IO_ERROR;
-    if (!S_ISDIR(base_status.st_mode))
-        return ORBIT_FILESYSTEM_INVALID_ARGUMENT;
+    if (!backup_base_is_private(&base_status))
+        return ORBIT_FILESYSTEM_CONFLICT;
 
     orbit_package_filesystem_journal_record *record =
         (orbit_package_filesystem_journal_record *)calloc(1U, sizeof(*record));

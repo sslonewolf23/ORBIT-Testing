@@ -324,6 +324,13 @@ int main(void) {
             &transaction_backup_fd) == ORBIT_FILESYSTEM_OK);
     EXPECT("transaction backup directory descriptor returned",
         transaction_backup_fd >= 0);
+    EXPECT("backup opener rejects a group/world-accessible parent",
+        fchmod(base_fd, 0755) == 0 &&
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, backup_transaction_id, false,
+            &transaction_backup_fd) == ORBIT_FILESYSTEM_CONFLICT);
+    EXPECT("private backup parent permissions restored",
+        fchmod(base_fd, 0700) == 0);
     if (transaction_backup_fd >= 0) close(transaction_backup_fd);
     transaction_backup_fd = -1;
     EXPECT("transaction backup directory reopens without creation",

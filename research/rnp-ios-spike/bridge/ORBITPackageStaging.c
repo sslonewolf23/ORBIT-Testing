@@ -256,8 +256,9 @@ orbit_staging_code orbit_package_staging_begin(
         return ORBIT_STAGING_UNSAFE_PATH;
 
     struct stat base_status;
-    if (fstat(base_directory_fd, &base_status) < 0 ||
-        !S_ISDIR(base_status.st_mode) ||
+    if (fstat(base_directory_fd, &base_status) < 0)
+        return ORBIT_STAGING_IO_ERROR;
+    if (!S_ISDIR(base_status.st_mode) ||
         base_status.st_uid != geteuid() ||
         (base_status.st_mode & 0022U) != 0U)
         return ORBIT_STAGING_INVALID_ARGUMENT;
@@ -296,11 +297,21 @@ orbit_staging_code orbit_package_staging_begin(
         errno = saved_errno;
         return ORBIT_STAGING_IO_ERROR;
     }
-    if (!S_ISDIR(root_status.st_mode) ||
-        root_status.st_uid != geteuid() ||
-        (root_status.st_mode & 0777U) != 0700U ||
-        verify_directory_entry(base_copy, staging_name, root_fd) < 0) {
-        int saved_errno = errno != 0 ? errno : EACCES;
+    if (!S_ISDIR(root_status.st_mode)) {
+        (void)close(root_fd);
+        (void)close(base_copy);
+        errno = ENOTDIR;
+        return ORBIT_STAGING_IO_ERROR;
+    }
+    if (root_status.st_uid != geteuid() ||
+        (root_status.st_mode & 07777U) != 0700U) {
+        (void)close(root_fd);
+        (void)close(base_copy);
+        errno = EACCES;
+        return ORBIT_STAGING_IO_ERROR;
+    }
+    if (verify_directory_entry(base_copy, staging_name, root_fd) < 0) {
+        int saved_errno = errno;
         (void)close(root_fd);
         (void)close(base_copy);
         errno = saved_errno;

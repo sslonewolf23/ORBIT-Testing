@@ -157,7 +157,8 @@ static int backup_directory_is_empty(int directory_fd) {
     if (duplicate < 0) return -1;
     DIR *directory = fdopendir(duplicate);
     if (!directory) {
-        return close(duplicate) == 0 ? -1 : -1;
+        (void)close(duplicate);
+        return -1;
     }
     bool empty = true;
     errno = 0;
@@ -169,7 +170,10 @@ static int backup_directory_is_empty(int directory_fd) {
             break;
         }
     }
-    if (errno != 0) return closedir(directory) == 0 ? -1 : -1;
+    if (errno != 0) {
+        (void)closedir(directory);
+        return -1;
+    }
     /* A failed stream close means the directory scan did not complete cleanly. */
     if (closedir(directory) != 0) return -1;
     return empty ? 1 : 0;

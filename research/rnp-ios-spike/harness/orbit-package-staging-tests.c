@@ -118,8 +118,8 @@ int main(void) {
         orbit_package_staging_begin(-1, "stage-invalid", &staging) ==
             ORBIT_STAGING_INVALID_ARGUMENT &&
         staging.base_directory_fd == -1 && staging.staging_directory_fd == -1 &&
-        staging.active_file_fd == -1 && staging.staging_name[0] == '\\0' &&
-        staging.active_file_path[0] == '\\0' && staging.active_file_size == 0U &&
+        staging.active_file_fd == -1 && staging.staging_name[0] == '\0' &&
+        staging.active_file_path[0] == '\0' && staging.active_file_size == 0U &&
         staging.active_file_written == 0U && staging.active_file_mode == 0U &&
         !staging.complete && !staging.failed);
 

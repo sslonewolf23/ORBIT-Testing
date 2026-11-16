@@ -59,6 +59,15 @@ static void mark_failed(orbit_package_staging *staging) {
     if (staging) staging->failed = true;
 }
 
+/* Keep failed begin operations recoverable: the caller receives the staging
+ * identity and can retry discard if cleanup itself encounters an I/O error. */
+static orbit_staging_code fail_begin_cleanup(
+    orbit_package_staging *staging, int saved_errno) {
+    (void)orbit_package_staging_discard(staging);
+    errno = saved_errno;
+    return ORBIT_STAGING_IO_ERROR;
+}
+
 static int open_directory_path(int root_fd, const char *path,
                                bool create, uint32_t final_mode) {
     if (root_fd < 0 || !path) { errno = EINVAL; return -1; }
@@ -266,60 +275,48 @@ orbit_staging_code orbit_package_staging_begin(
     int base_copy = duplicate_cloexec(base_directory_fd);
     if (base_copy < 0) return ORBIT_STAGING_IO_ERROR;
     if (mkdirat(base_copy, staging_name, 0700) < 0) {
-        close(base_copy);
+        int saved_errno = errno;
+        (void)close(base_copy);
+        errno = saved_errno;
         return ORBIT_STAGING_IO_ERROR;
     }
+
+    /* Publish cleanup ownership immediately after mkdirat. Every later failure
+     * must either remove this directory durably or leave retry state to caller. */
+    staging->base_directory_fd = base_copy;
+    memcpy(staging->staging_name, staging_name, name_length + 1U);
     if (fsync(base_copy) < 0) {
-        (void)unlinkat(base_copy, staging_name, AT_REMOVEDIR);
-        close(base_copy);
-        return ORBIT_STAGING_IO_ERROR;
+        int saved_errno = errno;
+        return fail_begin_cleanup(staging, saved_errno);
     }
+
     int root_fd = openat(base_copy, staging_name,
         O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (root_fd < 0) {
         int saved_errno = errno;
-        (void)close(base_copy);
-        errno = saved_errno;
-        return ORBIT_STAGING_IO_ERROR;
+        return fail_begin_cleanup(staging, saved_errno);
     }
+    staging->staging_directory_fd = root_fd;
     if (fchmod(root_fd, 0700) < 0 || fsync(root_fd) < 0) {
         int saved_errno = errno;
-        (void)close(root_fd);
-        (void)close(base_copy);
-        errno = saved_errno;
-        return ORBIT_STAGING_IO_ERROR;
+        return fail_begin_cleanup(staging, saved_errno);
     }
     struct stat root_status;
     if (fstat(root_fd, &root_status) < 0) {
         int saved_errno = errno;
-        (void)close(root_fd);
-        (void)close(base_copy);
-        errno = saved_errno;
-        return ORBIT_STAGING_IO_ERROR;
+        return fail_begin_cleanup(staging, saved_errno);
     }
     if (!S_ISDIR(root_status.st_mode)) {
-        (void)close(root_fd);
-        (void)close(base_copy);
-        errno = ENOTDIR;
-        return ORBIT_STAGING_IO_ERROR;
+        return fail_begin_cleanup(staging, ENOTDIR);
     }
     if (root_status.st_uid != geteuid() ||
         (root_status.st_mode & 07777U) != 0700U) {
-        (void)close(root_fd);
-        (void)close(base_copy);
-        errno = EACCES;
-        return ORBIT_STAGING_IO_ERROR;
+        return fail_begin_cleanup(staging, EACCES);
     }
     if (verify_directory_entry(base_copy, staging_name, root_fd) < 0) {
         int saved_errno = errno;
-        (void)close(root_fd);
-        (void)close(base_copy);
-        errno = saved_errno;
-        return ORBIT_STAGING_IO_ERROR;
+        return fail_begin_cleanup(staging, saved_errno);
     }
-    staging->base_directory_fd = base_copy;
-    staging->staging_directory_fd = root_fd;
-    memcpy(staging->staging_name, staging_name, name_length + 1U);
     return ORBIT_STAGING_OK;
 }
 

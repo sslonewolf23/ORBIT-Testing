@@ -18,6 +18,7 @@ static int fail_next_fstat;
 static int fail_next_close;
 static int fail_close_fd = -1;
 static int fail_fsync_fd = -1;
+static int fail_next_fsync;
 
 int __real_close(int fd);
 int __wrap_close(int fd) {
@@ -34,6 +35,11 @@ int __wrap_close(int fd) {
 
 int __real_fsync(int fd);
 int __wrap_fsync(int fd) {
+    if (fail_next_fsync) {
+        fail_next_fsync = 0;
+        errno = EIO;
+        return -1;
+    }
     if (fd == fail_fsync_fd) {
         fail_fsync_fd = -1;
         errno = EIO;
@@ -280,6 +286,23 @@ int main(void) {
         !path_exists_at(base_fd, "stage-untrusted"));
     EXPECT("trusted staging base permissions restored",
         chmod(base_path, 0700) == 0);
+
+    /* A failure after mkdir must not orphan an untracked staging directory.
+     * Force the initial parent sync and first cleanup unlink to fail, then retry. */
+    fail_next_fsync = 1;
+    fail_next_rmdir = 1;
+    EXPECT("begin failure retains retryable cleanup ownership",
+        orbit_package_staging_begin(base_fd, "stage-begin-retry", &staging) ==
+            ORBIT_STAGING_IO_ERROR &&
+        fail_next_fsync == 0 && fail_next_rmdir == 0 &&
+        staging.base_directory_fd >= 0 &&
+        staging.staging_name[0] != '\\0' &&
+        path_exists_at(base_fd, "stage-begin-retry"));
+    EXPECT("begin cleanup retry removes the orphan candidate",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&
+        staging.base_directory_fd == -1 &&
+        staging.staging_name[0] == '\\0' &&
+        !path_exists_at(base_fd, "stage-begin-retry"));
 
     EXPECT("fstat failure fixture staging directory created",
         orbit_package_staging_begin(base_fd, "stage-fstat-error", &staging) ==

@@ -717,7 +717,7 @@ jobs:
             research/rnp-ios-spike/bridge/ORBITPackageStaging.c \
             research/rnp-ios-spike/harness/orbit-package-staging-tests.c \
             -Wl,--wrap=fstat \
-            -Wl,--wrap=close -Wl,--wrap=unlinkat \
+            -Wl,--wrap=close -Wl,--wrap=unlinkat -Wl,--wrap=fsync \
             -lz -lbz2 -llzma -lzstd \
             -o "$RUNNER_TEMP/orbit-package-staging-tests"
           "$RUNNER_TEMP/orbit-package-staging-tests" | tee "$RUNNER_TEMP/package-staging.out"

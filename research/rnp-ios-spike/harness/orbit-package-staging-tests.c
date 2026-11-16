@@ -17,6 +17,7 @@ static unsigned failures;
 static int fail_next_fstat;
 static int fail_next_close;
 static int fail_close_fd = -1;
+static int fail_fsync_fd = -1;
 
 int __real_close(int fd);
 int __wrap_close(int fd) {
@@ -29,6 +30,16 @@ int __wrap_close(int fd) {
         return -1;
     }
     return result;
+}
+
+int __real_fsync(int fd);
+int __wrap_fsync(int fd) {
+    if (fd == fail_fsync_fd) {
+        fail_fsync_fd = -1;
+        errno = EIO;
+        return -1;
+    }
+    return __real_fsync(fd);
 }
 
 static int fail_next_rmdir;
@@ -341,6 +352,23 @@ int main(void) {
         orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&
         staging.base_directory_fd == -1 &&
         !path_exists_at(base_fd, "stage-rmdir-retry"));
+
+    EXPECT("failed parent fsync preserves retry state",
+        orbit_package_staging_begin(base_fd, "stage-fsync-retry", &staging) ==
+            ORBIT_STAGING_OK);
+    fail_fsync_fd = staging.base_directory_fd;
+    orbit_staging_code first_fsync_result =
+        orbit_package_staging_discard(&staging);
+    EXPECT("injected parent fsync failure retains base descriptor and name",
+        first_fsync_result == ORBIT_STAGING_IO_ERROR &&
+        fail_fsync_fd == -1 && staging.base_directory_fd >= 0 &&
+        staging.staging_directory_fd == -1 &&
+        staging.staging_name[0] != '\0' &&
+        !path_exists_at(base_fd, "stage-fsync-retry"));
+    EXPECT("discard retry fsyncs the parent and resets state",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&
+        staging.base_directory_fd == -1 &&
+        staging.staging_name[0] == '\0');
 
     EXPECT("cleanup continues after active descriptor close failure",
         orbit_package_staging_begin(base_fd, "stage-close-error", &staging) ==

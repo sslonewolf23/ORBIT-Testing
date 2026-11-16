@@ -237,6 +237,26 @@ int main(void) {
     /* Restore the non-empty archive fixture after the zero-length case. */
     deb_length = make_deb(deb, payload, sizeof(payload), 0644U);
 
+    EXPECT("callback path test staging directory created",
+        orbit_package_staging_begin(base_fd, "stage-callback-path", &staging) ==
+            ORBIT_STAGING_OK);
+    orbit_archive_entry callback_entry;
+    memset(&callback_entry, 0, sizeof(callback_entry));
+    (void)snprintf(callback_entry.path, sizeof(callback_entry.path),
+                   "Library/ORBIT/callback.bin");
+    callback_entry.size = sizeof(payload);
+    callback_entry.mode = 0644U;
+    EXPECT("callback file opened before path validation test",
+        orbit_package_staging_entry_callback(&staging, &callback_entry));
+    char unterminated_callback_path[ORBIT_TAR_MAX_PATH + 1U];
+    memset(unterminated_callback_path, 'x', sizeof(unterminated_callback_path));
+    EXPECT("unterminated callback path rejected within fixed bound",
+        !orbit_package_staging_data_callback(
+            &staging, unterminated_callback_path, 0U,
+            payload, sizeof(payload), true));
+    EXPECT("callback path failure can be discarded safely",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK);
+
     uint8_t malformed_deb[sizeof(deb)];
     memcpy(malformed_deb, deb, deb_length);
     malformed_deb[deb_length - 1U] = 1U;

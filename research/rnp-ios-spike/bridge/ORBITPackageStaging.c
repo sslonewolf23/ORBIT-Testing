@@ -288,7 +288,9 @@ bool orbit_package_staging_data_callback(
     void *context, const char *path, uint64_t offset,
     const uint8_t *bytes, size_t length, bool final_chunk) {
     orbit_package_staging *staging = (orbit_package_staging *)context;
-    if (!staging || !path || staging->failed || staging->complete ||
+    size_t path_length = path ? strnlen(path, ORBIT_TAR_MAX_PATH + 1U) : 0U;
+    if (!staging || !path || path_length > ORBIT_TAR_MAX_PATH ||
+        staging->failed || staging->complete ||
         staging->active_file_fd < 0 ||
         strcmp(path, staging->active_file_path) != 0 ||
         offset != staging->active_file_written ||

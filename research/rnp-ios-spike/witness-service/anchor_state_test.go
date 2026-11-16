@@ -174,3 +174,80 @@ func TestAnchorAppendFailureDoesNotAdvanceSQLiteCache(t *testing.T) {
 		Scan(&sequence,&counter); err!=nil { t.Fatal(err) }
 	if sequence!=1 || counter!=7 { t.Fatal("SQLite cache advanced despite failed external anchor append") }
 }
+
+// A remote append can succeed while the following SQLite commit fails. The
+// independent anchor is authoritative; the next request must reconcile the
+// rolled-back local cache before accepting another assertion.
+func TestReconcileRepairsSQLiteRollbackAfterSuccessfulAnchorAppend(t *testing.T) {
+	db, err := openDatabase(filepath.Join(t.TempDir(), "witness.sqlite"))
+	if err != nil { t.Fatal(err) }
+	defer db.Close()
+
+	verifier := make([]byte, 32)
+	verifier[0] = 0xE5
+	id := installationAnchorID(verifier)
+	head := witnessHead{Revision: 4, Tombstone: false}
+	head.Digest[0] = 0x41
+	anchor := newMemoryAnchor()
+	prior := anchorCheckpoint{
+		InstallationID: id, Sequence: 1, KeyID: "key",
+		PublicKey: []byte("public"), Counter: 7, Head: head,
+	}
+	prior.Hash = checkpointHash(prior)
+	anchor.items[id] = prior
+	if _, err := db.Exec(`INSERT INTO installations
+		(key_id,public_key,attestation_digest,assertion_counter,revision,head_digest,
+		tombstone,created_at,recovery_verifier,anchor_sequence)
+		VALUES(?,?,?,7,?,?,0,1,?,1)`,
+		"key", []byte("public"), []byte("att"), u64Bytes(4),
+		head.Digest[:], verifier); err != nil { t.Fatal(err) }
+
+	nextHead := witnessHead{Revision: 5, Tombstone: false}
+	nextHead.Digest[0] = 0x42
+	tx, err := db.Begin()
+	if err != nil { t.Fatal(err) }
+	if err = updateCounter(tx, "key", 8); err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	next, err := (&service{db: db, anchor: anchor}).appendAnchoredState(
+		context.Background(), tx, verifier, prior, "key",
+		[]byte("public"), 8, nextHead)
+	if err != nil { _ = tx.Rollback(); t.Fatal(err) }
+	if next.Sequence != 2 || anchor.items[id].Hash != next.Hash {
+		_ = tx.Rollback()
+		t.Fatal("independent anchor did not accept the new checkpoint")
+	}
+	if err = tx.Rollback(); err != nil { t.Fatal(err) }
+
+	var localSequence int64
+	var localCounter uint32
+	if err = db.QueryRow("SELECT anchor_sequence,assertion_counter FROM installations WHERE recovery_verifier=?",
+		verifier).Scan(&localSequence, &localCounter); err != nil { t.Fatal(err) }
+	if localSequence != 1 || localCounter != 7 {
+		t.Fatal("test setup did not preserve the rolled-back SQLite snapshot")
+	}
+
+	s := &service{db: db, anchor: anchor, now: time.Now}
+	recoveryTx, err := db.Begin()
+	if err != nil { t.Fatal(err) }
+	reconciled, err := s.reconcileAnchoredInstallation(
+		context.Background(), recoveryTx, verifier)
+	if err != nil { _ = recoveryTx.Rollback(); t.Fatal(err) }
+	if reconciled.Hash != next.Hash {
+		_ = recoveryTx.Rollback()
+		t.Fatal("reconciliation did not select the independently anchored checkpoint")
+	}
+	if err = recoveryTx.Commit(); err != nil { t.Fatal(err) }
+
+	var sequence int64
+	var counter uint32
+	var revision, digest []byte
+	if err = db.QueryRow(`SELECT anchor_sequence,assertion_counter,revision,head_digest
+		FROM installations WHERE recovery_verifier=?`, verifier).
+		Scan(&sequence, &counter, &revision, &digest); err != nil { t.Fatal(err) }
+	if sequence != 2 || counter != 8 || binaryRevision(revision) != 5 ||
+		!equalBytes(digest, nextHead.Digest[:]) {
+		t.Fatal("SQLite cache was not restored to the independently anchored checkpoint")
+	}
+}

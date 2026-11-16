@@ -140,7 +140,13 @@ static bool remove_directory_contents(int directory_fd) {
 
     bool success = true;
     struct dirent *item;
-    while ((item = readdir(directory)) != NULL) {
+    for (;;) {
+        errno = 0;
+        item = readdir(directory);
+        if (!item) {
+            if (errno != 0) success = false;
+            break;
+        }
         if (strcmp(item->d_name, ".") == 0 ||
             strcmp(item->d_name, "..") == 0) continue;
 
@@ -158,7 +164,7 @@ static bool remove_directory_contents(int directory_fd) {
                 break;
             }
             bool child_success = remove_directory_contents(child_fd);
-            close(child_fd);
+            if (close(child_fd) < 0) child_success = false;
             if (!child_success ||
                 unlinkat(directory_fd, item->d_name, AT_REMOVEDIR) < 0) {
                 success = false;

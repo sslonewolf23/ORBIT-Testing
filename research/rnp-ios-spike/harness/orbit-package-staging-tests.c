@@ -335,7 +335,7 @@ int main(void) {
     EXPECT("injected final rmdir failure retains staging identity",
         first_rmdir_result == ORBIT_STAGING_IO_ERROR &&
         fail_next_rmdir == 0 && staging.base_directory_fd >= 0 &&
-        staging.staging_name[0] != '\\0' &&
+        staging.staging_name[0] != '\0' &&
         path_exists_at(base_fd, "stage-rmdir-retry"));
     EXPECT("discard retry removes the preserved empty staging tree",
         orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&

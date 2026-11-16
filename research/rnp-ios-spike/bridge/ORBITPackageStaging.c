@@ -184,7 +184,7 @@ orbit_staging_code orbit_package_staging_begin(
 
     if (base_directory_fd < 0 || !staging_name)
         return ORBIT_STAGING_INVALID_ARGUMENT;
-    size_t name_length = strlen(staging_name);
+    size_t name_length = strnlen(staging_name, sizeof(staging->staging_name));
     if (name_length == 0U || name_length >= sizeof(staging->staging_name) ||
         strchr(staging_name, '/') || !orbit_package_archive_path_is_safe(staging_name))
         return ORBIT_STAGING_UNSAFE_PATH;

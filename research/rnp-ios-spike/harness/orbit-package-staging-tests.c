@@ -228,6 +228,13 @@ int main(void) {
         orbit_package_staging_begin(base_fd, "../outside", &staging) ==
             ORBIT_STAGING_UNSAFE_PATH);
 
+    char unterminated_staging_name[ORBIT_STAGING_NAME_CAPACITY];
+    memset(unterminated_staging_name, 'x', sizeof(unterminated_staging_name));
+    EXPECT("unterminated staging name rejected within fixed bound",
+        orbit_package_staging_begin(base_fd, unterminated_staging_name, &staging) ==
+            ORBIT_STAGING_UNSAFE_PATH &&
+        !path_exists_at(base_fd, unterminated_staging_name));
+
     /* Restore the non-empty archive fixture after the zero-length case. */
     deb_length = make_deb(deb, payload, sizeof(payload), 0644U);
 

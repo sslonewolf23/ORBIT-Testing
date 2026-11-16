@@ -233,6 +233,17 @@ int main(void) {
     EXPECT("trusted staging base permissions restored",
         chmod(base_path, 0700) == 0);
 
+    EXPECT("cleanup continues after active descriptor close failure",
+        orbit_package_staging_begin(base_fd, "stage-close-error", &staging) ==
+            ORBIT_STAGING_OK);
+    staging.active_file_fd = -1;
+    staging.active_file_fd = 999999;
+    EXPECT("active descriptor close error is reported after tree cleanup",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_IO_ERROR &&
+        staging.active_file_fd == -1 && staging.base_directory_fd == -1 &&
+        staging.staging_directory_fd == -1 &&
+        !path_exists_at(base_fd, "stage-close-error"));
+
     EXPECT("unsafe staging name rejected",
         orbit_package_staging_begin(base_fd, "../outside", &staging) ==
             ORBIT_STAGING_UNSAFE_PATH);

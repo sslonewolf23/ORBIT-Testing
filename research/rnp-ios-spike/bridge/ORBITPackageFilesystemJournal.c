@@ -217,8 +217,8 @@ orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
     if (fstat(fd, &opened_status) < 0 ||
         fstatat(backup_base_directory_fd, name, &named_status,
                 AT_SYMLINK_NOFOLLOW) < 0) {
-        close(fd);
-        return ORBIT_FILESYSTEM_IO_ERROR;
+        return close(fd) == 0 ? ORBIT_FILESYSTEM_IO_ERROR :
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
     if (!S_ISDIR(opened_status.st_mode) || !S_ISDIR(named_status.st_mode) ||
         opened_status.st_dev != named_status.st_dev ||
@@ -226,8 +226,8 @@ orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
         opened_status.st_uid != geteuid() ||
         (opened_status.st_mode & 0077) != 0 ||
         opened_status.st_dev != base_status.st_dev) {
-        close(fd);
-        return ORBIT_FILESYSTEM_CONFLICT;
+        return close(fd) == 0 ? ORBIT_FILESYSTEM_CONFLICT :
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
     if (create && !backup_directory_is_empty(fd)) {
         close(fd);
@@ -702,9 +702,10 @@ orbit_filesystem_code orbit_package_filesystem_journal_cleanup_orphan_backup_dir
     }
     DIR *directory = fdopendir(scan_fd);
     if (!directory) {
-        close(scan_fd);
+        bool scan_closed = close(scan_fd) == 0;
         free(candidate_ids);
-        return ORBIT_FILESYSTEM_IO_ERROR;
+        return scan_closed ? ORBIT_FILESYSTEM_IO_ERROR :
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
 
     orbit_filesystem_code result = ORBIT_FILESYSTEM_OK;

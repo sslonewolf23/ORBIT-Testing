@@ -216,6 +216,15 @@ int main(void) {
     EXPECT("zero-length stage discarded",
         orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK);
 
+    EXPECT("completed staging tree can be closed without removal",
+        orbit_package_staging_begin(base_fd, "stage-close", &staging) == ORBIT_STAGING_OK &&
+        orbit_package_staging_finish(&staging) == ORBIT_STAGING_OK &&
+        orbit_package_staging_close(&staging) == ORBIT_STAGING_OK &&
+        staging.base_directory_fd == -1 && staging.staging_directory_fd == -1 &&
+        path_exists_at(base_fd, "stage-close"));
+    EXPECT("closed completed staging tree remains removable by name",
+        unlinkat(base_fd, "stage-close", AT_REMOVEDIR) == 0);
+
     EXPECT("group/world-writable staging base is rejected",
         chmod(base_path, 0777) == 0 &&
         orbit_package_staging_begin(base_fd, "stage-untrusted", &staging) ==

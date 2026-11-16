@@ -35,7 +35,11 @@ typedef struct {
  * base_directory_fd must identify a directory owned by the effective caller
  * and not writable by group/other users (mode & 0022 must be zero). The caller
  * remains responsible for selecting a trusted location. The staging directory
- * is created as a new 0700 child and never follows links. */
+ * is created as a new 0700 child and never follows links.
+ *
+ * If setup fails after the child is created, begin makes a best-effort discard.
+ * If that cleanup also fails, staging retains the base descriptor and child
+ * name so the caller can retry orbit_package_staging_discard() before reuse. */
 orbit_staging_code orbit_package_staging_begin(
     int base_directory_fd, const char *staging_name,
     orbit_package_staging *staging);
@@ -44,7 +48,9 @@ orbit_staging_code orbit_package_staging_begin(
  * private stage and streams the validated archive into it. The caller must
  * complete package-ownership conflict checks before calling this function.
  * Any second-pass or staging failure triggers best-effort stage discard.
- * archive_code receives the parser result when an archive pass fails. */
+ * archive_code receives the parser result when an archive pass fails. If begin
+ * returns an I/O error with retained cleanup state, the caller must retry
+ * orbit_package_staging_discard() before reusing the staging object. */
 orbit_staging_code orbit_package_staging_extract_deb(
     int base_directory_fd, const char *staging_name,
     const uint8_t *deb, size_t deb_length,

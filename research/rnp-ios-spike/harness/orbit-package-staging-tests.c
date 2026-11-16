@@ -108,6 +108,19 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
+    /* Invalid public API arguments must not leave stale caller outputs. */
+    memset(&staging, 0xA5, sizeof(staging));
+    memset(&staged_report, 0xA5, sizeof(staged_report));
+    staged_archive_code = ORBIT_ARCHIVE_OK;
+    EXPECT("invalid extraction arguments clear staging and report outputs",
+        orbit_package_staging_extract_deb(
+            base_fd, "stage-invalid", NULL, 1U, &staging,
+            &staged_report, &staged_archive_code) == ORBIT_STAGING_INVALID_ARGUMENT &&
+        staging.base_directory_fd == -1 && staging.staging_directory_fd == -1 &&
+        staging.active_file_fd == -1 && !staging.complete && !staging.failed &&
+        memcmp(&staged_report, &(orbit_archive_report){0}, sizeof(staged_report)) == 0 &&
+        staged_archive_code == ORBIT_ARCHIVE_INVALID_ARGUMENT);
+
     static const uint8_t payload[] = "ORBIT staged package bytes";
     uint8_t deb[8192];
     size_t deb_length = make_deb(deb, payload, sizeof(payload), 0644U);

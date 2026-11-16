@@ -757,8 +757,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_cleanup_orphan_backup_dir
         memcpy(candidate_ids[candidate_count++], transaction_id,
                sizeof(transaction_id));
     }
-    if (closedir(directory) != 0 && result == ORBIT_FILESYSTEM_OK)
-        result = ORBIT_FILESYSTEM_IO_ERROR;
+    if (closedir(directory) != 0)
+        result = ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
 
     static const char hex[] = "0123456789abcdef";
     for (size_t i = 0U; i < candidate_count && result == ORBIT_FILESYSTEM_OK; ++i) {

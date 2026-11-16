@@ -14,13 +14,24 @@
 
 static bool fail_next_fsync;
 static bool fail_next_close;
+static bool fail_next_closedir;
 int __real_fsync(int fd);
 int __real_close(int fd);
+int __real_closedir(DIR *directory);
 
 int __wrap_close(int fd) {
     int result = __real_close(fd);
     if (fail_next_close) {
         fail_next_close = false;
+        errno = EIO;
+        return -1;
+    }
+    return result;
+}
+int __wrap_closedir(DIR *directory) {
+    int result = __real_closedir(directory);
+    if (fail_next_closedir) {
+        fail_next_closedir = false;
         errno = EIO;
         return -1;
     }
@@ -950,6 +961,15 @@ int main(void) {
     if (orphan_b_fd >= 0) close(orphan_b_fd);
     EXPECT("noncanonical directory fixture created",
         mkdirat(base_fd, "not-a-transaction-directory", 0700) == 0);
+    fail_next_closedir = true;
+    EXPECT("orphan scan stream-close failure requires recovery",
+        orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
+            &backend, base_fd) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("orphan scan closedir-failure injection was consumed",
+        !fail_next_closedir);
+    EXPECT("orphan candidates remain untouched after scan close failure",
+        exists_at(base_fd, "a2000000000000000000000000000000") &&
+        exists_at(base_fd, "a3000000000000000000000000000000"));
     EXPECT("orphan sweep removes every collected candidate",
         orbit_package_filesystem_journal_cleanup_orphan_backup_directories(
             &backend, base_fd) == ORBIT_FILESYSTEM_OK);

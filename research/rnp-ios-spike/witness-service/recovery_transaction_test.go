@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestKeyRecoveryPreservesJournalHeadAndConsumesChallenge(t *testing.T) {

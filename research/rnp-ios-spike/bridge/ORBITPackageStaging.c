@@ -441,32 +441,35 @@ orbit_staging_code orbit_package_staging_discard(
 
     int root_fd = staging->staging_directory_fd;
     staging->staging_directory_fd = -1;
-    if (close(root_fd) < 0) return ORBIT_STAGING_IO_ERROR;
+    bool cleanup_ok = close(root_fd) == 0;
     if (unlinkat(staging->base_directory_fd, staging->staging_name,
                  AT_REMOVEDIR) < 0 && errno != ENOENT)
-        return ORBIT_STAGING_IO_ERROR;
+        cleanup_ok = false;
     if (fsync(staging->base_directory_fd) < 0)
-        return ORBIT_STAGING_IO_ERROR;
+        cleanup_ok = false;
     staging->staging_name[0] = '\0';
     staging->complete = false;
     staging->failed = false;
     int base_fd = staging->base_directory_fd;
     staging->base_directory_fd = -1;
-    if (close(base_fd) < 0) return ORBIT_STAGING_IO_ERROR;
-    return ORBIT_STAGING_OK;
+    if (close(base_fd) < 0) cleanup_ok = false;
+    return cleanup_ok ? ORBIT_STAGING_OK : ORBIT_STAGING_IO_ERROR;
 }
 orbit_staging_code orbit_package_staging_close(
     orbit_package_staging *staging) {
-    if (!staging || staging->staging_directory_fd < 0 ||
-        staging->base_directory_fd < 0)
-        return ORBIT_STAGING_INVALID_ARGUMENT;
+    if (!staging) return ORBIT_STAGING_INVALID_ARGUMENT;
     if (!staging->complete || staging->active_file_fd >= 0)
         return ORBIT_STAGING_INVALID_STATE;
-    int root_fd = staging->staging_directory_fd;
-    staging->staging_directory_fd = -1;
-    if (close(root_fd) < 0) return ORBIT_STAGING_IO_ERROR;
-    int base_fd = staging->base_directory_fd;
-    staging->base_directory_fd = -1;
-    if (close(base_fd) < 0) return ORBIT_STAGING_IO_ERROR;
-    return ORBIT_STAGING_OK;
+    bool close_ok = true;
+    if (staging->staging_directory_fd >= 0) {
+        int root_fd = staging->staging_directory_fd;
+        staging->staging_directory_fd = -1;
+        if (close(root_fd) < 0) close_ok = false;
+    }
+    if (staging->base_directory_fd >= 0) {
+        int base_fd = staging->base_directory_fd;
+        staging->base_directory_fd = -1;
+        if (close(base_fd) < 0) close_ok = false;
+    }
+    return close_ok ? ORBIT_STAGING_OK : ORBIT_STAGING_IO_ERROR;
 }

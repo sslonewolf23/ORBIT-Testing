@@ -272,8 +272,22 @@ int main(void) {
     EXPECT("lock acquisition rejects permissive lock mode",
         orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
             ORBIT_FILESYSTEM_CONFLICT);
+    fail_next_close = true;
+    EXPECT("lock validation close failure requires recovery",
+        orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("lock validation close-failure injection was consumed",
+        !fail_next_close);
     EXPECT("permissive lock fixture removed",
         unlinkat(base_fd, ORBIT_FILESYSTEM_LOCK_NAME, 0) == 0);
+    int missing_parent_fd = -1;
+    fail_next_close = true;
+    EXPECT("parent traversal cleanup close failure requires recovery",
+        orbit_package_filesystem_open_parent_directory(
+            base_fd, "missing-parent", &missing_parent_fd) ==
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("parent traversal close-failure injection was consumed",
+        !fail_next_close && missing_parent_fd == -1);
     EXPECT("exclusive package lock acquired",
         orbit_package_filesystem_lock_acquire(base_fd, &lock_one) ==
             ORBIT_FILESYSTEM_OK);

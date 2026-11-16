@@ -29,6 +29,20 @@ typedef enum {
     FILE_ID_OTHER = 2
 } file_identity_result;
 
+static orbit_filesystem_code close_preserving_error(
+    int fd, orbit_filesystem_code original) {
+    return close(fd) == 0 ? original :
+           ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+}
+
+static orbit_filesystem_code close_pair_preserving_error(
+    int first_fd, int second_fd, orbit_filesystem_code original) {
+    bool first_closed = first_fd < 0 || close(first_fd) == 0;
+    bool second_closed = second_fd < 0 || close(second_fd) == 0;
+    return first_closed && second_closed ? original :
+           ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+}
+
 static bool valid_component(const char *name, size_t capacity) {
     if (!name) return false;
     size_t length = strlen(name);
@@ -528,8 +542,7 @@ orbit_filesystem_code orbit_package_filesystem_lock_acquire(
     if (fstat(fd, &lock_status) < 0 ||
         fstatat(trusted_root_fd, ORBIT_FILESYSTEM_LOCK_NAME,
                 &named_status, AT_SYMLINK_NOFOLLOW) < 0) {
-        close(fd);
-        return ORBIT_FILESYSTEM_IO_ERROR;
+        return close_preserving_error(fd, ORBIT_FILESYSTEM_IO_ERROR);
     }
     if (!S_ISREG(lock_status.st_mode) || !S_ISREG(named_status.st_mode) ||
         lock_status.st_dev != named_status.st_dev ||
@@ -538,14 +551,14 @@ orbit_filesystem_code orbit_package_filesystem_lock_acquire(
         lock_status.st_uid != geteuid() ||
         (lock_status.st_mode & 0077) != 0 ||
         lock_status.st_nlink != 1) {
-        close(fd);
-        return ORBIT_FILESYSTEM_CONFLICT;
+        return close_preserving_error(fd, ORBIT_FILESYSTEM_CONFLICT);
     }
     if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
         int saved_errno = errno;
-        close(fd);
-        return (saved_errno == EWOULDBLOCK || saved_errno == EAGAIN) ?
-            ORBIT_FILESYSTEM_BUSY : ORBIT_FILESYSTEM_IO_ERROR;
+        orbit_filesystem_code original =
+            (saved_errno == EWOULDBLOCK || saved_errno == EAGAIN) ?
+                ORBIT_FILESYSTEM_BUSY : ORBIT_FILESYSTEM_IO_ERROR;
+        return close_preserving_error(fd, original);
     }
     struct stat locked_status, current_name_status;
     if (fstat(fd, &locked_status) < 0 ||
@@ -553,9 +566,10 @@ orbit_filesystem_code orbit_package_filesystem_lock_acquire(
                 &current_name_status, AT_SYMLINK_NOFOLLOW) < 0 ||
         locked_status.st_dev != current_name_status.st_dev ||
         locked_status.st_ino != current_name_status.st_ino) {
-        (void)flock(fd, LOCK_UN);
-        close(fd);
-        return ORBIT_FILESYSTEM_CONFLICT;
+        bool unlocked = flock(fd, LOCK_UN) == 0;
+        bool closed = close(fd) == 0;
+        return unlocked && closed ? ORBIT_FILESYSTEM_CONFLICT :
+               ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
     lock->descriptor = fd;
     return ORBIT_FILESYSTEM_OK;
@@ -635,25 +649,19 @@ orbit_filesystem_code orbit_package_filesystem_open_parent_directory(
         if (slash) *slash = '\0';
         int next_fd = openat(current_fd, segment,
             O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-        if (next_fd < 0) {
-            close(current_fd);
-            return ORBIT_FILESYSTEM_IO_ERROR;
-        }
+        if (next_fd < 0)
+            return close_preserving_error(current_fd, ORBIT_FILESYSTEM_IO_ERROR);
         struct stat status;
-        if (fstat(next_fd, &status) < 0) {
-            close(next_fd);
-            close(current_fd);
-            return ORBIT_FILESYSTEM_IO_ERROR;
-        }
-        if (!S_ISDIR(status.st_mode)) {
-            close(next_fd);
-            close(current_fd);
-            return ORBIT_FILESYSTEM_CONFLICT;
-        }
+        if (fstat(next_fd, &status) < 0)
+            return close_pair_preserving_error(
+                next_fd, current_fd, ORBIT_FILESYSTEM_IO_ERROR);
+        if (!S_ISDIR(status.st_mode))
+            return close_pair_preserving_error(
+                next_fd, current_fd, ORBIT_FILESYSTEM_CONFLICT);
         /* Do not advance after a failed descriptor handoff. */
         if (close(current_fd) < 0) {
-            close(next_fd);
-            return ORBIT_FILESYSTEM_IO_ERROR;
+            (void)close(next_fd);
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
         }
         current_fd = next_fd;
         if (final_segment) break;

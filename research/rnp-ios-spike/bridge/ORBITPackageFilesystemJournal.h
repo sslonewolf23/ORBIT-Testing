@@ -64,6 +64,11 @@ typedef orbit_filesystem_code (*orbit_package_filesystem_journal_executor)(
     orbit_file_journal_action action,
     const orbit_package_file_change *change);
 
+/* Descriptor-based executor roots. backup_base_directory_fd must refer
+ * to a directory on the install root's device, owned by geteuid(), with no
+ * group/other permission bits (normally mode 0700). The caller must keep the
+ * descriptor valid and protect the backup root from mutation for the complete
+ * transaction/recovery/cleanup sequence. */
 typedef struct {
     int install_root_fd;
     int staging_root_fd;
@@ -71,10 +76,17 @@ typedef struct {
     uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES];
 } orbit_package_filesystem_executor_context;
 
-/* Opens the private backup directory named by the 16-byte transaction ID.
- * create=true creates it with mode 0700; an existing directory is accepted
- * only when it is owned by the effective user, has no group/other access,
- * and is empty (to reject stale transaction contents). */
+/* Opens the private transaction backup directory named by the 16-byte ID.
+ * The supplied parent descriptor must reference a directory owned by geteuid()
+ * with no group/other permission bits; this trust boundary is checked on every
+ * call. The parent must be on the same device as the install root.
+ *
+ * create=true creates the child with mode 0700 and fsyncs the parent. An
+ * existing child is accepted only when it is owned by the effective user,
+ * has no group/other access, is on the parent's device, matches its named
+ * inode, and is empty (to reject stale transaction contents). The caller
+ * must hold the package filesystem transaction lock across transaction work,
+ * recovery, and the authenticated journal check plus backup cleanup. */
 orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
     int backup_base_directory_fd,
     const uint8_t transaction_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES],

@@ -82,6 +82,7 @@ orbit_package_install_transaction_execute_deb_enveloped(
     if (plan_result) *plan_result = ORBIT_PACKAGE_FILE_PLAN_INVALID_ARGUMENT;
     if (journal_result) *journal_result = ORBIT_FILESYSTEM_INVALID_ARGUMENT;
     if (archive_result) *archive_result = ORBIT_ARCHIVE_INVALID_ARGUMENT;
+    if (archive_report) memset(archive_report, 0, sizeof(*archive_report));
     if (staging_out) {
         memset(staging_out, 0, sizeof(*staging_out));
         staging_out->base_directory_fd = -1;

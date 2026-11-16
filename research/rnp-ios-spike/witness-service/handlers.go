@@ -297,6 +297,7 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 		jsonError(w,403,"recovery rejected"); return
 	}
 	attDigest := sha256.Sum256(attestation)
+	alreadyAnchored := false
 	if checkpoint.KeyID == oldKeyID {
 		if err = commitKeyRecovery(tx, oldKeyID, req.NewKeyID, verifier,
 			challengeDigest[:], publicDER, attDigest[:], s.now().Unix()); err != nil {
@@ -310,12 +311,15 @@ func (s *service) recoverKey(w http.ResponseWriter, r *http.Request) {
 			challengeDigest[:],publicDER,attDigest[:],checkpoint,s.now().Unix()); err != nil {
 			jsonError(w,409,"recovery rejected"); return
 		}
+		alreadyAnchored = true
 	} else {
 		jsonError(w,403,"recovery rejected"); return
 	}
-	if _, err = s.appendAnchoredState(r.Context(),tx,verifier,checkpoint,
-		req.NewKeyID,publicDER,0,checkpoint.Head); err != nil {
-		jsonError(w,503,"witness anchor unavailable"); return
+	if !alreadyAnchored {
+		if _, err = s.appendAnchoredState(r.Context(),tx,verifier,checkpoint,
+			req.NewKeyID,publicDER,0,checkpoint.Head); err != nil {
+			jsonError(w,503,"witness anchor unavailable"); return
+		}
 	}
 	if err = tx.Commit(); err != nil { jsonError(w, 503, "unavailable"); return }
 	w.WriteHeader(http.StatusNoContent)

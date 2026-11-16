@@ -655,6 +655,26 @@ int main(void) {
         fstatat(base_fd, "d1000000000000000000000000000000",
                 &(struct stat){0}, AT_SYMLINK_NOFOLLOW) < 0 && errno == ENOENT);
 
+    uint8_t cleanup_sync_retry_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xD2U };
+    int cleanup_sync_retry_fd = -1;
+    EXPECT("cleanup-sync retry fixture directory created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, cleanup_sync_retry_id, true,
+            &cleanup_sync_retry_fd) == ORBIT_FILESYSTEM_OK);
+    if (cleanup_sync_retry_fd >= 0) close(cleanup_sync_retry_fd);
+    fail_next_fsync = true;
+    EXPECT("backup cleanup reports parent sync failure after removal",
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, cleanup_sync_retry_id) ==
+            ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("backup directory is absent after failed parent sync",
+        !exists_at(base_fd, "d2000000000000000000000000000000"));
+    EXPECT("cleanup retry re-syncs missing backup directory parent",
+        orbit_package_filesystem_journal_cleanup_backup_directory(
+            &backend, base_fd, cleanup_sync_retry_id) == ORBIT_FILESYSTEM_OK);
+    EXPECT("cleanup retry fsync failure injection was consumed",
+        !fail_next_fsync);
+
     /* Directory creation is journaled before later operations. Force a later
      * staged-file identity conflict and verify reverse rollback restores the
      * complete directory tree to staging. */

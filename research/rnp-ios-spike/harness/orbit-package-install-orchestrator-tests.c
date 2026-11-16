@@ -9,6 +9,27 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+static int fail_next_fsync;
+static int fail_next_stage_rmdir;
+int __real_fsync(int fd);
+int __wrap_fsync(int fd) {
+    if (fail_next_fsync) {
+        fail_next_fsync = 0;
+        errno = EIO;
+        return -1;
+    }
+    return __real_fsync(fd);
+}
+int __real_unlinkat(int directory_fd, const char *path, int flags);
+int __wrap_unlinkat(int directory_fd, const char *path, int flags) {
+    if (fail_next_stage_rmdir && (flags & AT_REMOVEDIR) != 0) {
+        fail_next_stage_rmdir = 0;
+        errno = EIO;
+        return -1;
+    }
+    return __real_unlinkat(directory_fd, path, flags);
+}
+
 static unsigned checks, failures;
 #define EXPECT(label, condition) do { ++checks; if (!(condition)) { ++failures; \
     fprintf(stderr, "FAIL: %s\n", label); } } while (0)
@@ -182,6 +203,30 @@ int main(void) {
         !exists_at(stage_base_fd, "stage-conflict"));
     EXPECT("ownership conflict leaves staging descriptors closed",
         staging.base_directory_fd == -1 && staging.staging_directory_fd == -1);
+
+    /* Exercise cleanup-state ownership through the public .deb orchestrator. */
+    fail_next_fsync = 1; /* Parent sync immediately after staging mkdirat. */
+    fail_next_stage_rmdir = 1; /* First best-effort removal fails too. */
+    EXPECT("failed stage setup is reported by install orchestrator",
+        orbit_package_install_transaction_execute_deb_enveloped(
+            &installed, &candidate, deb, deb_length,
+            ownership_bytes, ownership_length, transaction_id,
+            install_fd, stage_base_fd, backup_fd, "stage-retry-contract",
+            &backend, unused_executor, NULL, &staging, &report,
+            &archive_code, &plan_code, &journal_code) ==
+                ORBIT_PACKAGE_INSTALL_TRANSACTION_STAGING_FAILED);
+    EXPECT("failed extraction retains retryable stage identity",
+        fail_next_fsync == 0 && fail_next_stage_rmdir == 0 &&
+        staging.base_directory_fd >= 0 &&
+        staging.staging_directory_fd >= 0 &&
+        strcmp(staging.staging_name, "stage-retry-contract") == 0 &&
+        exists_at(stage_base_fd, "stage-retry-contract"));
+    EXPECT("caller can retry discard after orchestrated staging failure",
+        orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&
+        staging.base_directory_fd == -1 &&
+        staging.staging_directory_fd == -1 &&
+        staging.staging_name[0] == '\0' &&
+        !exists_at(stage_base_fd, "stage-retry-contract"));
 
     free(ownership_bytes);
     if (backup_fd >= 0) close(backup_fd);

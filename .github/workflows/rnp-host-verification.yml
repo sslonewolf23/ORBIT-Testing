@@ -972,6 +972,8 @@ jobs:
             research/rnp-ios-spike/bridge/ORBITPackageFilePlan.c \
             research/rnp-ios-spike/bridge/ORBITPackageInstallTransaction.c \
             research/rnp-ios-spike/harness/orbit-package-install-orchestrator-tests.c \
+            -Wl,--wrap=fsync \
+            -Wl,--wrap=unlinkat \
             -lz -lbz2 -llzma -lzstd \
             -o "$RUNNER_TEMP/orbit-package-install-orchestrator-tests"
           "$RUNNER_TEMP/orbit-package-install-orchestrator-tests" \

@@ -391,9 +391,13 @@ static orbit_filesystem_code ensure_backup_link(
         change->preimage_device, change->preimage_inode, NULL, NULL, NULL);
     if (backup == FILE_ID_MATCH) {
         nlink_t existing_links = 0;
-        (void)file_identity_at(backup_parent_fd, change->backup_name,
+        file_identity_result verified = file_identity_at(
+            backup_parent_fd, change->backup_name,
             change->preimage_device, change->preimage_inode,
             NULL, NULL, &existing_links);
+        if (verified != FILE_ID_MATCH)
+            return verified == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
+                   ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
         return existing_links == 2 ? ORBIT_FILESYSTEM_OK :
                ORBIT_FILESYSTEM_CONFLICT;
     }
@@ -422,19 +426,15 @@ static orbit_filesystem_code ensure_backup_link(
         change->preimage_device, change->preimage_inode,
         NULL, NULL, &backup_links);
     if (backup != FILE_ID_MATCH) {
-        if (created_backup_link) {
-            (void)unlinkat(backup_parent_fd, change->backup_name, 0);
-            (void)fsync(backup_parent_fd);
-        }
+        /* The name may no longer identify the inode linked from the target.
+           Do not blindly unlink it: retain the evidence for recovery. */
         return backup == FILE_ID_ERROR ? ORBIT_FILESYSTEM_IO_ERROR :
                ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
     if (backup_links != 2) {
-        if (created_backup_link) {
-            (void)unlinkat(backup_parent_fd, change->backup_name, 0);
-            (void)fsync(backup_parent_fd);
-        }
-        return ORBIT_FILESYSTEM_CONFLICT;
+        /* A link-count mismatch is an invariant violation. Preserve the
+           verified backup entry rather than risk deleting a raced replacement. */
+        return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
     if (fsync(backup_parent_fd) < 0) return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     return ORBIT_FILESYSTEM_OK;

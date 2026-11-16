@@ -296,12 +296,12 @@ int main(void) {
             ORBIT_STAGING_IO_ERROR &&
         fail_next_fsync == 0 && fail_next_rmdir == 0 &&
         staging.base_directory_fd >= 0 &&
-        staging.staging_name[0] != '\\0' &&
+        staging.staging_name[0] != '\0' &&
         path_exists_at(base_fd, "stage-begin-retry"));
     EXPECT("begin cleanup retry removes the orphan candidate",
         orbit_package_staging_discard(&staging) == ORBIT_STAGING_OK &&
         staging.base_directory_fd == -1 &&
-        staging.staging_name[0] == '\\0' &&
+        staging.staging_name[0] == '\0' &&
         !path_exists_at(base_fd, "stage-begin-retry"));
 
     EXPECT("fstat failure fixture staging directory created",

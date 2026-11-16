@@ -148,16 +148,16 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
     return result;
 }
 
-static bool backup_directory_is_empty(int directory_fd) {
+/* 1 = empty, 0 = nonempty, -1 = scan/descriptor failure. */
+static int backup_directory_is_empty(int directory_fd) {
     /* openat(".") creates a fresh open-file description. dup()/F_DUPFD would
      * share the directory stream offset with the caller's descriptor. */
     int duplicate = openat(directory_fd, ".",
         O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-    if (duplicate < 0) return false;
+    if (duplicate < 0) return -1;
     DIR *directory = fdopendir(duplicate);
     if (!directory) {
-        close(duplicate);
-        return false;
+        return close(duplicate) == 0 ? -1 : -1;
     }
     bool empty = true;
     errno = 0;
@@ -169,10 +169,10 @@ static bool backup_directory_is_empty(int directory_fd) {
             break;
         }
     }
-    if (errno != 0) empty = false;
+    if (errno != 0) return closedir(directory) == 0 ? -1 : -1;
     /* A failed stream close means the directory scan did not complete cleanly. */
-    if (closedir(directory) != 0) empty = false;
-    return empty;
+    if (closedir(directory) != 0) return -1;
+    return empty ? 1 : 0;
 }
 
 orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
@@ -229,9 +229,14 @@ orbit_filesystem_code orbit_package_filesystem_open_backup_directory(
         return close(fd) == 0 ? ORBIT_FILESYSTEM_CONFLICT :
             ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
-    if (create && !backup_directory_is_empty(fd)) {
-        close(fd);
-        return ORBIT_FILESYSTEM_CONFLICT;
+    if (create) {
+        int empty_result = backup_directory_is_empty(fd);
+        if (empty_result <= 0) {
+            bool closed = close(fd) == 0;
+            if (!closed || empty_result < 0)
+                return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
+            return ORBIT_FILESYSTEM_CONFLICT;
+        }
     }
     *backup_directory_fd = fd;
     return ORBIT_FILESYSTEM_OK;

@@ -329,6 +329,13 @@ int main(void) {
         orbit_package_filesystem_open_backup_directory(
             base_fd, stale_transaction_id, true,
             &transaction_backup_fd) == ORBIT_FILESYSTEM_CONFLICT);
+    fail_next_close = true;
+    EXPECT("nonempty backup cleanup close failure requires recovery",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, stale_transaction_id, true,
+            &transaction_backup_fd) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("nonempty backup close-failure injection was consumed",
+        !fail_next_close);
     int stale_directory_fd = openat(base_fd,
         "c1000000000000000000000000000000",
         O_RDONLY | O_DIRECTORY | O_CLOEXEC);

@@ -112,6 +112,17 @@ int main(void) {
     orbit_archive_report staged_report;
     orbit_archive_code staged_archive_code = ORBIT_ARCHIVE_INVALID_ARGUMENT;
 
+    /* Invalid begin arguments must also reset every caller-owned field. */
+    memset(&staging, 0xA5, sizeof(staging));
+    EXPECT("invalid begin arguments reset staging outputs",
+        orbit_package_staging_begin(-1, "stage-invalid", &staging) ==
+            ORBIT_STAGING_INVALID_ARGUMENT &&
+        staging.base_directory_fd == -1 && staging.staging_directory_fd == -1 &&
+        staging.active_file_fd == -1 && staging.staging_name[0] == '\\0' &&
+        staging.active_file_path[0] == '\\0' && staging.active_file_size == 0U &&
+        staging.active_file_written == 0U && staging.active_file_mode == 0U &&
+        !staging.complete && !staging.failed);
+
     /* Invalid public API arguments must not leave stale caller outputs. */
     memset(&staging, 0xA5, sizeof(staging));
     memset(&staged_report, 0xA5, sizeof(staged_report));

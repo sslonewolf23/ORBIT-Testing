@@ -18,6 +18,17 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* Close every descriptor even after one close fails. A failed close
+ * leaves the descriptor state unsuitable for continued transaction work. */
+static bool close_executor_descriptors(int staged_fd, int target_fd,
+                                       int backup_fd) {
+    bool closed = true;
+    if (staged_fd >= 0 && close(staged_fd) != 0) closed = false;
+    if (target_fd >= 0 && close(target_fd) != 0) closed = false;
+    if (backup_fd >= 0 && close(backup_fd) != 0) closed = false;
+    return closed;
+}
+
 static bool executor_roots_are_valid(
     const orbit_package_filesystem_executor_context *executor,
     bool needs_staging) {
@@ -76,7 +87,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
         executor->install_root_fd, change->target_parent_path,
         &target_parent_fd);
     if (valid != ORBIT_FILESYSTEM_OK) {
-        close(backup_parent_fd);
+        if (!close_executor_descriptors(-1, -1, backup_parent_fd))
+            return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
         return valid;
     }
 
@@ -86,8 +98,9 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
             executor->staging_root_fd, change->staged_parent_path,
             &staged_parent_fd);
         if (valid != ORBIT_FILESYSTEM_OK) {
-            close(target_parent_fd);
-            close(backup_parent_fd);
+            if (!close_executor_descriptors(-1, target_parent_fd,
+                                            backup_parent_fd))
+                return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
             return valid;
         }
     }
@@ -106,9 +119,8 @@ orbit_filesystem_code orbit_package_filesystem_journal_execute_change(
             (uint64_t)staged_parent_status.st_ino == change->staged_parent_inode;
     }
     if (!identities_match) {
-        if (staged_parent_fd >= 0) close(staged_parent_fd);
-        close(target_parent_fd);
-        close(backup_parent_fd);
+        (void)close_executor_descriptors(staged_parent_fd, target_parent_fd,
+                                         backup_parent_fd);
         return ORBIT_FILESYSTEM_RECOVERY_REQUIRED;
     }
 

@@ -13,7 +13,19 @@
 #include <unistd.h>
 
 static bool fail_next_fsync;
+static bool fail_next_close;
 int __real_fsync(int fd);
+int __real_close(int fd);
+
+int __wrap_close(int fd) {
+    int result = __real_close(fd);
+    if (fail_next_close) {
+        fail_next_close = false;
+        errno = EIO;
+        return -1;
+    }
+    return result;
+}
 int __wrap_fsync(int fd) {
     if (fail_next_fsync) {
         fail_next_fsync = false;
@@ -352,6 +364,32 @@ int main(void) {
     backend.load = memory_load;
     backend.store_atomic = memory_store;
     backend.clear_atomic = memory_clear;
+
+    uint8_t close_failure_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xC3U };
+    int close_failure_fd = -1;
+    EXPECT("close-failure backup fixture directory created",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, close_failure_id, true,
+            &close_failure_fd) == ORBIT_FILESYSTEM_OK);
+    EXPECT("close-failure backup sentinel created",
+        close_failure_fd >= 0 &&
+        write_file_at(close_failure_fd, "sentinel", "preserve"));
+    if (close_failure_fd >= 0) close(close_failure_fd);
+    fail_next_close = true;
+    EXPECT("backup opener escalates failed descriptor cleanup to recovery",
+        orbit_package_filesystem_open_backup_directory(
+            base_fd, close_failure_id, true,
+            &close_failure_fd) == ORBIT_FILESYSTEM_RECOVERY_REQUIRED);
+    EXPECT("backup opener close-failure injection was consumed",
+        !fail_next_close);
+    close_failure_fd = openat(base_fd,
+        "c3000000000000000000000000000000",
+        O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (close_failure_fd >= 0) {
+        (void)unlinkat(close_failure_fd, "sentinel", 0);
+        close(close_failure_fd);
+    }
+    (void)unlinkat(base_fd, "c3000000000000000000000000000000", AT_REMOVEDIR);
 
     uint8_t nonempty_cleanup_id[ORBIT_FILESYSTEM_TRANSACTION_ID_BYTES] = { 0xC2U };
     int nonempty_cleanup_fd = -1;

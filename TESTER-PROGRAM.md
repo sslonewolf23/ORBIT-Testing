@@ -4,6 +4,8 @@
 
 ORBIT is an independent iOS package manager project. We are building a community of device owners, jailbreak users, repository maintainers, package developers, and testers who can help validate compatibility and security before a public beta.
 
+See [PUBLIC-RELEASE-STATUS.md](PUBLIC-RELEASE-STATUS.md) for the current release stage and the exact gates before an installable beta is announced.
+
 ## What testers can help with
 
 Testing will open in stages. The available scope will be stated in each build announcement.

@@ -1,0 +1,48 @@
+name: Bug report
+description: Report a reproducible ORBIT preview or test-build defect.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Report only issues observed in an official ORBIT build. Do not attach secrets, private keys, credentials, UDIDs, serial numbers, or unredacted personal logs. For security vulnerabilities, follow SECURITY.md instead of opening a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: ORBIT version/build
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Device and environment
+      description: Device model, iOS version, jailbreak/bootstrap, and rootless/rootful status where applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. ... 2. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Remove personal information, identifiers, credentials, and tokens.
+    validations:
+      required: false

@@ -1,0 +1,96 @@
+name: Device compatibility report
+description: Share your device environment and a result from an explicitly announced ORBIT test build.
+title: "[Device test]: "
+labels: ["tester-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Only submit a report for an official ORBIT build and test stage.** There is no public installable beta unless a release announcement explicitly links one. Never include UDID, serial number, IMEI, Apple ID, passwords, tokens, private keys, or unredacted personal logs.
+  - type: input
+    id: orbit-version
+    attributes:
+      label: ORBIT build/version
+      description: Include the release tag or exact build identifier.
+      placeholder: "Not yet available / version"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device model
+      placeholder: "iPhone 15"
+    validations:
+      required: true
+  - type: input
+    id: ios
+    attributes:
+      label: iOS/iPadOS version and build
+      placeholder: "iOS 27.0 (build if known)"
+    validations:
+      required: true
+  - type: input
+    id: jailbreak
+    attributes:
+      label: Jailbreak and version
+      placeholder: "Name/version, or None"
+    validations:
+      required: true
+  - type: input
+    id: bootstrap
+    attributes:
+      label: Bootstrap and version
+      placeholder: "Name/version, or Not applicable"
+    validations:
+      required: true
+  - type: dropdown
+    id: layout
+    attributes:
+      label: Environment layout
+      options:
+        - Rootless
+        - Rootful
+        - Not sure
+        - Not applicable
+    validations:
+      required: true
+  - type: dropdown
+    id: test-stage
+    attributes:
+      label: Test stage
+      options:
+        - Preview / read-only
+        - Controlled device validation (explicitly announced)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Test steps
+      description: Exact steps, including the screen or feature tested.
+      placeholder: "1. Opened ... 2. Selected ..."
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or screenshots
+      description: Remove personal information, credentials, identifiers, and tokens before attaching.
+    validations:
+      required: false
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety confirmation
+      options:
+        - label: I used an official build and followed the instructions for its announced test stage.
+          required: true
+        - label: I removed device identifiers, credentials, and personal information from this report.
+          required: true

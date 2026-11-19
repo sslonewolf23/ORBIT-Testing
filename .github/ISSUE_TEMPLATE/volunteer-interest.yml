@@ -1,0 +1,66 @@
+name: Volunteer tester interest
+description: Register interest in helping test future official ORBIT preview builds.
+title: "[Volunteer interest]: "
+labels: ["volunteer-interest"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your interest in ORBIT! This form records interest only. It does not grant access to a build, and there is no public installable beta at this time.
+        Do not include UDID, serial number, IMEI, Apple ID, email address, passwords, tokens, private keys, or other sensitive information. This is a public issue.
+  - type: input
+    id: device
+    attributes:
+      label: Device model (optional)
+      placeholder: "iPhone 15"
+    validations:
+      required: false
+  - type: input
+    id: ios
+    attributes:
+      label: iOS/iPadOS version (optional)
+      placeholder: "iOS 27.0"
+    validations:
+      required: false
+  - type: input
+    id: jailbreak
+    attributes:
+      label: Jailbreak and version (optional)
+      placeholder: "Name/version, none, or not sure"
+    validations:
+      required: false
+  - type: input
+    id: bootstrap
+    attributes:
+      label: Bootstrap (optional)
+      placeholder: "Name/version, none, or not sure"
+    validations:
+      required: false
+  - type: dropdown
+    id: layout
+    attributes:
+      label: Environment (optional)
+      options:
+        - Rootless
+        - Rootful
+        - Not sure
+        - Not applicable
+    validations:
+      required: false
+  - type: textarea
+    id: experience
+    attributes:
+      label: Testing or development experience (optional)
+      description: Tell us what kinds of testing you are comfortable helping with.
+      placeholder: "Compatibility testing, UI feedback, repository testing, development, etc."
+    validations:
+      required: false
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Acknowledgement
+      options:
+        - label: I understand this is an expression of interest only and no installable beta is currently available.
+          required: true
+        - label: I will not post device identifiers, credentials, or private information in this public issue.
+          required: true
